@@ -41,7 +41,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/conf.d/http.conf:/etc/nginx/conf.d/http.conf:ro
+      # Overwrites the nginx image's own default.conf directly, rather
+      # than adding a second file alongside it — the image ships a
+      # default.conf that would otherwise win as the default server
+      # (loaded alphabetically before any other conf.d file).
+      - ./nginx/conf.d/http.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/templates:/etc/nginx/templates:ro
       - ${SSL_CERTS_DIR}:/etc/nginx/certs:ro
     restart: unless-stopped
