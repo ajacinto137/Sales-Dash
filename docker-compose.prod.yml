@@ -48,4 +48,5 @@ services:
       - ./nginx/conf.d/http.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/templates:/etc/nginx/templates:ro
       - ${SSL_CERTS_DIR}:/etc/nginx/certs:ro
+      - ./webroot:/var/www/certbot:ro
     restart: unless-stopped

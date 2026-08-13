@@ -189,6 +189,24 @@ certificate renewed (e.g. via a `cron`'d `certbot renew` on the host,
 or your CA's own tooling) is up to whatever issued it — this stack just
 consumes whatever's in that directory.
 
+If the certificate comes from `certbot` running directly on the host
+(not in this compose stack), use **webroot** mode rather than
+`--standalone` for renewals — nginx permanently holds port 80/443 once
+this stack is up, so `--standalone` (which binds port 80 itself) will
+fail every renewal. This project's `./webroot` directory is mounted
+into nginx at `/var/www/certbot` and `nginx/conf.d/http.conf` already
+serves `/.well-known/acme-challenge/` from it, so:
+
+```bash
+sudo certbot certonly --webroot -w /path/to/Sales-Dash/webroot \
+  -d dashboard.example.com --email you@example.com --agree-tos --no-eff-email
+```
+
+For renewals to actually reach the running app's certificate location,
+add a deploy hook (`/etc/letsencrypt/renewal-hooks/deploy/`) that
+copies the renewed `fullchain.pem`/`privkey.pem` into `SSL_CERTS_DIR`
+and restarts the `nginx` service.
+
 ### 2. Start
 
 ```bash
