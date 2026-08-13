@@ -25,8 +25,14 @@ services:
       - .env
     environment:
       FLASK_DEBUG: "false"
+    # --workers must stay at 1: the app keeps its loaded data in an
+    # in-process global (data_store) guarded by a threading.Lock, not
+    # an external cache. Multiple gunicorn worker processes would each
+    # get their own independent copy, so requests would randomly see
+    # loaded data or None depending which worker handled them.
+    # --threads gives concurrency within that single process instead.
     command: >
-      sh -c 'gunicorn --bind 0.0.0.0:${APP_PORT:-3005} --workers 4 --threads 2 --timeout 60 app:app'
+      sh -c 'gunicorn --bind 0.0.0.0:${APP_PORT:-3005} --workers 1 --threads 4 --timeout 60 app:app'
     expose:
       - "3005"
     restart: unless-stopped
