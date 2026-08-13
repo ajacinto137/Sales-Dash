@@ -1,3 +1,11 @@
+# ============================================================
+# LOCAL DEVELOPMENT docker-compose file.
+#
+# Runs the Flask dev server directly on port 3005, no nginx,
+# no TLS. For a production deployment (nginx + HTTPS), use
+# docker-compose.prod.yml instead — see README.md.
+# ============================================================
+
 services:
   dashboard:
     build: .

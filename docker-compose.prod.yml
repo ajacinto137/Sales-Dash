@@ -1,0 +1,47 @@
+# ============================================================
+# PRODUCTION docker-compose file.
+#
+# This is separate from docker-compose.yml, which remains the
+# LOCAL DEVELOPMENT stack (Flask dev server, no nginx, no TLS,
+# port 3005 mapped straight to the host). Nothing here changes
+# how local dev works.
+#
+# This file adds:
+#   - nginx as a reverse proxy in front of the app (ports 80/443)
+#   - gunicorn instead of the Flask dev server for the app itself
+#   - HTTPS using a certificate you provide yourself — nginx reads
+#     it from SSL_CERTS_DIR (set in .env), expecting fullchain.pem
+#     and privkey.pem in that directory
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+# ============================================================
+
+services:
+  dashboard:
+    build: .
+    image: sales-dash:prod
+    env_file:
+      - .env
+    environment:
+      FLASK_DEBUG: "false"
+    command: >
+      sh -c 'gunicorn --bind 0.0.0.0:${APP_PORT:-3005} --workers 4 --threads 2 --timeout 60 app:app'
+    expose:
+      - "3005"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - dashboard
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ${SSL_CERTS_DIR}:/etc/nginx/certs:ro
+    restart: unless-stopped

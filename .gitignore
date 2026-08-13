@@ -1,0 +1,19 @@
+# Secrets
+.env
+
+# SSL certificates (production)
+/certs/
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+venv/
+.venv/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
