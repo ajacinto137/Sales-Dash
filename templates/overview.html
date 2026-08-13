@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block page_title %}Sales Performance Overview{% endblock %}
+{% block page_subtitle %}
+<p>
+    Report Period:
+    {% if report_period %}
+        {{ report_period.start }} – {{ report_period.end }}
+    {% else %}
+        No Main Sales data loaded
+    {% endif %}
+</p>
+{% endblock %}
+
+{% block content %}
+
+<section class="status-row">
+    <div class="status-card {{ 'ok' if planetweb_connected else 'fail' }}">
+        <div class="status-card-label">PlanetWeb SQL Server</div>
+        <div class="status-card-value">{{ 'CONNECTED' if planetweb_connected else 'FAILED' }}</div>
+        {% if planetweb_error %}<div class="status-card-error">{{ planetweb_error }}</div>{% endif %}
+    </div>
+    <div class="status-card {{ 'ok' if kpi_connected else 'fail' }}">
+        <div class="status-card-label">KPI PostgreSQL</div>
+        <div class="status-card-value">{{ 'CONNECTED' if kpi_connected else 'FAILED' }}</div>
+        {% if kpi_error %}<div class="status-card-error">{{ kpi_error }}</div>{% endif %}
+    </div>
+    <div class="status-card {{ 'ok' if main_sales_status == 'SUCCESS' else 'fail' }}">
+        <div class="status-card-label">Main Sales Query</div>
+        <div class="status-card-value">{{ main_sales_status or 'PENDING' }}</div>
+    </div>
+    <div class="status-card {{ 'ok' if service_cancellations_status == 'SUCCESS' else 'fail' }}">
+        <div class="status-card-label">Service Cancellations Query</div>
+        <div class="status-card-value">{{ service_cancellations_status or 'PENDING' }}</div>
+    </div>
+    <div class="status-card {{ 'ok' if vision_packages_status == 'SUCCESS' else 'fail' }}">
+        <div class="status-card-label">Vision Packages Query</div>
+        <div class="status-card-value">{{ vision_packages_status or 'PENDING' }}</div>
+    </div>
+</section>
+
+<p class="data-note">
+    The metrics below are raw row-count validation figures used to confirm the source data is loading correctly.
+    They are not yet final business KPI definitions.
+</p>
+
+<section class="kpi-row">
+    <div class="kpi-card">
+        <div class="kpi-label">Gross Sales (row count)</div>
+        <div class="kpi-value">{{ "{:,}".format(gross_sales) }}</div>
+        <div class="kpi-foot">Main Sales — PlanetWeb</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Vision Packages</div>
+        <div class="kpi-value">{{ "{:,}".format(vision_package_count) }}</div>
+        <div class="kpi-foot">Vision Packages — KPI Reporting</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Service Cancellations</div>
+        <div class="kpi-value">{{ "{:,}".format(cancellation_count) }}</div>
+        <div class="kpi-foot">Service Cancellations — KPI Reporting</div>
+    </div>
+</section>
+
+<section class="chart-card">
+    <div class="chart-card-header">
+        <h2>Sales Over Time</h2>
+        <span class="chart-card-sub">Order count by day — Main Sales</span>
+    </div>
+    {% if chart_data %}
+        <canvas id="salesChart" height="90"></canvas>
+    {% else %}
+        <div class="empty-state">No Main Sales data available to chart yet.</div>
+    {% endif %}
+</section>
+
+{% endblock %}
+
+{% block extra_js %}
+{% if chart_data %}
+<script>
+    const chartData = {{ chart_data | tojson }};
+    const ctx = document.getElementById('salesChart');
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.map(d => d.date),
+                datasets: [{
+                    label: 'Orders',
+                    data: chartData.map(d => d.count),
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { beginAtZero: true, grid: { color: '#eef1f6' } }
+                }
+            }
+        });
+    }
+</script>
+{% endif %}
+{% endblock %}

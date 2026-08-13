@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block page_title %}Main Sales{% endblock %}
+{% block page_subtitle %}<p>Replaces the "Main" worksheet from the Excel/VBA workflow</p>{% endblock %}
+
+{% block content %}
+
+<form class="filter-bar" method="get" action="{{ url_for('main_sales_page') }}">
+    <div class="filter-field">
+        <label for="date_from">Date From</label>
+        <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="filter-field">
+        <label for="date_to">Date To</label>
+        <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <div class="filter-field">
+        <label for="state">State</label>
+        <select id="state" name="state">
+            <option value="">All</option>
+            {% for opt in state_options %}
+            <option value="{{ opt }}" {{ 'selected' if filters.state == opt else '' }}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="municipality">Municipality</label>
+        <select id="municipality" name="municipality">
+            <option value="">All</option>
+            {% for opt in municipality_options %}
+            <option value="{{ opt }}" {{ 'selected' if filters.municipality == opt else '' }}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="scheduled">Scheduled Status</label>
+        <select id="scheduled" name="scheduled">
+            <option value="">All</option>
+            {% for opt in scheduled_options %}
+            <option value="{{ opt }}" {{ 'selected' if filters.scheduled == opt else '' }}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="speed">Speed</label>
+        <select id="speed" name="speed">
+            <option value="">All</option>
+            {% for opt in speed_options %}
+            <option value="{{ opt }}" {{ 'selected' if filters.speed == opt else '' }}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="install_status">Install Status</label>
+        <select id="install_status" name="install_status">
+            <option value="">All</option>
+            {% for opt in install_status_options %}
+            <option value="{{ opt }}" {{ 'selected' if filters.install_status == opt else '' }}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">Apply Filters</button>
+        <a href="{{ url_for('main_sales_page') }}" class="btn btn-ghost">Clear</a>
+    </div>
+</form>
+
+<section class="summary-row">
+    <div class="summary-item">
+        <span class="summary-label">Total Sales</span>
+        <span class="summary-value">{{ "{:,}".format(install_summary.total) }}</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Installed</span>
+        <span class="summary-value">{{ "{:,}".format(install_summary.installed) }}</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Not Yet Installed</span>
+        <span class="summary-value">{{ "{:,}".format(install_summary.not_yet_installed) }}</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Install Rate</span>
+        <span class="summary-value">{{ "%.1f"|format(install_summary.install_rate) }}%</span>
+    </div>
+</section>
+
+<p class="data-note">
+    Showing {{ "{:,}".format(filtered_rows) }} of {{ "{:,}".format(total_rows) }} total rows after filters.
+</p>
+
+{% include "_data_table.html" %}
+
+{% endblock %}

@@ -1,0 +1,5 @@
+Flask
+pandas
+pyodbc
+psycopg2-binary
+python-dotenv

@@ -1,0 +1,74 @@
+<section class="meta-row">
+    <div class="meta-item">
+        <span class="meta-label">Database</span>
+        <span class="meta-value">{{ database_label }}</span>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">Connection Status</span>
+        <span class="meta-value {{ 'ok' if connection_status else 'fail' }}">
+            {{ 'CONNECTED' if connection_status else 'FAILED' }}
+        </span>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">Query Status</span>
+        <span class="meta-value {{ 'ok' if status == 'SUCCESS' else 'fail' }}">{{ status or 'PENDING' }}</span>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">Total Rows</span>
+        <span class="meta-value">{{ "{:,}".format(total_rows) }}</span>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">Total Columns</span>
+        <span class="meta-value">{{ total_columns }}</span>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">Displayed Rows</span>
+        <span class="meta-value">First {{ displayed_rows }}</span>
+    </div>
+    <div class="meta-item meta-refresh">
+        <form action="{{ url_for('refresh') }}?dataset={{ refresh_dataset }}" method="post">
+            <button type="submit" class="btn btn-secondary">Refresh This Dataset</button>
+        </form>
+    </div>
+</section>
+
+{% if error %}
+<div class="error-box">
+    <strong>Query error:</strong> {{ error }}
+</div>
+{% endif %}
+
+{% if install_error %}
+<div class="error-box">
+    <strong>Install Date validation error:</strong> {{ install_error }}
+</div>
+{% endif %}
+
+<section class="table-card">
+    {% if table.rows %}
+    <div class="table-scroll">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    {% for col in table.columns %}<th>{{ col }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in table.rows %}
+                <tr>
+                    {% for col, cell in zip(table.columns, row) %}
+                        {% if col == "Install Status" %}
+                        <td><span class="badge {{ 'badge-success' if cell == 'Installed' else 'badge-muted' }}">{{ cell }}</span></td>
+                        {% else %}
+                        <td>{{ cell }}</td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">No rows available. Check the query status above.</div>
+    {% endif %}
+</section>

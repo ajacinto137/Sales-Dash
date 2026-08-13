@@ -1,0 +1,8 @@
+services:
+  dashboard:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "3005:3005"
+    restart: unless-stopped

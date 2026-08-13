@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Team Leaderboard — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+</head>
+<body class="td-body">
+<div class="td-topnav">
+    <div class="td-topnav-brand">Planet Networks</div>
+    <nav class="td-topnav-links">
+        <a href="{{ url_for('overview') }}">Overview</a>
+        <a href="{{ url_for('main_sales_page') }}">Main Sales</a>
+        <a href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
+        <a href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
+        <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>
+    </nav>
+    <div class="td-topnav-right">
+        {% if last_refreshed %}<span class="td-last-refreshed">Last refreshed: {{ last_refreshed }}</span>{% endif %}
+        <form action="{{ url_for('refresh') }}?dataset=all" method="post">
+            <button type="submit" class="td-btn td-btn-ghost">Refresh Data</button>
+        </form>
+    </div>
+</div>
+
+<div class="td-page">
+
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Team Leaderboard</h1>
+            <p class="td-subtitle">
+                {{ total_rep_count }} rep{{ '' if total_rep_count == 1 else 's' }}, ranked by sales.
+            </p>
+        </div>
+
+        <form class="td-period-form" method="get" action="{{ url_for('dashboard_page') }}">
+            {% if selected_rep %}<input type="hidden" name="rep" value="{{ selected_rep }}">{% endif %}
+            {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+            <select name="period" id="period-select" class="td-select">
+                <option value="this_month" {{ 'selected' if period == 'this_month' else '' }}>This Month</option>
+                <option value="last_month" {{ 'selected' if period == 'last_month' else '' }}>Last Month</option>
+                <option value="this_year" {{ 'selected' if period == 'this_year' else '' }}>This Year</option>
+                <option value="all_time" {{ 'selected' if period == 'all_time' else '' }}>All Time</option>
+                <option value="custom" {{ 'selected' if period == 'custom' else '' }}>Custom</option>
+            </select>
+            <span class="td-custom-dates" id="custom-dates" style="display: {{ 'flex' if period == 'custom' else 'none' }};">
+                <input type="date" name="start" class="td-date-input" value="{{ custom_start }}">
+                <input type="date" name="end" class="td-date-input" value="{{ custom_end }}">
+            </span>
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+        </form>
+    </header>
+
+    <section class="td-kpi-bar">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Total Sales</span>
+            <span class="td-kpi-value td-text-primary">{{ "{:,}".format(team_metrics.total_sales) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Installed</span>
+            <span class="td-kpi-value td-green">{{ "{:,}".format(team_metrics.installed) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Pending</span>
+            <span class="td-kpi-value td-yellow">{{ "{:,}".format(team_metrics.pending) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Cancelled</span>
+            <span class="td-kpi-value td-orange">{{ "{:,}".format(team_metrics.cancelled) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Chargebacks</span>
+            <span class="td-kpi-value td-purple">—</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Team Install Rate</span>
+            <span class="td-kpi-value td-green">
+                {% if team_metrics.install_rate is not none %}{{ "%.1f"|format(team_metrics.install_rate) }}%{% else %}—{% endif %}
+            </span>
+        </div>
+    </section>
+
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Planet Networks Records</h2>
+            <span class="td-muted-inline">All-time single-rep bests</span>
+        </div>
+
+        <div class="td-records-grid">
+            <div class="td-record-card">
+                <h3>Best Days Ever</h3>
+                {% if records.best_days %}
+                <ol class="td-record-list">
+                    {% for r in records.best_days %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <span class="td-record-meta">{{ r.label }}</span>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="td-record-card">
+                <h3>Best Weeks Ever</h3>
+                {% if records.best_weeks %}
+                <ol class="td-record-list">
+                    {% for r in records.best_weeks %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <span class="td-record-meta">{{ r.label }}</span>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="td-record-card">
+                <h3>Best Months Ever</h3>
+                {% if records.best_months %}
+                <ol class="td-record-list">
+                    {% for r in records.best_months %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <span class="td-record-meta">{{ r.label }}</span>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Sales by Channel</h2>
+            <span class="td-muted-inline">
+                {% if selected_rep %}Selected Rep: {{ selected_rep }}{% else %}No rep selected{% endif %}
+            </span>
+        </div>
+
+        <div class="td-channel-grid">
+            {% for c in channel_breakdown %}
+            <div class="td-channel-card">
+                <span class="td-channel-name">{{ c.channel }}</span>
+                <span class="td-channel-count">{{ c.count }}</span>
+                <span class="td-channel-pct">{{ "%.0f"|format(c.pct) }}% of sales</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <form class="td-search-form" method="get" action="{{ url_for('dashboard_page') }}">
+        <input type="hidden" name="period" value="{{ period }}">
+        {% if period == 'custom' %}
+        <input type="hidden" name="start" value="{{ custom_start }}">
+        <input type="hidden" name="end" value="{{ custom_end }}">
+        {% endif %}
+        {% if selected_rep %}<input type="hidden" name="rep" value="{{ selected_rep }}">{% endif %}
+        <input type="text" name="search" id="rep-search" class="td-search-input" placeholder="Find a rep..." value="{{ search }}" autocomplete="off">
+    </form>
+
+    <section class="td-table-card">
+        <div class="td-table-scroll">
+            <table class="td-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Sales Rep</th>
+                        <th>Sales</th>
+                        <th>Installs</th>
+                        <th>Pending</th>
+                        <th>Cancels</th>
+                        <th>Chargebacks</th>
+                        <th>Install Rate</th>
+                        <th>Cancel Rate</th>
+                        <th>Signal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rep_rows %}
+                    <tr class="td-row-link {{ 'td-row-selected' if row.sales_rep == selected_rep else '' }}"
+                        data-href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=row.sales_rep) }}">
+                        <td class="td-rank">{{ row.rank }}</td>
+                        <td class="td-rep-cell">{{ row.sales_rep }}</td>
+                        <td class="td-text-primary">{{ row.sales }}</td>
+                        <td class="td-green">{{ row.installs }}</td>
+                        <td class="td-yellow">{{ row.pending }}</td>
+                        <td class="td-orange">{{ row.cancels }}</td>
+                        <td class="td-purple">—</td>
+                        <td class="td-green">{% if row.install_rate is not none %}{{ "%.1f"|format(row.install_rate) }}%{% else %}—{% endif %}</td>
+                        <td class="td-orange">{% if row.cancel_rate is not none %}{{ "%.1f"|format(row.cancel_rate) }}%{% else %}—{% endif %}</td>
+                        <td>
+                            <div class="td-signal">
+                                {% if row.install_rate is not none %}
+                                <div class="td-signal-green" style="width: {{ row.install_rate }}%;"></div>
+                                <div class="td-signal-orange" style="width: {{ row.cancel_rate }}%;"></div>
+                                {% else %}
+                                <div class="td-signal-neutral"></div>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="10" class="td-empty-row">No reps match the current filters.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</div>
+</body>
+</html>

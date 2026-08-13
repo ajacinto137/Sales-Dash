@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Planet Networks — Sales Performance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">PN</div>
+                <div class="brand-text">
+                    <div class="brand-name">Planet Networks</div>
+                    <div class="brand-sub">Sales Performance</div>
+                </div>
+            </div>
+
+            <nav class="nav">
+                <a class="nav-link {{ 'active' if active_page == 'dashboard' else '' }}" href="{{ url_for('dashboard_page') }}">
+                    <span class="nav-dot"></span> Dashboard
+                </a>
+                <a class="nav-link {{ 'active' if active_page == 'overview' else '' }}" href="{{ url_for('overview') }}">
+                    <span class="nav-dot"></span> Overview
+                </a>
+                <a class="nav-link {{ 'active' if active_page == 'main_sales' else '' }}" href="{{ url_for('main_sales_page') }}">
+                    <span class="nav-dot"></span> Main Sales
+                </a>
+                <a class="nav-link {{ 'active' if active_page == 'cancellations' else '' }}" href="{{ url_for('cancellations_page') }}">
+                    <span class="nav-dot"></span> Service Cancellations
+                </a>
+                <a class="nav-link {{ 'active' if active_page == 'vision_packages' else '' }}" href="{{ url_for('vision_packages_page') }}">
+                    <span class="nav-dot"></span> Vision Packages
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="conn-pill {{ 'ok' if planetweb_connected else ('fail' if planetweb_connected is not none else 'pending') }}">
+                    <span class="conn-dot"></span> PlanetWeb
+                </div>
+                <div class="conn-pill {{ 'ok' if kpi_connected else ('fail' if kpi_connected is not none else 'pending') }}">
+                    <span class="conn-dot"></span> KPI Reporting
+                </div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-title">
+                    <h1>{% block page_title %}Fiber Sales{% endblock %}</h1>
+                    {% block page_subtitle %}<p>Planet Networks internal reporting</p>{% endblock %}
+                </div>
+
+                <div class="topbar-actions">
+                    {% if last_refreshed %}
+                        <span class="last-refreshed">Last refreshed: {{ last_refreshed }}</span>
+                    {% endif %}
+                    <form action="{{ url_for('refresh') }}?dataset=all" method="post">
+                        <button type="submit" class="btn btn-primary">Refresh Data</button>
+                    </form>
+                </div>
+            </header>
+
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
