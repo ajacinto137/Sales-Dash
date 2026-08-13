@@ -41,7 +41,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d/http.conf:/etc/nginx/conf.d/http.conf:ro
       - ./nginx/templates:/etc/nginx/templates:ro
       - ${SSL_CERTS_DIR}:/etc/nginx/certs:ro
     restart: unless-stopped
