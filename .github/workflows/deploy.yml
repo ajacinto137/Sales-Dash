@@ -1,9 +1,17 @@
 name: Deploy to production
 
-# Pushing to main redeploys sales.planet.net. The SSH key used here is
-# a dedicated deploy key restricted server-side (via a forced command
-# in authorized_keys) to only run the deploy script — it cannot run
-# arbitrary commands even if this workflow were compromised.
+# Pushing to main redeploys sales.planet.net. Runs on a self-hosted
+# runner installed directly on that server (labeled sales-dash-prod)
+# rather than a GitHub-hosted runner — GitHub's hosted runner IPs
+# couldn't reach the server over SSH (likely a provider-level network
+# firewall in front of it, separate from the box's own OS firewall,
+# which has no restrictions). A self-hosted runner polls GitHub
+# outbound instead, so no inbound access to the server is needed.
+#
+# Only push-to-main and manual dispatch trigger this — both require
+# write access to the repo. Do NOT add a pull_request trigger to this
+# workflow: combined with a self-hosted runner on a public repo, that
+# would let a forked PR execute arbitrary code on the server.
 
 on:
   push:
@@ -12,12 +20,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, sales-dash-prod]
     steps:
-      - name: Deploy via SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H sales.planet.net >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key padmin@sales.planet.net
+      - name: Deploy
+        run: /home/padmin/deploy.sh
