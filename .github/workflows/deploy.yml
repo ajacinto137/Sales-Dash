@@ -1,0 +1,23 @@
+name: Deploy to production
+
+# Pushing to main redeploys sales.planet.net. The SSH key used here is
+# a dedicated deploy key restricted server-side (via a forced command
+# in authorized_keys) to only run the deploy script — it cannot run
+# arbitrary commands even if this workflow were compromised.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H sales.planet.net >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key padmin@sales.planet.net
