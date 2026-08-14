@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ view_title }} — {{ rep_name }} — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+</head>
+<body class="td-body">
+<div class="td-topnav">
+    <div class="td-topnav-brand">Planet Networks</div>
+    <nav class="td-topnav-links">
+        <a href="{{ url_for('overview') }}">Overview</a>
+        <a href="{{ url_for('main_sales_page') }}">Main Sales</a>
+        <a href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
+        <a href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
+        <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>
+    </nav>
+    <div class="td-topnav-right">
+        {% if last_refreshed %}<span class="td-last-refreshed">Last refreshed: {{ last_refreshed }}</span>{% endif %}
+        <form action="{{ url_for('refresh') }}?dataset=all" method="post">
+            <button type="submit" class="td-btn td-btn-ghost">Refresh Data</button>
+        </form>
+    </div>
+</div>
+
+<div class="td-page">
+
+    <header class="td-profile-header">
+        <a class="td-back-link" href="{{ url_for('rep_profile', rep_name=rep_name, period=period, start=custom_start, end=custom_end) }}">&larr; Back to {{ rep_name }}</a>
+
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">Bulk Account View</p>
+                <h1 class="td-profile-name">{{ view_title }}</h1>
+            </div>
+            <span class="td-muted-inline">{{ accounts|length }} account{{ '' if accounts|length == 1 else 's' }} &middot; {{ rep_name }}</span>
+        </div>
+    </header>
+
+    <section class="td-tab-panel">
+        {% set empty_message = "No accounts found for this view." %}
+        {% include "_bulk_account_view.html" %}
+    </section>
+
+</div>
+</body>
+</html>

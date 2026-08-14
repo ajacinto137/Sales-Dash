@@ -18,6 +18,7 @@
     --td-purple: #a78bfa;
     --td-purple-bg: rgba(167, 139, 250, 0.12);
     --td-cyan: #38bdf8;
+    --td-cyan-bg: rgba(56, 189, 248, 0.12);
 
     --td-radius: 6px;
     --td-radius-sm: 4px;
@@ -212,6 +213,11 @@ html, body.td-body {
     line-height: 1;
 }
 
+.td-kpi-note {
+    font-size: 11px;
+    color: var(--td-text-muted);
+}
+
 /* ---------------- Color utilities ---------------- */
 
 .td-text-primary { color: var(--td-text-primary); }
@@ -342,41 +348,93 @@ html, body.td-body {
     color: var(--td-text-muted);
 }
 
-/* ---------------- Channel cards ---------------- */
+/* ---------------- Sales Calendar ---------------- */
 
-.td-channel-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-}
-
-.td-channel-card {
+.td-calendar-card {
     background: var(--td-panel);
     border: 1px solid var(--td-border);
     border-radius: var(--td-radius);
-    padding: 14px 16px;
+    padding: 16px 18px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 14px;
 }
 
-.td-channel-name {
+.td-calendar-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.td-calendar-month-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--td-text-primary);
+}
+
+.td-calendar-scroll {
+    overflow-x: auto;
+}
+
+.td-calendar-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 480px;
+}
+
+.td-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+}
+
+.td-calendar-weekdays span {
     font-size: 10.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--td-text-secondary);
+    text-align: center;
 }
 
-.td-channel-count {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--td-text-primary);
+.td-calendar-cell {
+    min-height: 64px;
+    padding: 8px 10px;
+    border-radius: var(--td-radius-sm);
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border-soft);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
-.td-channel-pct {
-    font-size: 11.5px;
+.td-calendar-cell-pad {
+    background: transparent;
+    border-color: transparent;
+}
+
+.td-calendar-day {
+    font-size: 11px;
     color: var(--td-text-muted);
+}
+
+.td-calendar-count {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--td-green);
+    align-self: flex-end;
+}
+
+.td-calendar-cell-empty .td-calendar-count {
+    color: var(--td-text-muted);
+    font-weight: 600;
+}
+
+.td-calendar-today {
+    border-color: var(--td-cyan);
+    background: var(--td-cyan-bg);
 }
 
 /* ---------------- Search ---------------- */
@@ -417,9 +475,32 @@ html, body.td-body {
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--td-text-secondary);
-    padding: 12px 16px;
+    padding: 0;
     border-bottom: 1px solid var(--td-border);
     white-space: nowrap;
+}
+
+.td-sort-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 12px 16px;
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.td-sort-link:hover {
+    color: var(--td-text-primary);
+}
+
+.td-sort-active {
+    color: var(--td-cyan);
+}
+
+.td-sort-arrow {
+    font-size: 9px;
 }
 
 .td-table tbody td {
@@ -454,6 +535,16 @@ html, body.td-body {
     font-weight: 600;
 }
 
+.td-rep-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.td-rep-link:hover {
+    color: var(--td-cyan);
+    text-decoration: underline;
+}
+
 .td-empty-row {
     text-align: center;
     color: var(--td-text-muted);
@@ -476,20 +567,316 @@ html, body.td-body {
 .td-signal-orange { background: var(--td-orange); height: 100%; }
 .td-signal-neutral { background: var(--td-border); height: 100%; width: 100%; }
 
-/* ---------------- Responsive ---------------- */
+/* ---------------- Rep Profile: header ---------------- */
 
-@media (max-width: 1100px) {
-    .td-channel-grid { grid-template-columns: repeat(2, 1fr); }
+.td-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--td-text-secondary);
+    text-decoration: none;
+    font-size: 12.5px;
+    font-weight: 600;
 }
+
+.td-back-link:hover {
+    color: var(--td-text-primary);
+}
+
+.td-profile-header {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.td-profile-headline {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.td-profile-name {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    color: var(--td-text-primary);
+}
+
+.td-profile-subtitle {
+    margin: 6px 0 0 0;
+    color: var(--td-cyan);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* ---------------- Rep Profile: tabs ---------------- */
+
+.td-tabs {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid var(--td-border);
+}
+
+.td-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 4px;
+    margin-bottom: -1px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--td-text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.td-tab:hover {
+    color: var(--td-text-primary);
+}
+
+.td-tab-active {
+    color: var(--td-text-primary);
+    border-bottom-color: var(--td-cyan);
+}
+
+.td-tab-warning .td-tab-count {
+    background: var(--td-orange-bg);
+    color: var(--td-orange);
+}
+
+.td-tab-count {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    color: var(--td-text-secondary);
+    font-size: 11px;
+}
+
+.td-tab-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* ---------------- Rep Profile: metric cards ---------------- */
+
+.td-profile-metrics-primary,
+.td-profile-metrics-secondary {
+    display: grid;
+    gap: 14px;
+}
+
+.td-profile-metrics-primary {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.td-profile-metrics-secondary {
+    grid-template-columns: repeat(5, 1fr);
+    margin-top: 12px;
+}
+
+.td-profile-metric {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.td-profile-metrics-secondary .td-profile-metric {
+    padding: 14px 16px;
+    gap: 6px;
+}
+
+.td-profile-metric-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+}
+
+.td-profile-metric-value {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.td-profile-metrics-secondary .td-profile-metric-value {
+    font-size: 20px;
+}
+
+.td-profile-metric-link {
+    text-decoration: none;
+    width: fit-content;
+}
+
+.td-profile-metric-link:hover {
+    text-decoration: underline;
+}
+
+/* ---------------- Rep Profile: channel breakdown ---------------- */
+
+.td-channel-columns {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+.td-channel-column {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 16px 18px;
+}
+
+.td-channel-column-title {
+    margin: 0 0 12px 0;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.td-channel-column-inbound .td-channel-column-title { color: var(--td-purple); }
+.td-channel-column-outbound .td-channel-column-title { color: var(--td-cyan); }
+
+.td-channel-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-top: 1px solid var(--td-border-soft);
+    font-size: 13px;
+}
+
+.td-channel-row:first-of-type {
+    border-top: none;
+    padding-top: 0;
+}
+
+.td-channel-name {
+    color: var(--td-text-primary);
+}
+
+.td-channel-count {
+    font-weight: 700;
+}
+
+/* ---------------- Bulk Account View ----------------
+   Shared reusable component for any filtered list of customer/sales
+   accounts (Pending, Needs Attention, and future views). Used both
+   standalone (bulk_account_view.html) and inline (Rep Profile's Needs
+   Attention tab) via templates/_bulk_account_view.html. Changes here
+   apply everywhere the component is used -- see README.md
+   "Reusable Views". */
+
+.td-bulk-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.td-bulk-card {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.td-bulk-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.td-bulk-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--td-text-primary);
+}
+
+.td-bulk-status {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.td-bulk-status-installed { color: var(--td-green); background: var(--td-green-bg); }
+.td-bulk-status-pending { color: var(--td-yellow); background: var(--td-yellow-bg); }
+.td-bulk-status-cancelled { color: var(--td-orange); background: var(--td-orange-bg); }
+
+.td-bulk-address {
+    font-size: 12.5px;
+    color: var(--td-text-secondary);
+    line-height: 1.4;
+}
+
+.td-bulk-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--td-border-soft);
+}
+
+.td-bulk-date {
+    font-size: 12px;
+    color: var(--td-text-secondary);
+    font-weight: 700;
+}
+
+.td-bulk-vision {
+    color: var(--td-cyan);
+    text-decoration: none;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+.td-bulk-vision:hover {
+    text-decoration: underline;
+}
+
+.td-bulk-vision-disabled {
+    color: var(--td-text-muted);
+    font-size: 12.5px;
+}
+
+/* ---------------- Responsive ---------------- */
 
 @media (max-width: 900px) {
     .td-page { padding: 24px 20px 48px 20px; }
     .td-kpi { min-width: 33%; border-bottom: 1px solid var(--td-border-soft); }
     .td-records-grid { grid-template-columns: 1fr; }
     .td-topnav { flex-wrap: wrap; row-gap: 10px; }
+    .td-profile-metrics-primary { grid-template-columns: repeat(3, 1fr); }
+    .td-profile-metrics-secondary { grid-template-columns: repeat(2, 1fr); }
+    .td-channel-columns { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
-    .td-channel-grid { grid-template-columns: 1fr; }
     .td-kpi { min-width: 50%; }
+    .td-profile-metrics-primary { grid-template-columns: 1fr; }
+    .td-profile-metrics-secondary { grid-template-columns: 1fr; }
+    .td-bulk-list { grid-template-columns: 1fr; }
+    .td-tabs { overflow-x: auto; }
 }

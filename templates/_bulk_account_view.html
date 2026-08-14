@@ -1,0 +1,32 @@
+<!-- ================= Bulk Account View =================
+     Shared reusable component for displaying any filtered
+     collection of customer/sales accounts. Expects two
+     variables in context: `accounts` (list of dicts shaped by
+     build_bulk_account_rows() in sales_metrics.py) and
+     `empty_message` (string shown when the list is empty).
+     The dataset and title can change per caller; this markup
+     should not. See README.md "Reusable Views". -->
+{% if accounts %}
+<div class="td-bulk-list">
+    {% for account in accounts %}
+    <div class="td-bulk-card">
+        <div class="td-bulk-card-head">
+            <span class="td-bulk-name">{{ account.first_name }} {{ account.last_name }}</span>
+            <span class="td-bulk-status td-bulk-status-{{ account.status|lower }}">{{ account.status }}</span>
+        </div>
+        {% if account.address %}<span class="td-bulk-address">{{ account.address }}</span>{% endif %}
+        {% if account.city_state_zip %}<span class="td-bulk-address">{{ account.city_state_zip }}</span>{% endif %}
+        <div class="td-bulk-meta">
+            <span class="td-bulk-date">{{ 'Scheduled ' + account.scheduled_date if account.scheduled_date else 'Not scheduled' }}</span>
+            {% if account.vision_url %}
+            <a class="td-bulk-vision" href="{{ account.vision_url }}" target="_blank" rel="noopener noreferrer">Vision &#8599;</a>
+            {% else %}
+            <span class="td-bulk-vision-disabled">Vision unavailable</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="td-empty">{{ empty_message }}</p>
+{% endif %}

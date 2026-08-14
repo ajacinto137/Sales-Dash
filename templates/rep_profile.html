@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ rep_name }} — Rep Profile — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+</head>
+<body class="td-body">
+<div class="td-topnav">
+    <div class="td-topnav-brand">Planet Networks</div>
+    <nav class="td-topnav-links">
+        <a href="{{ url_for('overview') }}">Overview</a>
+        <a href="{{ url_for('main_sales_page') }}">Main Sales</a>
+        <a href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
+        <a href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
+        <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>
+    </nav>
+    <div class="td-topnav-right">
+        {% if last_refreshed %}<span class="td-last-refreshed">Last refreshed: {{ last_refreshed }}</span>{% endif %}
+        <form action="{{ url_for('refresh') }}?dataset=all" method="post">
+            <button type="submit" class="td-btn td-btn-ghost">Refresh Data</button>
+        </form>
+    </div>
+</div>
+
+<div class="td-page">
+
+    <header class="td-profile-header">
+        <a class="td-back-link" href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end) }}">&larr; Back to Team Leaderboard</a>
+
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">Individual Sales Profile</p>
+                <h1 class="td-profile-name">{{ rep_name }}</h1>
+            </div>
+
+            <form class="td-period-form" method="get" action="{{ url_for('rep_profile', rep_name=rep_name) }}">
+                <select name="period" id="period-select" class="td-select">
+                    <option value="today" {{ 'selected' if period == 'today' else '' }}>Today</option>
+                    <option value="yesterday" {{ 'selected' if period == 'yesterday' else '' }}>Yesterday</option>
+                    <option value="this_week" {{ 'selected' if period == 'this_week' else '' }}>This Week</option>
+                    <option value="last_week" {{ 'selected' if period == 'last_week' else '' }}>Last Week</option>
+                    <option value="this_month" {{ 'selected' if period == 'this_month' else '' }}>This Month</option>
+                    <option value="last_month" {{ 'selected' if period == 'last_month' else '' }}>Last Month</option>
+                    <option value="this_year" {{ 'selected' if period == 'this_year' else '' }}>This Year</option>
+                    <option value="all_time" {{ 'selected' if period == 'all_time' else '' }}>All Time</option>
+                    <option value="custom" {{ 'selected' if period == 'custom' else '' }}>Custom</option>
+                </select>
+                <span class="td-custom-dates" id="custom-dates" style="display: {{ 'flex' if period == 'custom' else 'none' }};">
+                    <input type="date" name="start" class="td-date-input" value="{{ custom_start }}">
+                    <input type="date" name="end" class="td-date-input" value="{{ custom_end }}">
+                </span>
+                <button type="submit" class="td-btn td-btn-primary">Apply</button>
+            </form>
+        </div>
+
+        <nav class="td-tabs">
+            <button type="button" class="td-tab td-tab-active" data-tab="overview">Overview</button>
+            <button type="button" class="td-tab {{ 'td-tab-warning' if needs_attention_count > 0 else '' }}" data-tab="needs-attention">
+                Needs Attention <span class="td-tab-count">{{ needs_attention_count }}</span>
+            </button>
+        </nav>
+    </header>
+
+    <!-- ================= Overview ================= -->
+    <section class="td-tab-panel" data-tab-panel="overview">
+
+        <div class="td-profile-metrics-primary">
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Total Sales</span>
+                <span class="td-profile-metric-value td-text-primary">{{ "{:,}".format(rep_metrics.sales) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Installed</span>
+                <span class="td-profile-metric-value td-green">{{ "{:,}".format(rep_metrics.installs) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Install Rate</span>
+                <span class="td-profile-metric-value td-green">
+                    {% if rep_metrics.install_rate is not none %}{{ "%.1f"|format(rep_metrics.install_rate) }}%{% else %}—{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <div class="td-profile-metrics-secondary">
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Inbound</span>
+                <span class="td-profile-metric-value td-purple">{{ "{:,}".format(rep_metrics.inbound) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Outbound</span>
+                <span class="td-profile-metric-value td-cyan">{{ "{:,}".format(rep_metrics.outbound) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Pending</span>
+                <a class="td-profile-metric-value td-profile-metric-link td-yellow"
+                   href="{{ url_for('bulk_account_view', rep_name=rep_name, view='pending', period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(rep_metrics.pending) }}</a>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Cancelled</span>
+                <span class="td-profile-metric-value td-orange">{{ "{:,}".format(rep_metrics.cancels) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Cancel Rate</span>
+                <span class="td-profile-metric-value td-orange">
+                    {% if rep_metrics.cancel_rate is not none %}{{ "%.1f"|format(rep_metrics.cancel_rate) }}%{% else %}—{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <div class="td-section">
+            <div class="td-section-heading">
+                <h2>Sales by Channel</h2>
+                <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }}</span>
+            </div>
+
+            <div class="td-channel-columns">
+                <div class="td-channel-column td-channel-column-inbound">
+                    <h3 class="td-channel-column-title">Inbound</h3>
+                    {% for row in channel_breakdown if row.direction == 'inbound' %}
+                    <div class="td-channel-row">
+                        <span class="td-channel-name">{{ row.channel }}</span>
+                        <span class="td-channel-count td-purple">{{ row.count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="td-channel-column td-channel-column-outbound">
+                    <h3 class="td-channel-column-title">Outbound</h3>
+                    {% for row in channel_breakdown if row.direction == 'outbound' %}
+                    <div class="td-channel-row">
+                        <span class="td-channel-name">{{ row.channel }}</span>
+                        <span class="td-channel-count td-cyan">{{ row.count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= Needs Attention ================= -->
+    <section class="td-tab-panel" data-tab-panel="needs-attention" style="display: none;">
+        <div class="td-section-heading">
+            <h2>Needs Attention</h2>
+            <span class="td-muted-inline">Scheduled install date has passed and still shows Not Yet Installed &middot; all time</span>
+        </div>
+
+        {% set accounts = needs_attention %}
+        {% set empty_message = "No accounts currently need attention." %}
+        {% include "_bulk_account_view.html" %}
+    </section>
+
+</div>
+</body>
+</html>

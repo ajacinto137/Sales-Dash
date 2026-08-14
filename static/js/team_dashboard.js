@@ -32,4 +32,32 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
     });
+
+    // Rep name links inside leaderboard rows navigate to the Rep Profile;
+    // stop the click from also bubbling to the row's own select-this-rep
+    // handler above.
+    document.querySelectorAll(".td-rep-link").forEach(function (link) {
+        link.addEventListener("click", function (e) {
+            e.stopPropagation();
+        });
+    });
+
+    // Rep Profile tabs (Overview / Needs Attention) -- client-side toggle,
+    // no reload.
+    var tabButtons = document.querySelectorAll("[data-tab]");
+    var tabPanels = document.querySelectorAll("[data-tab-panel]");
+    if (tabButtons.length && tabPanels.length) {
+        tabButtons.forEach(function (button) {
+            button.addEventListener("click", function () {
+                var target = button.getAttribute("data-tab");
+
+                tabButtons.forEach(function (b) {
+                    b.classList.toggle("td-tab-active", b === button);
+                });
+                tabPanels.forEach(function (panel) {
+                    panel.style.display = panel.getAttribute("data-tab-panel") === target ? "" : "none";
+                });
+            });
+        });
+    }
 });

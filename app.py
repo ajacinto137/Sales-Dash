@@ -1,9 +1,10 @@
 from datetime import datetime
 import os
 import threading
+from zoneinfo import ZoneInfo
 
 import pandas as pd
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 
 import db
 from queries import (
@@ -12,16 +13,29 @@ from queries import (
     VISION_PACKAGES_QUERY,
 )
 from sales_metrics import (
+    BULK_ACCOUNT_VIEWS,
+    REP_SORT_KEYS,
+    REP_TABLE_COLUMNS,
     build_sales_dataset,
+    calculate_calendar_sales,
     calculate_channel_breakdown,
+    calculate_monthly_forecast,
+    calculate_needs_attention,
     calculate_records,
     calculate_rep_metrics,
     calculate_team_metrics,
     filter_by_period,
+    get_bulk_account_view,
+    sort_rep_rows,
 )
 
 app = Flask(__name__)
 app.jinja_env.globals["zip"] = zip
+
+# The container clock runs in UTC; the "Last refreshed" timestamp is shown
+# to reps/managers in the Eastern timezone regardless, with automatic
+# EST/EDT handling via zoneinfo.
+EASTERN_TZ = ZoneInfo("America/New_York")
 
 _lock = threading.Lock()
 
@@ -254,7 +268,7 @@ def _apply_install_date():
 
 
 def _touch_last_refreshed():
-    data_store["last_refreshed"] = datetime.now().strftime("%-m/%-d/%Y %-I:%M %p")
+    data_store["last_refreshed"] = datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z")
 
 
 def load_all_data():
@@ -466,9 +480,43 @@ def dashboard_page():
     if not selected_rep and rep_rows:
         selected_rep = rep_rows[0]["sales_rep"]
 
-    channel_breakdown = calculate_channel_breakdown(period_df, selected_rep)
-    # Records are always ALL TIME, regardless of the selected dashboard period.
+    # Sorting is a pure display-ordering concern layered on top of the
+    # rows above -- applied last so it never affects total_rep_count, the
+    # search filter, or which rep gets auto-selected by default.
+    sort = request.args.get("sort", "rank")
+    sort_dir = request.args.get("dir", "asc")
+    if sort not in REP_SORT_KEYS:
+        sort, sort_dir = "rank", "asc"
+    rep_rows = sort_rep_rows(rep_rows, sort, sort_dir)
+
+    rep_table_columns = []
+    for key, label, default_dir in REP_TABLE_COLUMNS:
+        is_active = key == sort
+        rep_table_columns.append({
+            "key": key,
+            "label": label,
+            "active": is_active,
+            "dir": sort_dir if is_active else None,
+            "next_dir": ("asc" if sort_dir == "desc" else "desc") if is_active else default_dir,
+        })
+
+    # Records, the Sales Calendar, and the Monthly Forecast are always ALL
+    # TIME / current-month, regardless of the selected dashboard period --
+    # same reasoning as Records: they answer questions the period filter
+    # isn't meant to control.
     records = calculate_records(normalized)
+
+    today = datetime.now()
+    try:
+        cal_year = int(request.args.get("cal_year", today.year))
+        cal_month = int(request.args.get("cal_month", today.month))
+        if not 1 <= cal_month <= 12:
+            raise ValueError
+    except (TypeError, ValueError):
+        cal_year, cal_month = today.year, today.month
+
+    calendar_data = calculate_calendar_sales(normalized, cal_year, cal_month)
+    monthly_forecast = calculate_monthly_forecast(normalized)
 
     return render_template(
         "dashboard.html",
@@ -481,8 +529,119 @@ def dashboard_page():
         total_rep_count=total_rep_count,
         team_metrics=team_metrics,
         rep_rows=rep_rows,
-        channel_breakdown=channel_breakdown,
+        rep_table_columns=rep_table_columns,
+        sort=sort,
+        sort_dir=sort_dir,
         records=records,
+        calendar_data=calendar_data,
+        monthly_forecast=monthly_forecast,
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/dashboard/reps/<rep_name>")
+def rep_profile(rep_name):
+    ensure_data_loaded()
+
+    normalized = build_sales_dataset(
+        data_store["main_sales"],
+        data_store["vision_packages"],
+        data_store["service_cancellations"],
+    )
+
+    known_reps = (
+        set(normalized["sales_rep"].unique())
+        if normalized is not None and not normalized.empty
+        else set()
+    )
+    if normalized is not None and rep_name not in known_reps:
+        abort(404)
+
+    period = request.args.get("period", "this_month")
+    custom_start = request.args.get("start", "")
+    custom_end = request.args.get("end", "")
+
+    period_df = filter_by_period(normalized, period, custom_start, custom_end)
+
+    # Same function/output the Rep Leaderboard table uses, so the profile
+    # and leaderboard numbers can never disagree for a given period.
+    rep_rows = calculate_rep_metrics(period_df)
+    rep_metrics = next((r for r in rep_rows if r["sales_rep"] == rep_name), None) or {
+        "sales_rep": rep_name,
+        "sales": 0,
+        "inbound": 0,
+        "outbound": 0,
+        "installs": 0,
+        "pending": 0,
+        "cancels": 0,
+        "install_rate": None,
+        "cancel_rate": None,
+    }
+
+    rep_period_df = (
+        period_df[period_df["sales_rep"] == rep_name]
+        if period_df is not None and not period_df.empty
+        else None
+    )
+    channel_breakdown = calculate_channel_breakdown(rep_period_df)
+
+    # Always all-time, independent of the period filter -- see
+    # calculate_needs_attention()'s docstring.
+    needs_attention = calculate_needs_attention(normalized, rep_name)
+
+    return render_template(
+        "rep_profile.html",
+        active_page="dashboard",
+        rep_name=rep_name,
+        period=period,
+        custom_start=custom_start,
+        custom_end=custom_end,
+        rep_metrics=rep_metrics,
+        channel_breakdown=channel_breakdown,
+        needs_attention=needs_attention,
+        needs_attention_count=len(needs_attention),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/dashboard/reps/<rep_name>/accounts")
+def bulk_account_view(rep_name):
+    ensure_data_loaded()
+
+    normalized = build_sales_dataset(
+        data_store["main_sales"],
+        data_store["vision_packages"],
+        data_store["service_cancellations"],
+    )
+
+    known_reps = (
+        set(normalized["sales_rep"].unique())
+        if normalized is not None and not normalized.empty
+        else set()
+    )
+    if normalized is not None and rep_name not in known_reps:
+        abort(404)
+
+    view = request.args.get("view", "")
+    if view not in BULK_ACCOUNT_VIEWS:
+        abort(404)
+
+    period = request.args.get("period", "this_month")
+    custom_start = request.args.get("start", "")
+    custom_end = request.args.get("end", "")
+
+    view_title, accounts = get_bulk_account_view(normalized, rep_name, view, period, custom_start, custom_end)
+
+    return render_template(
+        "bulk_account_view.html",
+        active_page="dashboard",
+        rep_name=rep_name,
+        view=view,
+        view_title=view_title,
+        accounts=accounts,
+        period=period,
+        custom_start=custom_start,
+        custom_end=custom_end,
         last_refreshed=data_store["last_refreshed"],
     )
 

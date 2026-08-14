@@ -39,6 +39,10 @@
             {% if selected_rep %}<input type="hidden" name="rep" value="{{ selected_rep }}">{% endif %}
             {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
             <select name="period" id="period-select" class="td-select">
+                <option value="today" {{ 'selected' if period == 'today' else '' }}>Today</option>
+                <option value="yesterday" {{ 'selected' if period == 'yesterday' else '' }}>Yesterday</option>
+                <option value="this_week" {{ 'selected' if period == 'this_week' else '' }}>This Week</option>
+                <option value="last_week" {{ 'selected' if period == 'last_week' else '' }}>Last Week</option>
                 <option value="this_month" {{ 'selected' if period == 'this_month' else '' }}>This Month</option>
                 <option value="last_month" {{ 'selected' if period == 'last_month' else '' }}>Last Month</option>
                 <option value="this_year" {{ 'selected' if period == 'this_year' else '' }}>This Year</option>
@@ -53,6 +57,12 @@
         </form>
     </header>
 
+    <!-- ================= Team Overview =================
+         Canonical name: "Team Overview". Team-wide KPI cards
+         (Total Sales, Installed, Pending, Cancelled, Team
+         Install Rate, Monthly Forecast). Chargebacks was
+         removed 2026-08-14. See README.md "Team Leaderboard
+         Page — Section Names". -->
     <section class="td-kpi-bar">
         <div class="td-kpi">
             <span class="td-kpi-label">Total Sales</span>
@@ -71,21 +81,75 @@
             <span class="td-kpi-value td-orange">{{ "{:,}".format(team_metrics.cancelled) }}</span>
         </div>
         <div class="td-kpi">
-            <span class="td-kpi-label">Chargebacks</span>
-            <span class="td-kpi-value td-purple">—</span>
-        </div>
-        <div class="td-kpi">
             <span class="td-kpi-label">Team Install Rate</span>
             <span class="td-kpi-value td-green">
                 {% if team_metrics.install_rate is not none %}{{ "%.1f"|format(team_metrics.install_rate) }}%{% else %}—{% endif %}
             </span>
         </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Monthly Forecast</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(monthly_forecast.projected_total) }}</span>
+            <span class="td-kpi-note">{{ monthly_forecast.month_label }} pace &middot; {{ monthly_forecast.month_to_date }} so far</span>
+        </div>
     </section>
 
+    <!-- ================= Sales Calendar =================
+         Canonical name: "Sales Calendar". Navigable month-by-
+         month calendar of team total sales per day. Always
+         reads the full all-time dataset (independent of the
+         page's period filter), same reasoning as Planet
+         Networks Records. See README.md
+         "Team Leaderboard Page — Section Names". -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Sales Calendar</h2>
+            <span class="td-muted-inline">Team total sales per day &middot; {{ calendar_data.total }} in {{ calendar_data.month_label }}</span>
+        </div>
+
+        <div class="td-calendar-card">
+            <div class="td-calendar-nav">
+                <a class="td-btn td-btn-ghost"
+                   href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.prev_year, cal_month=calendar_data.prev_month) }}">&larr; Prev</a>
+                <span class="td-calendar-month-label">{{ calendar_data.month_label }}</span>
+                <a class="td-btn td-btn-ghost"
+                   href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.next_year, cal_month=calendar_data.next_month) }}">Next &rarr;</a>
+            </div>
+
+            <div class="td-calendar-scroll">
+                <div class="td-calendar-inner">
+                    <div class="td-calendar-grid td-calendar-weekdays">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                    </div>
+                    {% for week in calendar_data.weeks %}
+                    <div class="td-calendar-grid">
+                        {% for cell in week %}
+                            {% if cell %}
+                            <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
+                                <span class="td-calendar-day">{{ cell.day }}</span>
+                                <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
+                            </div>
+                            {% else %}
+                            <div class="td-calendar-cell td-calendar-cell-pad"></div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= Planet Networks Records =================
+         Canonical name: "Planet Networks Records" (aka "Records
+         Section"). All-time single-rep bests (Best Days/Weeks/
+         Months Ever) plus live top-3 rep leaderboards for the
+         ongoing day/week/month/year (Daily/Weekly/Monthly/
+         Yearly Sales). See README.md
+         "Team Leaderboard Page — Section Names". -->
     <section class="td-section">
         <div class="td-section-heading">
             <h2>Planet Networks Records</h2>
-            <span class="td-muted-inline">All-time single-rep bests</span>
+            <span class="td-muted-inline">All-time bests &amp; current leaders</span>
         </div>
 
         <div class="td-records-grid">
@@ -148,27 +212,96 @@
                 <p class="td-empty">No data yet.</p>
                 {% endif %}
             </div>
-        </div>
-    </section>
 
-    <section class="td-section">
-        <div class="td-section-heading">
-            <h2>Sales by Channel</h2>
-            <span class="td-muted-inline">
-                {% if selected_rep %}Selected Rep: {{ selected_rep }}{% else %}No rep selected{% endif %}
-            </span>
-        </div>
-
-        <div class="td-channel-grid">
-            {% for c in channel_breakdown %}
-            <div class="td-channel-card">
-                <span class="td-channel-name">{{ c.channel }}</span>
-                <span class="td-channel-count">{{ c.count }}</span>
-                <span class="td-channel-pct">{{ "%.0f"|format(c.pct) }}% of sales</span>
+            <div class="td-record-card">
+                <h3>Daily Sales</h3>
+                {% if records.daily_leaders %}
+                <ol class="td-record-list">
+                    {% for r in records.daily_leaders %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
             </div>
-            {% endfor %}
+
+            <div class="td-record-card">
+                <h3>Weekly Sales</h3>
+                {% if records.weekly_leaders %}
+                <ol class="td-record-list">
+                    {% for r in records.weekly_leaders %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="td-record-card">
+                <h3>Monthly Sales</h3>
+                {% if records.monthly_leaders %}
+                <ol class="td-record-list">
+                    {% for r in records.monthly_leaders %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="td-record-card">
+                <h3>Yearly Sales</h3>
+                {% if records.yearly_leaders %}
+                <ol class="td-record-list">
+                    {% for r in records.yearly_leaders %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
         </div>
     </section>
+
+    <!-- ================= Individual Rep Leaderboard =================
+         Canonical name: "Individual Rep Leaderboard" (aka
+         "Rep Leaderboard", "Leaderboard Table" / "Rep
+         Performance Section"). Covers both the rep search
+         field below and the ranked table further down (Rank,
+         Sales Rep, Sales, Outbound, Inbound, Installs, Pending,
+         Cancels, Install Rate, Cancel Rate). See README.md
+         "Team Leaderboard Page — Section Names". -->
+    <div class="td-section-heading">
+        <h2>Individual Rep Leaderboard</h2>
+    </div>
 
     <form class="td-search-form" method="get" action="{{ url_for('dashboard_page') }}">
         <input type="hidden" name="period" value="{{ period }}">
@@ -185,16 +318,15 @@
             <table class="td-table">
                 <thead>
                     <tr>
-                        <th>#</th>
-                        <th>Sales Rep</th>
-                        <th>Sales</th>
-                        <th>Installs</th>
-                        <th>Pending</th>
-                        <th>Cancels</th>
-                        <th>Chargebacks</th>
-                        <th>Install Rate</th>
-                        <th>Cancel Rate</th>
-                        <th>Signal</th>
+                        {% for col in rep_table_columns %}
+                        <th>
+                            <a class="td-sort-link {{ 'td-sort-active' if col.active else '' }}"
+                               href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, sort=col.key, dir=col.next_dir) }}">
+                                {{ col.label }}
+                                {% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
@@ -202,24 +334,18 @@
                     <tr class="td-row-link {{ 'td-row-selected' if row.sales_rep == selected_rep else '' }}"
                         data-href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=row.sales_rep) }}">
                         <td class="td-rank">{{ row.rank }}</td>
-                        <td class="td-rep-cell">{{ row.sales_rep }}</td>
+                        <td class="td-rep-cell">
+                            <a class="td-rep-link"
+                               href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ row.sales_rep }}</a>
+                        </td>
                         <td class="td-text-primary">{{ row.sales }}</td>
+                        <td class="td-cyan">{{ row.outbound }}</td>
+                        <td class="td-purple">{{ row.inbound }}</td>
                         <td class="td-green">{{ row.installs }}</td>
                         <td class="td-yellow">{{ row.pending }}</td>
                         <td class="td-orange">{{ row.cancels }}</td>
-                        <td class="td-purple">—</td>
                         <td class="td-green">{% if row.install_rate is not none %}{{ "%.1f"|format(row.install_rate) }}%{% else %}—{% endif %}</td>
                         <td class="td-orange">{% if row.cancel_rate is not none %}{{ "%.1f"|format(row.cancel_rate) }}%{% else %}—{% endif %}</td>
-                        <td>
-                            <div class="td-signal">
-                                {% if row.install_rate is not none %}
-                                <div class="td-signal-green" style="width: {{ row.install_rate }}%;"></div>
-                                <div class="td-signal-orange" style="width: {{ row.cancel_rate }}%;"></div>
-                                {% else %}
-                                <div class="td-signal-neutral"></div>
-                                {% endif %}
-                            </div>
-                        </td>
                     </tr>
                     {% else %}
                     <tr><td colspan="10" class="td-empty-row">No reps match the current filters.</td></tr>
