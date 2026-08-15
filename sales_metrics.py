@@ -8,8 +8,26 @@ in one place instead of being scattered across routes and templates.
 
 import calendar as calendar_module
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
+
+# InsertDate on the PlanetWeb SQL Server is already written in
+# America/New_York local time, not UTC -- so sale_datetime only needs this
+# attached for correct EST/EDT display (%Z), never an astimezone() convert.
+EASTERN_TZ = ZoneInfo("America/New_York")
+
+
+def _today():
+    """The business's "today". The app server's clock runs in UTC, but
+    every sale/scheduled date in the normalized dataset is Eastern local
+    time -- so every "today"-relative calculation (period filters, Daily
+    Sales, Records leaderboards, Monthly Forecast/Projection, Needs
+    Attention) must anchor to Eastern "today", not datetime.now().date().
+    Using the raw UTC date would go stale for several hours every evening
+    (UTC rolls to the next calendar day ~4-5 hours before Eastern does),
+    silently zeroing out anything compared against "today"."""
+    return datetime.now(EASTERN_TZ).date()
 
 SALES_CHANNELS = {
     1: "Inbound Call",
@@ -102,6 +120,10 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
     normalized = pd.DataFrame({
         "sale_id": df["ID"] if "ID" in df.columns else df.index,
         "sale_date": pd.to_datetime(df["Date"], errors="coerce") if "Date" in df.columns else pd.NaT,
+        # Raw InsertDate incl. time-of-day, already in America/New_York
+        # local time on the SQL Server -- no tz conversion needed, only
+        # display formatting. Used by the "Last 3 Sales" record card.
+        "sale_datetime": pd.to_datetime(df["DateTime"], errors="coerce") if "DateTime" in df.columns else pd.NaT,
         "source_token": source_tokens,
         "sales_rep": source_tokens.apply(extract_rep_name),
         "sales_channel_id": channel_ids,
@@ -151,7 +173,7 @@ def filter_by_period(df, period, start=None, end=None):
     if df is None or df.empty or period == "all_time":
         return df
 
-    today = datetime.now().date()
+    today = _today()
 
     if period == "today":
         start_date = today
@@ -198,26 +220,38 @@ def _rate(numerator, denominator):
     return numerator / denominator * 100
 
 
-def calculate_team_metrics(df):
+def calculate_total_daily_sales(df):
+    """Count of sales made today, for the Team Overview KPI bar. Always
+    operates on the full ALL-TIME normalized dataset (like
+    calculate_records and calculate_calendar_sales) so it reflects today's
+    sales regardless of the page's period filter."""
     if df is None or df.empty:
-        return {
-            "total_sales": 0,
-            "installed": 0,
-            "pending": 0,
-            "cancelled": 0,
-            "install_rate": None,
-        }
+        return 0
+    today = _today()
+    valid = df.dropna(subset=["sale_date"])
+    return int((valid["sale_date"].dt.date == today).sum())
 
-    installed = int((df["status"] == "Installed").sum())
-    pending = int((df["status"] == "Pending").sum())
-    cancelled = int((df["status"] == "Cancelled").sum())
+
+def calculate_daily_averages(df):
+    """Trailing 7-day and 30-day average daily sales counts, for the Team
+    Overview KPI bar. Always operates on the full ALL-TIME normalized
+    dataset and today's real date -- window is today back N-1 days,
+    inclusive -- same period-filter independence as calculate_records and
+    calculate_monthly_forecast."""
+    today = _today()
+
+    def avg_over(days):
+        if df is None or df.empty:
+            return 0.0
+        valid = df.dropna(subset=["sale_date"])
+        sale_dates = valid["sale_date"].dt.date
+        start = today - timedelta(days=days - 1)
+        count = int(((sale_dates >= start) & (sale_dates <= today)).sum())
+        return count / days
 
     return {
-        "total_sales": len(df),
-        "installed": installed,
-        "pending": pending,
-        "cancelled": cancelled,
-        "install_rate": _rate(installed, installed + cancelled),
+        "avg_7_day": avg_over(7),
+        "avg_30_day": avg_over(30),
     }
 
 
@@ -304,6 +338,7 @@ def calculate_records(df):
     empty = {
         "best_days": [], "best_weeks": [], "best_months": [],
         "daily_leaders": [], "weekly_leaders": [], "monthly_leaders": [], "yearly_leaders": [],
+        "recent_sales": [],
     }
     if df is None or df.empty:
         return empty
@@ -343,6 +378,36 @@ def calculate_records(df):
         )
         return [{"rep": row["sales_rep"], "count": int(row["count"])} for _, row in counts.iterrows()]
 
+    def last_n_sales(n=3):
+        has_datetime = "sale_datetime" in valid.columns and valid["sale_datetime"].notna().any()
+        sort_col = "sale_datetime" if has_datetime else "sale_date"
+        sort_cols, ascending = [sort_col], [False]
+        if "sale_id" in valid.columns:
+            # Timestamps can still tie -- sale_id as a secondary key breaks
+            # ties in insertion order.
+            sort_cols.append("sale_id")
+            ascending.append(False)
+        latest = valid.sort_values(sort_cols, ascending=ascending, na_position="last").head(n)
+
+        def label_for(row):
+            dt = row.get("sale_datetime")
+            if pd.notna(dt):
+                # dt is a naive timestamp already in Eastern local time
+                # (see EASTERN_TZ note above) -- attach, don't convert.
+                return dt.replace(tzinfo=EASTERN_TZ).strftime("%b %-d, %Y, %-I:%M %p %Z")
+            return row["sale_date"].strftime("%b %-d, %Y")
+
+        def account_name_for(row):
+            first = _clean_text(row.get("first_name")) or ""
+            last = _clean_text(row.get("last_name")) or ""
+            name = f"{first} {last}".strip()
+            return name or None
+
+        return [
+            {"rep": row["sales_rep"], "account": account_name_for(row), "label": label_for(row)}
+            for _, row in latest.iterrows()
+        ]
+
     return {
         "best_days": top3("day", lambda d: d.strftime("%b %-d, %Y")),
         "best_weeks": top3("week_start", lambda d: "Week of " + d.strftime("%b %-d")),
@@ -351,6 +416,7 @@ def calculate_records(df):
         "weekly_leaders": top_reps(filter_by_period(valid, "this_week")),
         "monthly_leaders": top_reps(filter_by_period(valid, "this_month")),
         "yearly_leaders": top_reps(filter_by_period(valid, "this_year")),
+        "recent_sales": last_n_sales(),
     }
 
 
@@ -371,7 +437,7 @@ def calculate_calendar_sales(df, year, month):
             counts[int(day)] = int(count)
 
     first_weekday = calendar_module.monthrange(year, month)[0]  # Monday = 0
-    today = datetime.now().date()
+    today = _today()
 
     weeks = []
     week = [None] * first_weekday
@@ -413,7 +479,7 @@ def calculate_monthly_forecast(df):
     full ALL-TIME dataset — independent of the page's period filter and of
     Sales Calendar navigation, since a forecast is inherently about the
     ongoing month regardless of what range a manager happens to be viewing."""
-    today = datetime.now().date()
+    today = _today()
     days_in_month = calendar_module.monthrange(today.year, today.month)[1]
     days_elapsed = today.day
 
@@ -535,7 +601,7 @@ def _needs_attention_filter(df):
     Installed under the same Vision Packages match already computed as
     the 'installed' column in build_sales_dataset -- no second
     install-detection system."""
-    today = pd.Timestamp(datetime.now().date())
+    today = pd.Timestamp(_today())
     scheduled_dates = pd.to_datetime(df["scheduled_date"], errors="coerce")
     overdue_mask = (~df["installed"]) & scheduled_dates.notna() & (scheduled_dates < today)
     return df[overdue_mask]
@@ -557,6 +623,11 @@ BULK_ACCOUNT_VIEWS = {
         "title": "Needs Attention",
         "all_time": True,
         "filter": _needs_attention_filter,
+    },
+    "all_sales": {
+        "title": "All Sales",
+        "all_time": False,
+        "filter": lambda df: df,
     },
 }
 

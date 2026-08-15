@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ view_title }} — {{ rep_name }} — Planet Networks</title>
+    <title>{{ view_title }}{% if rep_name %} — {{ rep_name }}{% endif %} — Planet Networks</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
 </head>
@@ -28,15 +28,41 @@
 <div class="td-page">
 
     <header class="td-profile-header">
+        {% if rep_name %}
         <a class="td-back-link" href="{{ url_for('rep_profile', rep_name=rep_name, period=period, start=custom_start, end=custom_end) }}">&larr; Back to {{ rep_name }}</a>
+        {% else %}
+        <a class="td-back-link" href="{{ url_for('dashboard_page') }}">&larr; Back to Dashboard</a>
+        {% endif %}
 
         <div class="td-profile-headline">
             <div class="td-header-titles">
                 <p class="td-profile-subtitle">Bulk Account View</p>
                 <h1 class="td-profile-name">{{ view_title }}</h1>
             </div>
-            <span class="td-muted-inline">{{ accounts|length }} account{{ '' if accounts|length == 1 else 's' }} &middot; {{ rep_name }}</span>
+            <span class="td-muted-inline">{{ accounts|length }} account{{ '' if accounts|length == 1 else 's' }}{% if rep_name %} &middot; {{ rep_name }}{% endif %}</span>
         </div>
+
+        {% if not all_time %}
+        <form class="td-period-form" method="get" action="">
+            <input type="hidden" name="view" value="{{ view }}">
+            <select name="period" id="period-select" class="td-select">
+                <option value="today" {{ 'selected' if period == 'today' else '' }}>Today</option>
+                <option value="yesterday" {{ 'selected' if period == 'yesterday' else '' }}>Yesterday</option>
+                <option value="this_week" {{ 'selected' if period == 'this_week' else '' }}>This Week</option>
+                <option value="last_week" {{ 'selected' if period == 'last_week' else '' }}>Last Week</option>
+                <option value="this_month" {{ 'selected' if period == 'this_month' else '' }}>This Month</option>
+                <option value="last_month" {{ 'selected' if period == 'last_month' else '' }}>Last Month</option>
+                <option value="this_year" {{ 'selected' if period == 'this_year' else '' }}>This Year</option>
+                <option value="all_time" {{ 'selected' if period == 'all_time' else '' }}>All Time</option>
+                <option value="custom" {{ 'selected' if period == 'custom' else '' }}>Custom</option>
+            </select>
+            <span class="td-custom-dates" id="custom-dates" style="display: {{ 'flex' if period == 'custom' else 'none' }};">
+                <input type="date" name="start" class="td-date-input" value="{{ custom_start }}">
+                <input type="date" name="end" class="td-date-input" value="{{ custom_end }}">
+            </span>
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+        </form>
+        {% endif %}
     </header>
 
     <section class="td-tab-panel">

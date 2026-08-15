@@ -19,11 +19,12 @@ from sales_metrics import (
     build_sales_dataset,
     calculate_calendar_sales,
     calculate_channel_breakdown,
+    calculate_daily_averages,
     calculate_monthly_forecast,
     calculate_needs_attention,
     calculate_records,
     calculate_rep_metrics,
-    calculate_team_metrics,
+    calculate_total_daily_sales,
     filter_by_period,
     get_bulk_account_view,
     sort_rep_rows,
@@ -32,9 +33,14 @@ from sales_metrics import (
 app = Flask(__name__)
 app.jinja_env.globals["zip"] = zip
 
-# The container clock runs in UTC; the "Last refreshed" timestamp is shown
-# to reps/managers in the Eastern timezone regardless, with automatic
-# EST/EDT handling via zoneinfo.
+# The container clock runs in UTC, but every sale/scheduled date in the
+# data is Eastern local time (SQL Server InsertDate). The "Last refreshed"
+# timestamp below uses EASTERN_TZ for display; any "today"-relative
+# comparison against the sales data must too -- see sales_metrics._today()
+# and don't reintroduce a bare datetime.now().date() for "today" (that bug
+# silently zeroed out Daily Sales / Records / View All Sales every evening
+# until fixed 2026-08-15, since UTC rolls to the next day ~4-5 hours
+# before Eastern does).
 EASTERN_TZ = ZoneInfo("America/New_York")
 
 _lock = threading.Lock()
@@ -470,7 +476,6 @@ def dashboard_page():
 
     period_df = filter_by_period(normalized, period, custom_start, custom_end)
 
-    team_metrics = calculate_team_metrics(period_df)
     rep_rows = calculate_rep_metrics(period_df)
     total_rep_count = len(rep_rows)
 
@@ -500,13 +505,19 @@ def dashboard_page():
             "next_dir": ("asc" if sort_dir == "desc" else "desc") if is_active else default_dir,
         })
 
-    # Records, the Sales Calendar, and the Monthly Forecast are always ALL
-    # TIME / current-month, regardless of the selected dashboard period --
-    # same reasoning as Records: they answer questions the period filter
-    # isn't meant to control.
+    # Records, the Sales Calendar, and the Team Overview KPI bar are always
+    # ALL TIME / current-month / today, regardless of the selected
+    # dashboard period -- same reasoning as Records: they answer questions
+    # the period filter isn't meant to control.
     records = calculate_records(normalized)
+    total_daily_sales = calculate_total_daily_sales(normalized)
+    daily_averages = calculate_daily_averages(normalized)
 
-    today = datetime.now()
+    # Eastern, not the container's raw UTC clock -- the Sales Calendar's
+    # default month must agree with calculate_calendar_sales()'s own
+    # Eastern "today" (see _today() in sales_metrics.py), or the "is_today"
+    # cell could point at the wrong day/month for part of the evening.
+    today = datetime.now(EASTERN_TZ)
     try:
         cal_year = int(request.args.get("cal_year", today.year))
         cal_month = int(request.args.get("cal_month", today.month))
@@ -527,7 +538,8 @@ def dashboard_page():
         search=search,
         selected_rep=selected_rep,
         total_rep_count=total_rep_count,
-        team_metrics=team_metrics,
+        total_daily_sales=total_daily_sales,
+        daily_averages=daily_averages,
         rep_rows=rep_rows,
         rep_table_columns=rep_table_columns,
         sort=sort,
@@ -642,6 +654,47 @@ def bulk_account_view(rep_name):
         period=period,
         custom_start=custom_start,
         custom_end=custom_end,
+        all_time=BULK_ACCOUNT_VIEWS[view]["all_time"],
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/dashboard/accounts")
+def all_sales_view():
+    """Team-wide (not rep-scoped) Bulk Account View -- reached via the
+    "View All Sales" button on the Planet Networks Records section.
+    Defaults to today, unlike bulk_account_view() above which defaults to
+    this_month, since the button is meant to answer "what happened today"
+    at a glance."""
+    ensure_data_loaded()
+
+    normalized = build_sales_dataset(
+        data_store["main_sales"],
+        data_store["vision_packages"],
+        data_store["service_cancellations"],
+    )
+
+    view = request.args.get("view", "all_sales")
+    if view not in BULK_ACCOUNT_VIEWS:
+        abort(404)
+
+    period = request.args.get("period", "today")
+    custom_start = request.args.get("start", "")
+    custom_end = request.args.get("end", "")
+
+    view_title, accounts = get_bulk_account_view(normalized, None, view, period, custom_start, custom_end)
+
+    return render_template(
+        "bulk_account_view.html",
+        active_page="dashboard",
+        rep_name=None,
+        view=view,
+        view_title=view_title,
+        accounts=accounts,
+        period=period,
+        custom_start=custom_start,
+        custom_end=custom_end,
+        all_time=BULK_ACCOUNT_VIEWS[view]["all_time"],
         last_refreshed=data_store["last_refreshed"],
     )
 

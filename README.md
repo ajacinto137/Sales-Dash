@@ -240,9 +240,9 @@ template itself.
 
 | Name | Aka | What it is | Template markup |
 |------|-----|------------|------------------|
-| **Team Overview** | | Team-wide KPI cards: Total Sales, Installed, Pending, Cancelled, Team Install Rate, Monthly Forecast (Chargebacks was removed 2026-08-14) | `<section class="td-kpi-bar">` |
+| **Team Overview** | | Fixed set of 5 KPI cards, always in this order: Monthly Sales, Daily Sales, 7 Day Average, 30 Day Average, Monthly Projection (reconfigured 2026-08-14, by request — replaces the earlier Total Sales/Installed/Pending/Total Daily Sales/Team Install Rate/Monthly Forecast set). All five are always computed from the full all-time dataset and today's real date — they do NOT change with the page's period filter | `<section class="td-kpi-bar">` |
 | **Sales Calendar** | | Navigable month-by-month calendar of team total sales per day | `<section class="td-section">` containing `<h2>Sales Calendar</h2>` |
-| **Planet Networks Records** | "Records Section" | All-time single-rep bests (Best Days/Weeks/Months Ever) plus live top-3 rep leaderboards for the ongoing day/week/month/year (Daily/Weekly/Monthly/Yearly Sales) | `<section class="td-section">` containing `<h2>Planet Networks Records</h2>` |
+| **Planet Networks Records** | "Records Section" | All-time single-rep bests (Best Days/Weeks/Months Ever) plus live top-3 rep leaderboards for the ongoing day/week/month/year (Daily/Weekly/Monthly/Yearly Sales), plus the reps behind the last 3 sales made with date and time (Last 3 Sales, added 2026-08-14), plus a separate card naming the customers on those same 3 sales (Last 3 Accounts Sold, added 2026-08-14) which also carries the "View All Sales" button in its top-right corner | `<section class="td-section">` containing `<h2>Planet Networks Records</h2>` |
 | **Individual Rep Leaderboard** | "Rep Leaderboard", "Leaderboard Table", "Rep Performance Section" | The rep search field plus the ranked table (Rank, Sales Rep, Sales, Outbound, Inbound, Installs, Pending, Cancels, Install Rate, Cancel Rate) — every column header is clickable to sort the table by that column | `<h2>Individual Rep Leaderboard</h2>` + `<form class="td-search-form">` + `<section class="td-table-card">` |
 
 Column sorting (`?sort=<column>&dir=asc|desc`) is a pure display-ordering
@@ -255,13 +255,14 @@ sorted by; sorting by `rank` (the default) just restores that original
 order. Rates with no denominator (`None`, shown as "—") always sort to
 the bottom in either direction.
 
-Team Overview and the Individual Rep Leaderboard both read from the same period-filtered
-dataset (`period_df` in `dashboard_page()`, `app.py`), so a date-range
-change affects them together. Planet Networks Records, the Sales
-Calendar, and the Monthly Forecast KPI are the exceptions — they always
-use the all-time dataset regardless of the selected date range (see
-`calculate_records()`, `calculate_calendar_sales()`, and
-`calculate_monthly_forecast()` in `sales_metrics.py`). The Sales Calendar
+The Individual Rep Leaderboard reads from the period-filtered dataset
+(`period_df` in `dashboard_page()`, `app.py`), so a date-range change
+affects it. Team Overview, Planet Networks Records, and the Sales
+Calendar are all independent of the selected date range — they always
+use the all-time dataset / today's real date (see
+`calculate_total_daily_sales()`, `calculate_daily_averages()`,
+`calculate_monthly_forecast()`, `calculate_records()`, and
+`calculate_calendar_sales()` in `sales_metrics.py`). The Sales Calendar
 has its own independent month navigation (`cal_year`/`cal_month` query
 params, defaulting to the current month) that doesn't affect the period
 filter or any other section.
@@ -276,10 +277,15 @@ Leaderboard's Inbound/Outbound columns. `calculate_channel_breakdown()`
 was later reintroduced, but scoped to a single rep for the Rep Profile's
 Overview tab (see below) — it does not power anything on this page.
 
-The Monthly Forecast is a simple run-rate projection: month-to-date sales
-÷ days elapsed this month × days in the month. It always projects the
+The Team Overview KPI bar's Monthly Sales and Monthly Projection cards
+both read `calculate_monthly_forecast()`'s output: Monthly Sales is
+`month_to_date` (sales so far this calendar month), Monthly Projection is
+`projected_total`, a simple run-rate projection (month-to-date sales ÷
+days elapsed this month × days in the month). Both always reflect the
 actual current calendar month, not whatever month the Sales Calendar is
-currently browsing to.
+currently browsing to. The 7 Day Average and 30 Day Average cards read
+`calculate_daily_averages()` — trailing count-of-sales-in-window ÷ window
+size (7 or 30), window = today back N-1 days inclusive.
 
 ## Rep Profile Page — Section Names
 
@@ -294,7 +300,7 @@ page has two tabs:
 | Name | What it is |
 |------|------------|
 | **Overview** | Metric cards for Total Sales, Installed, Install Rate (primary) and Inbound, Outbound, Pending, Cancelled, Cancel Rate (secondary), plus a Sales by Channel breakdown (Inbound/Outbound columns). All period-filtered. |
-| **Needs Attention** | Accounts for this rep where the Scheduled Install Date is strictly before today and the account is still Not Yet Installed. Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Monthly Forecast on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below). |
+| **Needs Attention** | Accounts for this rep where the Scheduled Install Date is strictly before today and the account is still Not Yet Installed. Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below). |
 
 The Overview tab's metric cards reuse `calculate_rep_metrics()` — the
 exact same function/output that produces the Individual Rep Leaderboard table rows
@@ -323,21 +329,32 @@ can change; the component stays the same.** Concretely:
   omitted rather than broken when the UUID is missing).
 - `BULK_ACCOUNT_VIEWS` (`sales_metrics.py`) is the registry mapping a
   view key to a title and a filter function over the normalized dataset.
-  Currently defined: `pending` (period-filtered) and `needs_attention`
-  (all-time). **Adding a new Bulk Account View — e.g. "show Installed
-  accounts" or "show Door to Door sales" — means adding one entry to this
-  registry, not building a new list UI.**
+  Currently defined: `pending` (period-filtered), `needs_attention`
+  (all-time), and `all_sales` (period-filtered, identity filter — every
+  account in the scoped date range, added 2026-08-14). **Adding a new
+  Bulk Account View — e.g. "show Installed accounts" or "show Door to
+  Door sales" — means adding one entry to this registry, not building a
+  new list UI.**
 - `get_bulk_account_view(df, rep, view, period, start, end)` is the one
   function every feature should call to resolve a view key into
-  `(title, accounts)`. It handles rep scoping, period filtering (unless
-  the view opts into `all_time`), and shaping via
-  `build_bulk_account_rows()`.
-- Two things currently render through this component: the standalone
-  `/dashboard/reps/<rep_name>/accounts?view=<key>` page
-  (`bulk_account_view()` in `app.py`, `templates/bulk_account_view.html`
-  — reached today from the Rep Profile's clickable Pending metric), and
-  the Rep Profile's inline Needs Attention tab, which includes the same
-  partial directly rather than duplicating its markup.
+  `(title, accounts)`. It handles rep scoping (pass `rep=None` for a
+  team-wide, not rep-scoped view), period filtering (unless the view
+  opts into `all_time`), and shaping via `build_bulk_account_rows()`.
+- Three things currently render through this component: the standalone
+  rep-scoped `/dashboard/reps/<rep_name>/accounts?view=<key>` page
+  (`bulk_account_view()` in `app.py` — reached today from the Rep
+  Profile's clickable Pending metric); the team-wide
+  `/dashboard/accounts?view=<key>` page (`all_sales_view()` in `app.py`,
+  added 2026-08-14 — reached from the "View All Sales" button in the
+  top-right corner of the Last 3 Accounts Sold card in the Planet
+  Networks Records section, defaults to `view=all_sales` and
+  `period=today` so it opens on "what happened today"); and the Rep
+  Profile's inline Needs Attention tab, which includes the partial
+  directly rather than duplicating its markup. All three share
+  `templates/bulk_account_view.html` — it renders a period-filter form
+  (hidden when the resolved view's `all_time` is true) and a "Back to
+  {rep}" link when `rep_name` is set, or "Back to Dashboard" when it's
+  not (team-wide views pass `rep_name=None`).
 
 **Architectural rule:** when new functionality needs to display multiple
 customer accounts, check whether `get_bulk_account_view()` /

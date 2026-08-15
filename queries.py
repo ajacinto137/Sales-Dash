@@ -12,6 +12,7 @@ SELECT
     fd.[Zipcode],
     fd.[ReferralData],
     CAST(fd.InsertDate AS date) AS Date,
+    fd.InsertDate AS DateTime,
     fd.SourceToken,
     fd.[PhoneNumber],
     fd.[NJPR_municipalityName] AS Municipality,

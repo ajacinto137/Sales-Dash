@@ -58,38 +58,42 @@
     </header>
 
     <!-- ================= Team Overview =================
-         Canonical name: "Team Overview". Team-wide KPI cards
-         (Total Sales, Installed, Pending, Cancelled, Team
-         Install Rate, Monthly Forecast). Chargebacks was
-         removed 2026-08-14. See README.md "Team Leaderboard
-         Page — Section Names". -->
+         Canonical name: "Team Overview". Fixed set of 5 KPI
+         cards, always in this order: Monthly Sales, Daily
+         Sales, 7 Day Average, 30 Day Average, Monthly
+         Projection (reconfigured 2026-08-14, by request,
+         replacing the previous Total Sales/Installed/Pending/
+         Total Daily Sales/Team Install Rate/Monthly Forecast
+         set). All five are ALWAYS computed from the full
+         ALL-TIME normalized dataset and today's real date --
+         they intentionally do NOT change with the page's
+         period filter, same convention as Records/Calendar.
+         See README.md "Team Leaderboard Page — Section
+         Names". -->
     <section class="td-kpi-bar">
         <div class="td-kpi">
-            <span class="td-kpi-label">Total Sales</span>
-            <span class="td-kpi-value td-text-primary">{{ "{:,}".format(team_metrics.total_sales) }}</span>
+            <span class="td-kpi-label">Monthly Sales</span>
+            <span class="td-kpi-value td-text-primary">{{ "{:,}".format(monthly_forecast.month_to_date) }}</span>
+            <span class="td-kpi-note">{{ monthly_forecast.month_label }} to date</span>
         </div>
         <div class="td-kpi">
-            <span class="td-kpi-label">Installed</span>
-            <span class="td-kpi-value td-green">{{ "{:,}".format(team_metrics.installed) }}</span>
+            <span class="td-kpi-label">Daily Sales</span>
+            <span class="td-kpi-value td-purple">{{ "{:,}".format(total_daily_sales) }}</span>
         </div>
         <div class="td-kpi">
-            <span class="td-kpi-label">Pending</span>
-            <span class="td-kpi-value td-yellow">{{ "{:,}".format(team_metrics.pending) }}</span>
+            <span class="td-kpi-label">7 Day Average</span>
+            <span class="td-kpi-value td-yellow">{{ "%.1f"|format(daily_averages.avg_7_day) }}</span>
+            <span class="td-kpi-note">sales per day</span>
         </div>
         <div class="td-kpi">
-            <span class="td-kpi-label">Cancelled</span>
-            <span class="td-kpi-value td-orange">{{ "{:,}".format(team_metrics.cancelled) }}</span>
+            <span class="td-kpi-label">30 Day Average</span>
+            <span class="td-kpi-value td-orange">{{ "%.1f"|format(daily_averages.avg_30_day) }}</span>
+            <span class="td-kpi-note">sales per day</span>
         </div>
         <div class="td-kpi">
-            <span class="td-kpi-label">Team Install Rate</span>
-            <span class="td-kpi-value td-green">
-                {% if team_metrics.install_rate is not none %}{{ "%.1f"|format(team_metrics.install_rate) }}%{% else %}—{% endif %}
-            </span>
-        </div>
-        <div class="td-kpi">
-            <span class="td-kpi-label">Monthly Forecast</span>
+            <span class="td-kpi-label">Monthly Projection</span>
             <span class="td-kpi-value td-cyan">{{ "{:,}".format(monthly_forecast.projected_total) }}</span>
-            <span class="td-kpi-note">{{ monthly_forecast.month_label }} pace &middot; {{ monthly_forecast.month_to_date }} so far</span>
+            <span class="td-kpi-note">{{ monthly_forecast.month_label }} pace</span>
         </div>
     </section>
 
@@ -144,8 +148,14 @@
          Section"). All-time single-rep bests (Best Days/Weeks/
          Months Ever) plus live top-3 rep leaderboards for the
          ongoing day/week/month/year (Daily/Weekly/Monthly/
-         Yearly Sales). See README.md
-         "Team Leaderboard Page — Section Names". -->
+         Yearly Sales), plus the reps behind the last 3 sales
+         made (Last 3 Sales, added 2026-08-14) and a separate
+         card naming the last 3 accounts sold (Last 3 Accounts
+         Sold, added 2026-08-14), which also carries the "View
+         All Sales" button (top-right corner of that card) to
+         the team-wide, time-frame-filterable Bulk Account View
+         (defaults to today). See README.md "Team Leaderboard
+         Page — Section Names". -->
     <section class="td-section">
         <div class="td-section-heading">
             <h2>Planet Networks Records</h2>
@@ -288,6 +298,47 @@
                 <p class="td-empty">No data yet.</p>
                 {% endif %}
             </div>
+
+            <div class="td-record-card">
+                <h3>Last 3 Sales</h3>
+                {% if records.recent_sales %}
+                <ol class="td-record-list">
+                    {% for r in records.recent_sales %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <span class="td-record-meta">{{ r.label }}</span>
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="td-record-card">
+                <div class="td-record-card-head">
+                    <h3>Last 3 Accounts Sold</h3>
+                    <a class="td-btn td-btn-primary td-record-card-action" href="{{ url_for('all_sales_view') }}">View All Sales</a>
+                </div>
+                {% if records.recent_sales %}
+                <ol class="td-record-list">
+                    {% for r in records.recent_sales %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <span class="td-record-rep">{{ r.account or 'Unknown' }}</span>
+                            <span class="td-record-meta">{{ r.label }}</span>
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
         </div>
     </section>
 
@@ -299,7 +350,7 @@
          Sales Rep, Sales, Outbound, Inbound, Installs, Pending,
          Cancels, Install Rate, Cancel Rate). See README.md
          "Team Leaderboard Page — Section Names". -->
-    <div class="td-section-heading">
+    <div class="td-section-heading" id="rep-leaderboard">
         <h2>Individual Rep Leaderboard</h2>
     </div>
 
@@ -321,7 +372,7 @@
                         {% for col in rep_table_columns %}
                         <th>
                             <a class="td-sort-link {{ 'td-sort-active' if col.active else '' }}"
-                               href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, sort=col.key, dir=col.next_dir) }}">
+                               href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, sort=col.key, dir=col.next_dir, _anchor='rep-leaderboard') }}">
                                 {{ col.label }}
                                 {% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
                             </a>
