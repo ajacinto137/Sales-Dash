@@ -730,9 +730,9 @@ def build_vision_url(state, subscriber_uuid):
 
 def build_bulk_account_rows(df):
     """Shapes any slice of the normalized dataset into the standard Bulk
-    Account View row: sale_id (stable identifier), First Name, Last Name,
-    Address, Scheduled Install Date, account status/category, Sales
-    Channel, and Vision link. This is the ONE place
+    Account View row: sale_id (stable identifier), the selling rep, First
+    Name, Last Name, Address, Scheduled Install Date, account
+    status/category, Sales Channel, and Vision link. This is the ONE place
     that defines what a Bulk Account View shows -- every feature that
     surfaces a filtered list of accounts (Pending, Needs Attention,
     Installed, Cancelled, ...) goes through this function rather than
@@ -766,6 +766,7 @@ def build_bulk_account_rows(df):
             # unique, unlike subscriber_uuid (see attention_store.py's
             # module docstring for why that one was rejected).
             "sale_id": int(row["sale_id"]),
+            "sales_rep": row["sales_rep"],
             "first_name": _clean_text(row["first_name"]) or "",
             "last_name": _clean_text(row["last_name"]) or "",
             "address": address,
@@ -1033,3 +1034,44 @@ def get_rep_achievements(df, rep):
     if df is None or df.empty:
         return []
     return [a for a in ACHIEVEMENTS if a["check"](df, rep)]
+
+
+SEARCH_RESULT_LIMIT = 8
+
+
+def search_dataset(df, query, limit=SEARCH_RESULT_LIMIT):
+    """Global search bar (top nav, static/js/search.js): case-insensitive
+    substring match across rep names and customer accounts (first name +
+    last name + address). Returns (rep_matches, account_matches) --
+    rep_matches is a plain list of rep name strings; account_matches is
+    build_bulk_account_rows()-shaped dicts (same row shape as every Bulk
+    Account View, including the `sales_rep` field, so a result can be
+    attributed/linked without a second lookup). Each list is
+    independently capped at `limit` so a broad query (e.g. "a") doesn't
+    return the whole dataset. Within each list, a name that *starts with*
+    the query ranks above one that merely contains it, since that's
+    almost always the more relevant match. Returns ([], []) for a blank
+    query or missing/empty dataset, never raises."""
+    query = (query or "").strip()
+    if not query or df is None or df.empty:
+        return [], []
+
+    q = query.casefold()
+
+    reps = sorted(df["sales_rep"].dropna().unique().tolist())
+    rep_hits = [r for r in reps if q in r.casefold()]
+    rep_hits.sort(key=lambda r: (not r.casefold().startswith(q), r))
+    rep_matches = rep_hits[:limit]
+
+    full_name = (df["first_name"].fillna("") + " " + df["last_name"].fillna("")).str.strip()
+    haystack = (full_name + " " + df["address"].fillna("")).str.casefold()
+    account_mask = haystack.str.contains(q, regex=False, na=False)
+    matched = df[account_mask]
+    if matched.empty:
+        return rep_matches, []
+
+    matched_name = (matched["first_name"].fillna("") + " " + matched["last_name"].fillna("")).str.strip().str.casefold()
+    matched = matched.assign(_prefix_rank=~matched_name.str.startswith(q)).sort_values("_prefix_rank").head(limit)
+    account_matches = build_bulk_account_rows(matched)
+
+    return rep_matches, account_matches

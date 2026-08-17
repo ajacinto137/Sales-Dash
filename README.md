@@ -30,7 +30,7 @@ database.
 
 **Frontend**
 - Server-rendered [Jinja2](https://jinja.palletsprojects.com/) templates (`templates/`)
-- Vanilla JavaScript (`static/js/dashboard.js`, `static/js/team_dashboard.js`, `static/js/attention.js`) — no frontend framework or build step
+- Vanilla JavaScript (`static/js/dashboard.js`, `static/js/team_dashboard.js`, `static/js/attention.js`, `static/js/search.js`) — no frontend framework or build step
 - [Chart.js](https://www.chartjs.org/) (v4, via CDN) — sales-over-time chart
 - Plain CSS (`static/css/dashboard.css`, `static/css/team_dashboard.css`)
 - `static/images/` — badge icons for the Individual Sales Profile's Achievements (see its own section below)
@@ -388,6 +388,57 @@ exact same function/output that produces the Individual Rep Leaderboard table ro
 Attention tab's count is shown directly in the tab label
 (`Needs Attention (N)`), with a subtle warning treatment when `N > 0`.
 
+## Global Search
+
+> A search box in the top nav (added 2026-08-17) that looks up reps and
+> customer accounts at once, as you type.
+
+Present on every `team_dashboard.css` page (Team Leaderboard, Rep
+Profile, every Bulk Account View) via a new shared partial,
+`templates/_topnav.html` — factored out of the 3 templates that used to
+each hand-copy the same top nav markup, specifically so the search box
+couldn't end up on some pages and not others by accident of a missed
+copy-paste.
+
+**How it searches:** `GET /search?q=<query>` (`search()` in `app.py` →
+`search_dataset()` in `sales_metrics.py`) does a case-insensitive
+substring match against rep names *and* customer accounts (first name +
+last name + address) in the same request, returning both lists
+separately as JSON. A name that starts with the query ranks above one
+that merely contains it. Each list is capped at `SEARCH_RESULT_LIMIT`
+(8) so a broad single-letter query doesn't dump the whole dataset into a
+dropdown.
+
+**Staying fast:** every other route now reloads fresh from both source
+databases on every request (see "Data loading" above) — `/search`
+deliberately does **not**. It fires on every keystroke (debounced
+~150ms client-side, `static/js/search.js`, with in-flight requests
+aborted via `AbortController` if a newer keystroke arrives first so a
+slow, stale response can never overwrite a newer one), and reloading
+live from PlanetWeb/KPI on every character typed would make the box feel
+sluggish instead of fast. It reads whatever is already sitting in
+`data_store` from the last real page load — never more than one
+navigation stale, since every page load now refreshes it.
+
+**Telling a rep result from an account result:** each row in the results
+dropdown carries a small colored pill — cyan **"Rep"** or purple
+**"Account"** (`.td-global-search-type-rep`/`-account` in
+`team_dashboard.css`) — plus the results are grouped under separate
+"Reps"/"Accounts" headers, so it's unambiguous even scanning quickly.
+- A **rep** result links straight to that rep's Individual Sales Profile.
+- An **account** result links to its Vision page (external, new tab —
+  this app has no per-account detail page of its own, so Vision is the
+  closest thing to one, same reasoning as the "Vision ↗" link on every
+  Bulk Account View card) when a `subscriber_uuid` exists, or falls back
+  to that account's rep's Individual Sales Profile when it doesn't (so a
+  result is never a dead end) — its subtitle shows the address and
+  `Sold by <rep>` either way.
+
+`build_bulk_account_rows()` gained a `sales_rep` field for this feature
+(previously the shared Bulk Account View row shape didn't carry who sold
+an account) — a plain passthrough, read by no calculation, so every
+existing Bulk Account View caller is unaffected by its presence.
+
 ## Individual Sales Profile — Achievements
 
 > Small cosmetic badges (icon + hover tooltip) shown next to a rep's name
@@ -464,13 +515,16 @@ passthrough field (`sale_id`, see below), which no calculation reads.
 
 ### Attention Status
 
-One of exactly six values — **Duplicate, Cancellation, Engineering
-Issues, Underground Issues, Existing Customer, Other** — or unset
-("Unclassified" in the UI, never a stored value; there is deliberately no
-"Unreviewed"/"In Progress"/"Addressed"/"Resolved" status). Validated
-against this fixed list server-side on every write
-(`attention_store.ATTENTION_STATUS_SET`), regardless of what the
-`<select>` in the browser already restricted it to.
+One of exactly eight values — **Duplicate, Cancellation, Engineering
+Issues, Underground Issues, Existing Customer, Other, Called, Re-Sold**
+(`attention_store.ATTENTION_STATUSES`; "Called"/"Re-Sold" added
+2026-08-17, by request) — or unset ("Unclassified" in the UI, never a
+stored value; there is deliberately no "Unreviewed"/"In
+Progress"/"Resolved" status, and — despite briefly having been assumed
+to be one during that same request — no stored "Addressed" status
+either; see below). Validated against this fixed list server-side on
+every write (`attention_store.ATTENTION_STATUS_SET`), regardless of what
+the `<select>` in the browser already restricted it to.
 
 **A status can never exist without a note.** The only function that ever
 writes `attention_status` is `attention_store.set_attention_status(sale_id,
@@ -485,11 +539,36 @@ validation) — the previous status/notes are never deleted, only added to.
 above, always means at least one note exists too — the two conditions
 in the task's spec collapse to one check in practice).
 **Remaining** = Needs Attention total − Addressed. Both are pure
-workflow metrics, shown as a progress bar/stat row and a set of
-client-side filter chips (All / Unclassified / Addressed / each status)
-at the top of the Needs Attention Bulk Account View — filtering only
-hides/shows already-rendered accounts (`static/js/attention.js`), it
-never re-queries or changes the underlying list.
+workflow metrics, shown as a progress bar/stat row at the top of the
+Needs Attention Bulk Account View. **"Addressed" is not a filter chip**
+(removed 2026-08-17, by request, in the same change that added
+"Called"/"Re-Sold" — a same-day mix-up briefly treated "Addressed" as if
+it were a real category to swap out, which it was never actually stored
+as; it stays a progress stat only). The filter chips that remain are All
+/ Unclassified / one per real status — filtering only hides/shows
+already-rendered accounts (`static/js/attention.js`), it never
+re-queries or changes the underlying list.
+
+**If an Attention Status is ever removed or renamed from
+`ATTENTION_STATUSES`** (as opposed to added, like this change), any
+account still holding that now-invalid value must be reclassified to
+Unclassified rather than left pointing at a value that's no longer
+valid. `attention_store._reclassify_removed_statuses()` handles this
+automatically — it runs once per process alongside the schema check
+(`_ensure_schema()`) and deletes the `account_attention` row for any
+`sale_id` whose `attention_status` isn't in the current
+`ATTENTION_STATUSES` (deleting that row *is* "reclassify to
+Unclassified" — see Persistence below for why Unclassified is the
+absence of a row, not a stored value). `account_attention_notes` is
+never touched by this, so that account's full note/audit history
+survives untouched even after its current classification is cleared —
+verified by hand: inserted a row with a made-up invalid status plus a
+note, restarted the app, confirmed the `account_attention` row was gone
+and the note was still there afterward. This is a no-op in the common
+case (every write already validates against the approved list, so
+nothing becomes orphaned by normal use) — it only ever does something
+the moment `ATTENTION_STATUSES` itself changes out from under
+already-existing data, which is exactly what happened here.
 
 ### Notes
 
@@ -533,7 +612,7 @@ account_attention (
 
 account_attention_notes (
     id SERIAL PRIMARY KEY,
-    sale_id BIGINT NOT NULL REFERENCES account_attention(sale_id),
+    sale_id BIGINT NOT NULL,            -- plain column, NOT a foreign key -- see below
     note TEXT NOT NULL,
     attention_status TEXT NOT NULL,     -- status in effect when written
     previous_status TEXT,               -- set only on an actual status change
@@ -548,6 +627,21 @@ attention record for the same account" holds by construction, not by a
 pre-check. All queries are parameterized (`cur.execute(sql, (params,))`
 throughout `attention_store.py`) — no string-built SQL anywhere in this
 module.
+
+**`account_attention_notes.sale_id` is deliberately not a foreign key**
+into `account_attention(sale_id)`, even though it originally was one when
+this feature first shipped. Reclassifying an account to Unclassified
+means *deleting* its `account_attention` row (see "Attention Status"
+above) — with the original FK in place, that delete would be blocked by
+Postgres for any account with even one note, directly breaking "notes
+are never deleted." Dropping the constraint is what makes the two rules
+("Unclassified = no row" and "notes survive forever") compatible.
+`_SCHEMA_SQL` includes `ALTER TABLE account_attention_notes DROP
+CONSTRAINT IF EXISTS account_attention_notes_sale_id_fkey` so this
+self-heals on any database that still has the original constraint
+(local dev, and the production `appdb` from before 2026-08-17) the next
+time the app starts — `IF EXISTS` makes it a no-op on a database that
+never had it.
 
 **Why `sale_id`, not `subscriber_uuid`:** the task suggested preferring
 the subscriber UUID already used for Vision links

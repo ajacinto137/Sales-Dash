@@ -9,24 +9,10 @@
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/attention.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
 </head>
 <body class="td-body">
-<div class="td-topnav">
-    <div class="td-topnav-brand">Planet Networks</div>
-    <nav class="td-topnav-links">
-        <a href="{{ url_for('overview') }}">Overview</a>
-        <a href="{{ url_for('main_sales_page') }}">Main Sales</a>
-        <a href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
-        <a href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
-        <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>
-    </nav>
-    <div class="td-topnav-right">
-        {% if last_refreshed %}<span class="td-last-refreshed">Last refreshed: {{ last_refreshed }}</span>{% endif %}
-        <form action="{{ url_for('refresh') }}?dataset=all" method="post">
-            <button type="submit" class="td-btn td-btn-ghost">Refresh Data</button>
-        </form>
-    </div>
-</div>
+{% include "_topnav.html" %}
 
 <div class="td-page">
 

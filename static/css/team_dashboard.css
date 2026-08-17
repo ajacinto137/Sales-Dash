@@ -89,7 +89,6 @@ html, body.td-body {
 .td-topnav-links {
     display: flex;
     gap: 20px;
-    flex: 1;
 }
 
 .td-topnav-links a {
@@ -119,6 +118,108 @@ html, body.td-body {
     font-size: 11.5px;
     color: var(--td-text-muted);
     white-space: nowrap;
+}
+
+/* ---------------- Global search (top nav) ----------------
+   Reps + customer accounts, see templates/_topnav.html,
+   static/js/search.js, GET /search in app.py. .td-topnav-links no
+   longer carries flex: 1 (see above) -- this element takes the
+   flexible space in the topnav row instead, so it grows/shrinks with
+   the viewport up to max-width, with .td-topnav-right pinned to the
+   far right as before. */
+
+.td-global-search {
+    position: relative;
+    flex: 1;
+    max-width: 340px;
+}
+
+.td-global-search-input {
+    width: 100%;
+}
+
+.td-global-search-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    max-height: 420px;
+    overflow-y: auto;
+    z-index: 60;
+}
+
+.td-global-search-group-label {
+    padding: 9px 14px 5px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--td-text-muted);
+}
+
+.td-global-search-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    text-decoration: none;
+    color: var(--td-text-primary);
+    cursor: pointer;
+}
+
+.td-global-search-item:hover {
+    background: var(--td-panel-alt);
+}
+
+.td-global-search-type-badge {
+    flex-shrink: 0;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* Distinct, unambiguous colors so a rep result and an account result
+   are never confused at a glance -- cyan already means "person/rep"
+   elsewhere in this app (.td-rep-link, .td-topnav-active); purple is
+   otherwise unused for a badge like this. */
+.td-global-search-type-rep { color: var(--td-cyan); background: var(--td-cyan-bg); }
+.td-global-search-type-account { color: var(--td-purple); background: var(--td-purple-bg); }
+
+.td-global-search-item-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.td-global-search-item-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.td-global-search-item-sub {
+    font-size: 11px;
+    color: var(--td-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.td-global-search-empty {
+    padding: 14px;
+    font-size: 12px;
+    color: var(--td-text-muted);
+    text-align: center;
 }
 
 /* ---------------- Buttons / inputs ---------------- */
@@ -1314,6 +1415,8 @@ a.td-record-rep:hover {
 .td-attention-badge-underground-issues { color: var(--td-accent-lime); background: var(--td-accent-lime-bg); }
 .td-attention-badge-existing-customer { color: var(--td-accent-violet); background: var(--td-accent-violet-bg); }
 .td-attention-badge-other { color: var(--td-text-secondary); background: var(--td-panel-alt); }
+.td-attention-badge-called { color: var(--td-accent-blue); background: var(--td-accent-blue-bg); }
+.td-attention-badge-re-sold { color: var(--td-green); background: var(--td-green-bg); }
 
 .td-attention-actions {
     display: flex;

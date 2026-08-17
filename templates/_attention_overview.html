@@ -9,9 +9,13 @@
      here. See README.md "Needs Attention Workflow".
      Expects `attention_available` (bool) and, when true,
      `attention_progress` ({total, addressed, remaining, by_status}) and
-     `attention_statuses` (the fixed 6-value list) in context -- all set
-     by app.py's attach_attention_metadata() before this partial (or its
-     parent) is included. -->
+     `attention_statuses` (the approved status list, attention_store.ATTENTION_STATUSES)
+     in context -- all set by app.py's attach_attention_metadata() before
+     this partial (or its parent) is included.
+     No standalone "Addressed" filter chip (removed 2026-08-17, by
+     request) -- "Addressed" stays a progress stat/derived summary
+     (below), just not one of the clickable filter buttons; filtering by
+     a specific status, or by "Unclassified", covers the same ground. -->
 {% if attention_available %}
 <div class="td-attention-overview" data-attention-overview data-attention-statuses='{{ attention_statuses|tojson }}'>
     <div class="td-attention-progress">
@@ -40,7 +44,6 @@
         <div class="td-attention-filters" data-attention-filters>
             <button type="button" class="td-attention-filter-btn td-attention-filter-active" data-attention-filter="all">All <span data-attention-count="all">{{ attention_progress.total }}</span></button>
             <button type="button" class="td-attention-filter-btn" data-attention-filter="unclassified">Unclassified <span data-attention-count="unclassified">{{ attention_progress.remaining }}</span></button>
-            <button type="button" class="td-attention-filter-btn" data-attention-filter="addressed">Addressed <span data-attention-count="addressed">{{ attention_progress.addressed }}</span></button>
             {% for status in attention_statuses %}
             <button type="button" class="td-attention-filter-btn" data-attention-filter="{{ status }}">{{ status }} <span data-attention-count="{{ status }}">{{ attention_progress.by_status.get(status, 0) }}</span></button>
             {% endfor %}

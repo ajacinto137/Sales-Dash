@@ -35,6 +35,7 @@ from sales_metrics import (
     get_channel_account_view,
     get_leaderboard_metric_account_view,
     get_rep_achievements,
+    search_dataset,
     sort_rep_rows,
 )
 
@@ -999,6 +1000,53 @@ def refresh():
         _touch_last_refreshed()
 
     return redirect(request.referrer or url_for("overview"))
+
+
+@app.route("/search")
+def search():
+    """Global search bar (top nav, templates/_topnav.html +
+    static/js/search.js) -- reps and customer accounts by substring
+    match, JSON response. Deliberately does NOT call
+    ensure_data_loaded(): every full-page route reloads fresh from both
+    source databases on every request now (see "Data loading" in
+    README.md), but this endpoint fires on every keystroke (debounced
+    ~150ms client-side) and doing a live PlanetWeb/KPI round trip per
+    keystroke would make the search feel sluggish instead of fast -- it
+    reads whatever is already sitting in data_store from the last real
+    page load (which, given every page load now refreshes, is never more
+    than one navigation stale)."""
+    query = request.args.get("q", "")
+    normalized = build_sales_dataset(
+        data_store["main_sales"],
+        data_store["vision_packages"],
+        data_store["service_cancellations"],
+    )
+    rep_matches, account_matches = search_dataset(normalized, query)
+
+    reps = [
+        {"name": rep, "url": url_for("rep_profile", rep_name=rep)}
+        for rep in rep_matches
+    ]
+    accounts = []
+    for account in account_matches:
+        vision_url = account.get("vision_url")
+        accounts.append({
+            "first_name": account["first_name"],
+            "last_name": account["last_name"],
+            "address": account["address"],
+            "city_state_zip": account["city_state_zip"],
+            "sales_rep": account["sales_rep"],
+            "status": account["status"],
+            # Vision is the closest thing this app has to a per-account
+            # detail page (no account has its own route here) -- fall
+            # back to that account's rep profile when there's no
+            # subscriber_uuid to build a Vision link from, so a result
+            # is never a dead end.
+            "url": vision_url or url_for("rep_profile", rep_name=account["sales_rep"]),
+            "external": bool(vision_url),
+        })
+
+    return jsonify({"reps": reps, "accounts": accounts})
 
 
 @app.route("/health")

@@ -46,25 +46,34 @@ ATTENTION_STATUSES = [
     "Underground Issues",
     "Existing Customer",
     "Other",
+    "Called",
+    "Re-Sold",
 ]
 ATTENTION_STATUS_SET = set(ATTENTION_STATUSES)
 
 MAX_NOTE_LENGTH = 2000
 MAX_AUTHOR_LENGTH = 120
 
-# account_attention: one row per account that has ever been classified.
+# account_attention: one row per account that HAS a current classification.
 # sale_id is the primary key -- an INSERT ... ON CONFLICT (sale_id) DO
 # UPDATE upsert (see set_attention_status()) means a second classification
 # of the same account always updates this one row rather than creating a
 # duplicate, satisfying "no duplicate attention record ... for the same
-# account" structurally, not just by convention.
+# account" structurally, not just by convention. Unclassified is the
+# ABSENCE of a row here, never a stored value -- reclassify_removed_statuses()
+# below deletes this row entirely to move an account back to Unclassified.
 #
 # account_attention_notes: append-only activity history, one row per note,
-# never updated or deleted. `attention_status` is the status in effect
-# when the note was written (every note requires a status to already
-# exist, so this is always set); `previous_status` is set only when this
-# note accompanied an actual status change, which is what lets the UI
-# render a "changed from X to Y" audit line without a separate table.
+# never updated or deleted -- notes must survive even after their
+# account's account_attention row is deleted (see above), which is why
+# sale_id here is a plain column, NOT a foreign key into account_attention
+# (an FK would block that delete while any note still referenced the row,
+# defeating "notes are never deleted"). `attention_status` is the status
+# in effect when the note was written (every note requires a status to
+# already exist, so this is always set); `previous_status` is set only
+# when this note accompanied an actual status change, which is what lets
+# the UI render a "changed from X to Y" audit line without a separate
+# table.
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS account_attention (
     sale_id BIGINT PRIMARY KEY,
@@ -76,7 +85,7 @@ CREATE TABLE IF NOT EXISTS account_attention (
 
 CREATE TABLE IF NOT EXISTS account_attention_notes (
     id SERIAL PRIMARY KEY,
-    sale_id BIGINT NOT NULL REFERENCES account_attention(sale_id),
+    sale_id BIGINT NOT NULL,
     note TEXT NOT NULL,
     attention_status TEXT NOT NULL,
     previous_status TEXT,
@@ -84,17 +93,45 @@ CREATE TABLE IF NOT EXISTS account_attention_notes (
     created_by TEXT
 );
 
+-- Migration for databases created before 2026-08-17 (this session's
+-- earlier deploy), when account_attention_notes.sale_id WAS a foreign
+-- key into account_attention(sale_id). Dropping it is what makes
+-- reclassify_removed_statuses() below possible -- IF EXISTS makes this
+-- safe to run against a fresh database that never had the constraint.
+ALTER TABLE account_attention_notes
+    DROP CONSTRAINT IF EXISTS account_attention_notes_sale_id_fkey;
+
 CREATE INDEX IF NOT EXISTS idx_account_attention_notes_sale_id
     ON account_attention_notes (sale_id, created_at DESC);
 """
 
-# Idempotent (CREATE TABLE/INDEX IF NOT EXISTS), so re-running it is
-# always safe -- this flag is purely an optimization to skip it on every
-# request once we know it has succeeded at least once in this process.
-# Reset to False on failure so the next request retries rather than
-# permanently assuming the schema exists after a transient connection
-# error during startup.
+# Idempotent (CREATE TABLE/INDEX IF NOT EXISTS, DROP CONSTRAINT IF
+# EXISTS), so re-running it is always safe -- this flag is purely an
+# optimization to skip it on every request once we know it has succeeded
+# at least once in this process. Reset to False on failure so the next
+# request retries rather than permanently assuming the schema exists
+# after a transient connection error during startup.
 _schema_ready = False
+
+
+def _reclassify_removed_statuses(conn):
+    """Safety net for whenever ATTENTION_STATUSES drops a value that some
+    account_attention row still holds -- e.g. a category is removed or
+    renamed (2026-08-17: "Called"/"Re-Sold" added; any account that had
+    somehow ended up on a since-removed value should not be left pointing
+    at an invalid status). Deletes the account_attention row for any such
+    account, moving it back to Unclassified -- account_attention_notes is
+    never touched, so its full history/audit trail survives untouched.
+    Runs once per process alongside the schema check; a no-op if nothing
+    is orphaned (the normal case, since ATTENTION_STATUS_SET is validated
+    server-side on every write already -- this only matters if the
+    approved list itself changes after data already exists)."""
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM account_attention WHERE attention_status NOT IN %s",
+                (tuple(ATTENTION_STATUSES),),
+            )
 
 
 def _ensure_schema(conn):
@@ -104,6 +141,7 @@ def _ensure_schema(conn):
     with conn:
         with conn.cursor() as cur:
             cur.execute(_SCHEMA_SQL)
+    _reclassify_removed_statuses(conn)
     _schema_ready = True
 
 

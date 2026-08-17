@@ -47,18 +47,34 @@ document.addEventListener("DOMContentLoaded", function () {
     var tabButtons = document.querySelectorAll("[data-tab]");
     var tabPanels = document.querySelectorAll("[data-tab-panel]");
     if (tabButtons.length && tabPanels.length) {
+        var activateTab = function (target) {
+            var matched = false;
+            tabButtons.forEach(function (b) {
+                var isMatch = b.getAttribute("data-tab") === target;
+                if (isMatch) matched = true;
+                b.classList.toggle("td-tab-active", isMatch);
+            });
+            if (!matched) return false;
+            tabPanels.forEach(function (panel) {
+                panel.style.display = panel.getAttribute("data-tab-panel") === target ? "" : "none";
+            });
+            return true;
+        };
+
         tabButtons.forEach(function (button) {
             button.addEventListener("click", function () {
-                var target = button.getAttribute("data-tab");
-
-                tabButtons.forEach(function (b) {
-                    b.classList.toggle("td-tab-active", b === button);
-                });
-                tabPanels.forEach(function (panel) {
-                    panel.style.display = panel.getAttribute("data-tab-panel") === target ? "" : "none";
-                });
+                activateTab(button.getAttribute("data-tab"));
             });
         });
+
+        // A link elsewhere (e.g. the Individual Rep Leaderboard's Needs
+        // Attention metric cell) can open straight to a specific tab via
+        // a #<data-tab-value> URL fragment, e.g. .../reps/<rep>#needs-attention
+        // -- honor it on load instead of always defaulting to Overview.
+        var hashTarget = window.location.hash.replace(/^#/, "");
+        if (hashTarget) {
+            activateTab(hashTarget);
+        }
     }
 
     // Bulk Account View: Cards / Table toggle -- scoped per [data-bulk-view]

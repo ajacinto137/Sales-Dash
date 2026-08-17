@@ -1,0 +1,34 @@
+<!-- ================= Top Nav =================
+     Shared across every team_dashboard.css page (dashboard.html,
+     rep_profile.html, bulk_account_view.html) -- factored out
+     2026-08-17 when the global search bar was added, so the 3 templates
+     that used to each hand-copy this block can't drift out of sync.
+     Expects `last_refreshed` in context (already passed by every route
+     that renders one of the 3 pages above). -->
+<div class="td-topnav">
+    <div class="td-topnav-brand">Planet Networks</div>
+    <nav class="td-topnav-links">
+        <a href="{{ url_for('overview') }}">Overview</a>
+        <a href="{{ url_for('main_sales_page') }}">Main Sales</a>
+        <a href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
+        <a href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
+        <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>
+    </nav>
+
+    <!-- Global search: reps + customer accounts, debounced fetch to
+         /search (see app.py), wired up by static/js/search.js. A no-op
+         script on any page that ever stops including this partial. -->
+    <div class="td-global-search" data-global-search>
+        <input type="search" class="td-search-input td-global-search-input"
+               placeholder="Search reps or accounts…" autocomplete="off"
+               data-global-search-input>
+        <div class="td-global-search-results" data-global-search-results style="display: none;"></div>
+    </div>
+
+    <div class="td-topnav-right">
+        {% if last_refreshed %}<span class="td-last-refreshed">Last refreshed: {{ last_refreshed }}</span>{% endif %}
+        <form action="{{ url_for('refresh') }}?dataset=all" method="post">
+            <button type="submit" class="td-btn td-btn-ghost">Refresh Data</button>
+        </form>
+    </div>
+</div>
