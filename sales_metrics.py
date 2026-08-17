@@ -962,23 +962,57 @@ def calculate_needs_attention(df, rep):
     return accounts
 
 
-OUTBOUND_BADGE_THRESHOLD = 10
+# Individual Sales Profile achievement badges -- small cosmetic icons
+# shown next to a rep's name (rep_profile.html, .td-profile-name-icon in
+# team_dashboard.css, static/images/*.gif). Every badge is a boolean,
+# always all-time and independent of the page's period filter -- same
+# convention as Records/Sales Calendar (calculate_records(), etc.): these
+# are permanent achievements, not period-scoped stats. Purely cosmetic --
+# none of them are read by any metric calculation (Sales/Outbound/Install
+# Rate/etc.), so earning one can never change a number anywhere else on
+# the dashboard. Adding a new badge means adding one check function and
+# one ACHIEVEMENTS entry here, not touching app.py or the template. See
+# README.md "Individual Sales Profile -- Achievements" for the full,
+# human-readable list -- keep that section in sync with this one.
 
-
-def has_outbound_badge(df, rep):
-    """True if `rep` has ever recorded OUTBOUND_BADGE_THRESHOLD+ outbound
-    sales in a single calendar day. Always all-time, independent of the
-    page's period filter -- same convention as Records/Sales Calendar
-    (calculate_records(), etc.): this is a permanent achievement, not a
-    period-scoped stat. Purely cosmetic (powers the samurai icon next to
-    a rep's name on their Individual Sales Profile, see README.md "Rep
-    Profile Page -- Section Names") -- not read by any metric
-    calculation, so it can never affect Sales/Outbound/Install Rate/etc."""
-    if df is None or df.empty:
-        return False
+def _has_daily_outbound_badge(df, rep, threshold=10):
     outbound = df[(df["sales_rep"] == rep) & (df["sales_channel"].isin(OUTBOUND_CHANNELS))]
     outbound = outbound.dropna(subset=["sale_date"])
     if outbound.empty:
         return False
     daily_counts = outbound.groupby(outbound["sale_date"].dt.date).size()
-    return bool((daily_counts >= OUTBOUND_BADGE_THRESHOLD).any())
+    return bool((daily_counts >= threshold).any())
+
+
+def _has_monthly_sales_badge(df, rep, threshold=60):
+    rep_df = df[df["sales_rep"] == rep].dropna(subset=["sale_date"])
+    if rep_df.empty:
+        return False
+    monthly_counts = rep_df.groupby([rep_df["sale_date"].dt.year, rep_df["sale_date"].dt.month]).size()
+    return bool((monthly_counts > threshold).any())
+
+
+ACHIEVEMENTS = [
+    {
+        "key": "outbound_day",
+        "icon": "samurai.gif",
+        "label": "10+ Outbound Sales in a Day",
+        "check": _has_daily_outbound_badge,
+    },
+    {
+        "key": "monthly_sales",
+        "icon": "squirtle_cool.gif",
+        "label": "More Than 60 Sales in a Month",
+        "check": _has_monthly_sales_badge,
+    },
+]
+
+
+def get_rep_achievements(df, rep):
+    """Returns the subset of ACHIEVEMENTS `rep` has earned, each dict
+    unchanged (key/icon/label) so the template can render directly.
+    Always all-time. Empty list (never raises) for a missing/empty
+    dataset or a rep with no rows."""
+    if df is None or df.empty:
+        return []
+    return [a for a in ACHIEVEMENTS if a["check"](df, rep)]

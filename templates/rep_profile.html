@@ -38,9 +38,9 @@
                 <p class="td-profile-subtitle">Individual Sales Profile</p>
                 <h1 class="td-profile-name">
                     {{ rep_name }}
-                    {% if outbound_badge %}
-                    <img src="{{ url_for('static', filename='images/samurai.gif') }}" alt="10+ outbound sales in a day" title="10+ outbound sales in a single day" class="td-profile-name-icon">
-                    {% endif %}
+                    {% for achievement in achievements %}
+                    <img src="{{ url_for('static', filename='images/' ~ achievement.icon) }}" alt="{{ achievement.label }}" title="{{ achievement.label }}" class="td-profile-name-icon">
+                    {% endfor %}
                 </h1>
             </div>
 

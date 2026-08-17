@@ -33,6 +33,7 @@ database.
 - Vanilla JavaScript (`static/js/dashboard.js`, `static/js/team_dashboard.js`, `static/js/attention.js`) — no frontend framework or build step
 - [Chart.js](https://www.chartjs.org/) (v4, via CDN) — sales-over-time chart
 - Plain CSS (`static/css/dashboard.css`, `static/css/team_dashboard.css`)
+- `static/images/` — badge icons for the Individual Sales Profile's Achievements (see its own section below)
 
 **Infrastructure**
 - Docker / Docker Compose — the entire app, including the SQL Server ODBC driver, runs in a container (`Dockerfile`, `docker-compose.yml`)
@@ -386,6 +387,52 @@ exact same function/output that produces the Individual Rep Leaderboard table ro
 — so the two pages can never disagree for the same period. The Needs
 Attention tab's count is shown directly in the tab label
 (`Needs Attention (N)`), with a subtle warning treatment when `N > 0`.
+
+## Individual Sales Profile — Achievements
+
+> Small cosmetic badges (icon + hover tooltip) shown next to a rep's name
+> at the top of their Individual Sales Profile — added 2026-08-17, when
+> the first one (the outbound badge) started as a one-off request for a
+> specific rep and was generalized into a real, criteria-based badge
+> system the same day.
+
+**Purely cosmetic.** A badge is earned by meeting a threshold computed
+directly from the normalized sales dataset — never the other way around.
+No badge is read by, or can influence, any metric calculation
+(Sales/Outbound/Installs/Pending/Needs Attention/Install Rate/etc.) —
+earning or losing one never changes a number anywhere else on the
+dashboard. Always **all-time**, independent of the page's period filter,
+same convention as Planet Networks Records / Sales Calendar / Team
+Overview.
+
+Currently defined, in `ACHIEVEMENTS` (`sales_metrics.py`):
+
+| Badge | Icon | Criteria | Check function |
+|-------|------|----------|-----------------|
+| **10+ Outbound Sales in a Day** | `static/images/samurai.gif` | Rep has recorded 10 or more outbound-channel sales (`OUTBOUND_CHANNELS`) on at least one single calendar day, ever. | `_has_daily_outbound_badge()` |
+| **More Than 60 Sales in a Month** | `static/images/squirtle_cool.gif` | Rep has recorded more than 60 total sales (any channel/status) in at least one single calendar month, ever. | `_has_monthly_sales_badge()` |
+
+**Architecture:**
+- `ACHIEVEMENTS` (`sales_metrics.py`) is the registry — a list of
+  `{key, icon, label, check}` dicts, one entry per badge. `check` is a
+  `(df, rep) -> bool` function. **Adding a new badge means writing one
+  `_has_*_badge()` function and adding one entry here** — not touching
+  `app.py` or `rep_profile.html`. Keep this table in sync with that list
+  whenever a badge is added, changed, or removed.
+- `get_rep_achievements(df, rep)` — the one function `app.py` calls
+  (from `rep_profile()`). Returns the subset of `ACHIEVEMENTS` a rep has
+  earned, each dict unchanged (`key`/`icon`/`label`) so the template can
+  render straight from it. Empty list, never raises, for a missing
+  dataset or a rep with no rows.
+- `rep_profile.html` loops over `achievements` next to `{{ rep_name }}`
+  in the page `<h1>`, rendering one `<img class="td-profile-name-icon">`
+  per earned badge (`alt`/`title` both set to the badge's `label`, so
+  hovering an icon explains what it means). A rep can display any number
+  of badges at once, including zero.
+- Icon files live in `static/images/` (new directory, added alongside
+  the first badge — nothing else in this app served static images
+  before). Keep new badge icons small (the two above are 4–130 KB) since
+  they're inlined into every Rep Profile page load.
 
 ## Needs Attention Workflow
 

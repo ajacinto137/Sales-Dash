@@ -34,7 +34,7 @@ from sales_metrics import (
     get_calendar_day_account_view,
     get_channel_account_view,
     get_leaderboard_metric_account_view,
-    has_outbound_badge,
+    get_rep_achievements,
     sort_rep_rows,
 )
 
@@ -692,9 +692,9 @@ def rep_profile(rep_name):
     # calculate_needs_attention()'s docstring.
     needs_attention = calculate_needs_attention(normalized, rep_name)
 
-    # Cosmetic badge (samurai icon next to the rep's name) -- see
-    # has_outbound_badge()'s docstring. Always all-time, purely display.
-    outbound_badge = has_outbound_badge(normalized, rep_name)
+    # Cosmetic achievement badges (icons next to the rep's name) -- see
+    # get_rep_achievements()'s docstring. Always all-time, purely display.
+    achievements = get_rep_achievements(normalized, rep_name)
 
     # Needs Attention workflow controls -- see attach_attention_metadata()
     # and README.md "Needs Attention Workflow". needs_attention_count
@@ -719,7 +719,7 @@ def rep_profile(rep_name):
         attention_available=attention_available,
         attention_progress=attention_progress,
         attention_statuses=attention_store.ATTENTION_STATUSES,
-        outbound_badge=outbound_badge,
+        achievements=achievements,
         last_refreshed=data_store["last_refreshed"],
     )
 
