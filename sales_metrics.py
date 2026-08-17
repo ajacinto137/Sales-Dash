@@ -730,7 +730,7 @@ def build_vision_url(state, subscriber_uuid):
 def build_bulk_account_rows(df):
     """Shapes any slice of the normalized dataset into the standard Bulk
     Account View row: First Name, Last Name, Address, Scheduled Install
-    Date, account status/category, and Vision link. This is the ONE place
+    Date, account status/category, Sales Channel, and Vision link. This is the ONE place
     that defines what a Bulk Account View shows -- every feature that
     surfaces a filtered list of accounts (Pending, Needs Attention,
     Installed, Cancelled, ...) goes through this function rather than
@@ -763,7 +763,9 @@ def build_bulk_account_rows(df):
             "address": address,
             "city_state_zip": city_state_zip or None,
             "scheduled_date": scheduled.strftime("%m/%d/%Y") if pd.notna(scheduled) else None,
+            "scheduled_date_sort": scheduled.strftime("%Y-%m-%d") if pd.notna(scheduled) else "",
             "status": row["status"],
+            "sales_channel": _clean_text(row["sales_channel"]),
             "vision_url": build_vision_url(state, row["subscriber_uuid"]),
         })
     return accounts
@@ -851,6 +853,62 @@ def get_channel_account_view(df, rep, channel, period, start, end):
     if scoped is None or scoped.empty:
         return title, []
     filtered = scoped[scoped["sales_channel"] == channel]
+    if filtered.empty:
+        return title, []
+    filtered = filtered.assign(
+        _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
+    ).sort_values("_scheduled_sort", na_position="last")
+    return title, build_bulk_account_rows(filtered)
+
+
+# Metric drill-downs for the Individual Rep Leaderboard's ranked table --
+# clicking a rep's Sales/Outbound/Inbound/Installs/Pending/Needs Attention
+# cell opens a Bulk Account View of exactly the rows that make up that
+# number. These mirror calculate_rep_metrics()'s own per-column logic
+# (same status strings / same INBOUND_CHANNELS/OUTBOUND_CHANNELS sets) so
+# the accounts shown always match the count that was clicked. This can't
+# reuse the "needs_attention"/"pending" BULK_ACCOUNT_VIEWS entries as-is --
+# "needs_attention" there is deliberately all-time (for the Rep Profile's
+# Needs Attention tab), but every Leaderboard column is period-scoped, so
+# all six of these stay period-scoped for consistency with each other.
+LEADERBOARD_METRIC_FILTERS = {
+    "sales": lambda df: df,
+    "outbound": lambda df: df[df["sales_channel"].isin(OUTBOUND_CHANNELS)],
+    "inbound": lambda df: df[df["sales_channel"].isin(INBOUND_CHANNELS)],
+    "installs": _bulk_status_filter("Installed"),
+    "pending": _bulk_status_filter("Pending"),
+    "needs_attention": _bulk_status_filter("Needs Attention"),
+}
+
+LEADERBOARD_METRIC_TITLES = {
+    "sales": "Sales",
+    "outbound": "Outbound",
+    "inbound": "Inbound",
+    "installs": "Installs",
+    "pending": "Pending",
+    "needs_attention": "Needs Attention",
+}
+
+
+def get_leaderboard_metric_account_view(df, rep, metric, period, start, end):
+    """Bulk Account View for a click on one of the Individual Rep
+    Leaderboard's metric cells. Rep + period scoped exactly like a
+    non-all_time BULK_ACCOUNT_VIEWS entry (mirrors get_bulk_account_view's
+    own scoping steps), but the metric is a runtime value from the click
+    rather than one baked into that registry, so it goes through
+    LEADERBOARD_METRIC_FILTERS instead. Returns (title, []) for an unknown
+    metric or empty scope, never raises."""
+    row_filter = LEADERBOARD_METRIC_FILTERS.get(metric)
+    if row_filter is None:
+        return metric, []
+    title = f"{LEADERBOARD_METRIC_TITLES[metric]} Accounts"
+    if df is None or df.empty:
+        return title, []
+    scoped = df[df["sales_rep"] == rep] if rep else df
+    scoped = filter_by_period(scoped, period, start, end)
+    if scoped is None or scoped.empty:
+        return title, []
+    filtered = row_filter(scoped)
     if filtered.empty:
         return title, []
     filtered = filtered.assign(

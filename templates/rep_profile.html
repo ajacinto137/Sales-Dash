@@ -72,11 +72,13 @@
         <div class="td-profile-metrics-primary">
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Total Sales</span>
-                <span class="td-profile-metric-value td-text-primary td-gradient-text">{{ "{:,}".format(rep_metrics.sales) }}</span>
+                <a class="td-profile-metric-value td-profile-metric-link td-text-primary td-gradient-text"
+                   href="{{ url_for('bulk_account_view', rep_name=rep_name, view='metric', metric='sales', period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(rep_metrics.sales) }}</a>
             </div>
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Installed</span>
-                <span class="td-profile-metric-value td-green">{{ "{:,}".format(rep_metrics.installs) }}</span>
+                <a class="td-profile-metric-value td-profile-metric-link td-green"
+                   href="{{ url_for('bulk_account_view', rep_name=rep_name, view='metric', metric='installs', period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(rep_metrics.installs) }}</a>
             </div>
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Install Rate</span>
@@ -89,11 +91,13 @@
         <div class="td-profile-metrics-secondary">
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Inbound</span>
-                <span class="td-profile-metric-value td-purple">{{ "{:,}".format(rep_metrics.inbound) }}</span>
+                <a class="td-profile-metric-value td-profile-metric-link td-purple"
+                   href="{{ url_for('bulk_account_view', rep_name=rep_name, view='metric', metric='inbound', period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(rep_metrics.inbound) }}</a>
             </div>
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Outbound</span>
-                <span class="td-profile-metric-value td-cyan">{{ "{:,}".format(rep_metrics.outbound) }}</span>
+                <a class="td-profile-metric-value td-profile-metric-link td-cyan"
+                   href="{{ url_for('bulk_account_view', rep_name=rep_name, view='metric', metric='outbound', period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(rep_metrics.outbound) }}</a>
             </div>
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Pending</span>

@@ -45,6 +45,7 @@
         {% if not all_time %}
         <form class="td-period-form" method="get" action="">
             <input type="hidden" name="view" value="{{ view }}">
+            {% if view == 'metric' %}<input type="hidden" name="metric" value="{{ metric }}">{% endif %}
             <select name="period" id="period-select" class="td-select">
                 <option value="today" {{ 'selected' if period == 'today' else '' }}>Today</option>
                 <option value="yesterday" {{ 'selected' if period == 'yesterday' else '' }}>Yesterday</option>

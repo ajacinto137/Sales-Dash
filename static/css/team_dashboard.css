@@ -674,6 +674,68 @@ a.td-record-rep:hover {
     font-size: 9px;
 }
 
+/* ---------------- Bulk Account View: Table mode (CSS Grid) ----------------
+   Deliberately NOT a <table>/<th>/<td> -- every header cell and every data
+   cell is a direct child of ONE .td-bulk-grid container and shares the
+   SAME grid-template-columns, defined exactly once below. CSS Grid
+   computes each column's track width a single time for the whole grid and
+   applies it to every row, so a header label and the data beneath it are
+   structurally the same column and cannot drift apart. This replaced an
+   earlier <table>-based version (table-layout: fixed + <colgroup> +
+   <button> sort headers) that looked correct on paper (verified
+   server-side, byte-for-byte) but still rendered misaligned for the user
+   -- likely a <button> native-widget rendering quirk overriding authored
+   text-align/display. Plain <div>s have no such native rendering, which
+   is why this version uses a clickable/focusable div (role="columnheader"
+   tabindex="0") instead of a <button> for the sort headers. */
+.td-bulk-grid {
+    display: grid;
+    grid-template-columns: 15% 14% 15% 34% 12% 10%;
+    min-width: 720px;
+    font-size: 13px;
+}
+
+.td-bulk-grid-row {
+    /* No box of its own -- its 6 cell children render as direct grid
+       items (so they align with the header/other rows' same column), but
+       stay grouped under one DOM node so the sort handler can reorder an
+       entire row with a single appendChild(). */
+    display: contents;
+}
+
+.td-bulk-grid-cell {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--td-border-soft);
+    overflow-wrap: break-word;
+}
+
+.td-bulk-grid-row:last-child .td-bulk-grid-cell {
+    border-bottom: none;
+}
+
+.td-bulk-grid-head {
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+    border-bottom: 1px solid var(--td-border);
+    cursor: pointer;
+    user-select: none;
+}
+
+.td-bulk-grid-head:hover {
+    color: var(--td-text-primary);
+}
+
+.td-bulk-grid-head.td-sort-active {
+    color: var(--td-cyan);
+}
+
 .td-table tbody td {
     padding: 14px 16px;
     border-bottom: 1px solid var(--td-border-soft);
@@ -691,6 +753,15 @@ a.td-record-rep:hover {
 
 .td-row-link:hover {
     background: var(--td-panel-alt);
+}
+
+.td-metric-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.td-metric-link:hover {
+    text-decoration: underline;
 }
 
 .td-row-selected {
@@ -953,6 +1024,12 @@ a.td-record-rep:hover {
    apply everywhere the component is used -- see README.md
    "Reusable Views". */
 
+.td-bulk-view-toggle-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 14px;
+}
+
 .td-bulk-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -996,6 +1073,14 @@ a.td-record-rep:hover {
 .td-bulk-status-pending { color: var(--td-yellow); background: var(--td-yellow-bg); }
 .td-bulk-status-cancelled { color: var(--td-orange); background: var(--td-orange-bg); }
 .td-bulk-status-needs-attention { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
+
+.td-bulk-channel {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-accent-blue);
+}
 
 .td-bulk-address {
     font-size: 12.5px;

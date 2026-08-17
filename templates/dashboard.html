@@ -487,12 +487,12 @@
                             <a class="td-rep-link"
                                href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ row.sales_rep }}</a>
                         </td>
-                        <td class="td-text-primary">{{ row.sales }}</td>
-                        <td class="td-cyan">{{ row.outbound }}</td>
-                        <td class="td-purple">{{ row.inbound }}</td>
-                        <td class="td-green">{{ row.installs }}</td>
-                        <td class="td-yellow">{{ row.pending }}</td>
-                        <td class="td-magenta">{{ row.needs_attention }}</td>
+                        {% for metric_key, metric_class in [('sales', 'td-text-primary'), ('outbound', 'td-cyan'), ('inbound', 'td-purple'), ('installs', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta')] %}
+                        <td class="{{ metric_class }}">
+                            <a class="td-metric-link"
+                               href="{{ url_for('bulk_account_view', rep_name=row.sales_rep, view='metric', metric=metric_key, period=period, start=custom_start, end=custom_end) }}">{{ row[metric_key] }}</a>
+                        </td>
+                        {% endfor %}
                         <td class="td-green">{% if row.install_rate is not none %}{{ "%.1f"|format(row.install_rate) }}%{% else %}—{% endif %}</td>
                     </tr>
                     {% else %}

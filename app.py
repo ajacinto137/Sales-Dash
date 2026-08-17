@@ -32,6 +32,7 @@ from sales_metrics import (
     get_bulk_account_view,
     get_calendar_day_account_view,
     get_channel_account_view,
+    get_leaderboard_metric_account_view,
     sort_rep_rows,
 )
 
@@ -677,15 +678,21 @@ def bulk_account_view(rep_name):
     period = request.args.get("period", "this_month")
     custom_start = request.args.get("start", "")
     custom_end = request.args.get("end", "")
+    metric = request.args.get("metric", "")
 
-    # "channel" and "date" are runtime-parameterized drill-downs from the
-    # Rep Profile's SalesByChannelChart / Sales Activity calendar -- they
-    # deliberately bypass BULK_ACCOUNT_VIEWS (whose filters take no
-    # runtime argument) rather than being added to it. The 3 registry
-    # entries below (pending/needs_attention/all_sales) are unchanged.
+    # "channel", "date", and "metric" are runtime-parameterized drill-downs
+    # (from the Rep Profile's SalesByChannelChart / Sales Activity
+    # calendar, and the Individual Rep Leaderboard's metric cells,
+    # respectively) -- they deliberately bypass BULK_ACCOUNT_VIEWS (whose
+    # filters take no runtime argument) rather than being added to it. The
+    # 3 registry entries below (pending/needs_attention/all_sales) are
+    # unchanged.
     if view == "channel":
         channel = request.args.get("channel", "")
         view_title, accounts = get_channel_account_view(normalized, rep_name, channel, period, custom_start, custom_end)
+        all_time = False
+    elif view == "metric":
+        view_title, accounts = get_leaderboard_metric_account_view(normalized, rep_name, metric, period, custom_start, custom_end)
         all_time = False
     elif view == "date":
         try:
@@ -708,6 +715,7 @@ def bulk_account_view(rep_name):
         rep_name=rep_name,
         view=view,
         view_title=view_title,
+        metric=metric,
         accounts=accounts,
         period=period,
         custom_start=custom_start,
