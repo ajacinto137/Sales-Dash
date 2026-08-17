@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ rep_name }} — Rep Profile — Planet Networks</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
 </head>
 <body class="td-body">
 <div class="td-topnav">
@@ -70,7 +72,7 @@
         <div class="td-profile-metrics-primary">
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Total Sales</span>
-                <span class="td-profile-metric-value td-text-primary">{{ "{:,}".format(rep_metrics.sales) }}</span>
+                <span class="td-profile-metric-value td-text-primary td-gradient-text">{{ "{:,}".format(rep_metrics.sales) }}</span>
             </div>
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Installed</span>
@@ -98,45 +100,57 @@
                 <a class="td-profile-metric-value td-profile-metric-link td-yellow"
                    href="{{ url_for('bulk_account_view', rep_name=rep_name, view='pending', period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(rep_metrics.pending) }}</a>
             </div>
-            <div class="td-profile-metric">
-                <span class="td-profile-metric-label">Cancelled</span>
-                <span class="td-profile-metric-value td-orange">{{ "{:,}".format(rep_metrics.cancels) }}</span>
+        </div>
+
+        <!-- ================= Sales Activity =================
+             Canonical name: "Sales Activity". Pairs a rep-scoped Sales
+             Calendar (answers "when did this rep sell?") with the
+             MonthlySalesChart (answers "how much?"). Always all-time,
+             independent of the page's period filter, with its own
+             cal_year/cal_month month nav -- same convention as the Team
+             Leaderboard's Sales Calendar. See README.md "Rep Profile
+             Page — Section Names". -->
+        <div class="td-section">
+            <div class="td-section-heading">
+                <h2>Sales Activity</h2>
+                <span class="td-muted-inline">{{ rep_monthly_activity.total }} in {{ rep_monthly_activity.month_label }} &middot; independent of the period filter above</span>
             </div>
-            <div class="td-profile-metric">
-                <span class="td-profile-metric-label">Cancel Rate</span>
-                <span class="td-profile-metric-value td-orange">
-                    {% if rep_metrics.cancel_rate is not none %}{{ "%.1f"|format(rep_metrics.cancel_rate) }}%{% else %}—{% endif %}
-                </span>
+
+            <div class="td-activity-split">
+                {% include "_rep_sales_calendar.html" %}
+
+                {% set chart_id = "monthly-sales-chart" %}
+                {% set chart_title = "Monthly Sales" %}
+                {% set chart_subtitle = rep_monthly_activity.month_label %}
+                {% set chart_empty = rep_monthly_activity.total == 0 %}
+                {% set chart_empty_message = "No sales recorded for this period." %}
+                {% set chart_canvas_attrs %}data-days='{{ rep_monthly_activity.days|tojson }}' data-year="{{ rep_monthly_activity.year }}" data-month="{{ rep_monthly_activity.month }}" data-drilldown-base="{{ url_for('bulk_account_view', rep_name=rep_name, view='date') }}"{% endset %}
+                {% include "_chart_card.html" %}
             </div>
         </div>
 
+        <!-- ================= Channel & Time-of-Day Performance =================
+             Canonical name: "Channel & Time-of-Day Performance". Merged
+             2026-08-16 (by request -- "Sales by Channel and Sales by Hour
+             can be in one row but you can toggle between the two
+             charts") from two separate full-width sections into one row
+             with a segmented-control toggle. Both charts still read
+             calculate_channel_breakdown()/calculate_hourly_breakdown()
+             unchanged, period-filtered. SalesByChannelChart bars are
+             still clickable and open a channel-scoped Bulk Account View;
+             HourlySalesChart has no drill-down. See README.md "Rep
+             Profile Page — Section Names". -->
         <div class="td-section">
             <div class="td-section-heading">
-                <h2>Sales by Channel</h2>
+                <h2>Channel &amp; Time-of-Day Performance</h2>
                 <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }}</span>
             </div>
 
-            <div class="td-channel-columns">
-                <div class="td-channel-column td-channel-column-inbound">
-                    <h3 class="td-channel-column-title">Inbound</h3>
-                    {% for row in channel_breakdown if row.direction == 'inbound' %}
-                    <div class="td-channel-row">
-                        <span class="td-channel-name">{{ row.channel }}</span>
-                        <span class="td-channel-count td-purple">{{ row.count }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-
-                <div class="td-channel-column td-channel-column-outbound">
-                    <h3 class="td-channel-column-title">Outbound</h3>
-                    {% for row in channel_breakdown if row.direction == 'outbound' %}
-                    <div class="td-channel-row">
-                        <span class="td-channel-name">{{ row.channel }}</span>
-                        <span class="td-channel-count td-cyan">{{ row.count }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
+            {% set toggle_id = "channel-hourly-toggle" %}
+            {% set channel_canvas_id = "channel-chart" %}
+            {% set hourly_canvas_id = "hourly-chart" %}
+            {% set channel_drilldown_url = url_for('bulk_account_view', rep_name=rep_name, view='channel', period=period, start=custom_start, end=custom_end) %}
+            {% include "_channel_hourly_toggle.html" %}
         </div>
     </section>
 

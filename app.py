@@ -20,13 +20,18 @@ from sales_metrics import (
     calculate_calendar_sales,
     calculate_channel_breakdown,
     calculate_daily_averages,
+    calculate_hourly_breakdown,
     calculate_monthly_forecast,
+    calculate_monthly_sales_trend,
     calculate_needs_attention,
     calculate_records,
     calculate_rep_metrics,
+    calculate_rep_monthly_activity,
     calculate_total_daily_sales,
     filter_by_period,
     get_bulk_account_view,
+    get_calendar_day_account_view,
+    get_channel_account_view,
     sort_rep_rows,
 )
 
@@ -529,6 +534,18 @@ def dashboard_page():
     calendar_data = calculate_calendar_sales(normalized, cal_year, cal_month)
     monthly_forecast = calculate_monthly_forecast(normalized)
 
+    # Always all-time / independent of the period filter -- a 12-month
+    # trend isn't meaningful squeezed into a single period-filter window,
+    # same reasoning as Records/Calendar above.
+    monthly_sales_trend = calculate_monthly_sales_trend(normalized)
+
+    # Team-wide, period-filtered -- same convention as the Individual Rep
+    # Leaderboard table (period_df), just not scoped to one rep. Reuses
+    # the exact same functions the Rep Profile's Channel Performance /
+    # Time-of-Day Performance sections already use.
+    channel_breakdown = calculate_channel_breakdown(period_df)
+    hourly_breakdown = calculate_hourly_breakdown(period_df)
+
     return render_template(
         "dashboard.html",
         active_page="dashboard",
@@ -547,6 +564,9 @@ def dashboard_page():
         records=records,
         calendar_data=calendar_data,
         monthly_forecast=monthly_forecast,
+        monthly_sales_trend=monthly_sales_trend,
+        channel_breakdown=channel_breakdown,
+        hourly_breakdown=hourly_breakdown,
         last_refreshed=data_store["last_refreshed"],
     )
 
@@ -586,6 +606,7 @@ def rep_profile(rep_name):
         "installs": 0,
         "pending": 0,
         "cancels": 0,
+        "needs_attention": 0,
         "install_rate": None,
         "cancel_rate": None,
     }
@@ -596,6 +617,22 @@ def rep_profile(rep_name):
         else None
     )
     channel_breakdown = calculate_channel_breakdown(rep_period_df)
+    hourly_breakdown = calculate_hourly_breakdown(rep_period_df)
+
+    # Eastern, not the container's raw UTC clock -- same reasoning as the
+    # Team Leaderboard's own cal_year/cal_month block (see _today() in
+    # sales_metrics.py). Independent of the page's period filter, same
+    # convention as the Team Leaderboard's Sales Calendar.
+    today = datetime.now(EASTERN_TZ)
+    try:
+        cal_year = int(request.args.get("cal_year", today.year))
+        cal_month = int(request.args.get("cal_month", today.month))
+        if not 1 <= cal_month <= 12:
+            raise ValueError
+    except (TypeError, ValueError):
+        cal_year, cal_month = today.year, today.month
+
+    rep_monthly_activity = calculate_rep_monthly_activity(normalized, rep_name, cal_year, cal_month)
 
     # Always all-time, independent of the period filter -- see
     # calculate_needs_attention()'s docstring.
@@ -610,6 +647,8 @@ def rep_profile(rep_name):
         custom_end=custom_end,
         rep_metrics=rep_metrics,
         channel_breakdown=channel_breakdown,
+        hourly_breakdown=hourly_breakdown,
+        rep_monthly_activity=rep_monthly_activity,
         needs_attention=needs_attention,
         needs_attention_count=len(needs_attention),
         last_refreshed=data_store["last_refreshed"],
@@ -635,14 +674,33 @@ def bulk_account_view(rep_name):
         abort(404)
 
     view = request.args.get("view", "")
-    if view not in BULK_ACCOUNT_VIEWS:
-        abort(404)
-
     period = request.args.get("period", "this_month")
     custom_start = request.args.get("start", "")
     custom_end = request.args.get("end", "")
 
-    view_title, accounts = get_bulk_account_view(normalized, rep_name, view, period, custom_start, custom_end)
+    # "channel" and "date" are runtime-parameterized drill-downs from the
+    # Rep Profile's SalesByChannelChart / Sales Activity calendar -- they
+    # deliberately bypass BULK_ACCOUNT_VIEWS (whose filters take no
+    # runtime argument) rather than being added to it. The 3 registry
+    # entries below (pending/needs_attention/all_sales) are unchanged.
+    if view == "channel":
+        channel = request.args.get("channel", "")
+        view_title, accounts = get_channel_account_view(normalized, rep_name, channel, period, custom_start, custom_end)
+        all_time = False
+    elif view == "date":
+        try:
+            view_title, accounts = get_calendar_day_account_view(
+                normalized, rep_name,
+                int(request.args.get("year", 0)), int(request.args.get("month", 0)), int(request.args.get("day", 0)),
+            )
+        except (TypeError, ValueError):
+            abort(404)
+        all_time = True
+    elif view in BULK_ACCOUNT_VIEWS:
+        view_title, accounts = get_bulk_account_view(normalized, rep_name, view, period, custom_start, custom_end)
+        all_time = BULK_ACCOUNT_VIEWS[view]["all_time"]
+    else:
+        abort(404)
 
     return render_template(
         "bulk_account_view.html",
@@ -654,7 +712,7 @@ def bulk_account_view(rep_name):
         period=period,
         custom_start=custom_start,
         custom_end=custom_end,
-        all_time=BULK_ACCOUNT_VIEWS[view]["all_time"],
+        all_time=all_time,
         last_refreshed=data_store["last_refreshed"],
     )
 
@@ -675,14 +733,24 @@ def all_sales_view():
     )
 
     view = request.args.get("view", "all_sales")
-    if view not in BULK_ACCOUNT_VIEWS:
-        abort(404)
-
     period = request.args.get("period", "today")
     custom_start = request.args.get("start", "")
     custom_end = request.args.get("end", "")
 
-    view_title, accounts = get_bulk_account_view(normalized, None, view, period, custom_start, custom_end)
+    # "channel" is a runtime-parameterized drill-down from the Team
+    # Leaderboard's Channel Performance chart -- same reasoning as its
+    # rep-scoped counterpart in bulk_account_view() above: it deliberately
+    # bypasses BULK_ACCOUNT_VIEWS since the channel is a click value, not
+    # a filter fixed at import time. rep=None here scopes team-wide.
+    if view == "channel":
+        channel = request.args.get("channel", "")
+        view_title, accounts = get_channel_account_view(normalized, None, channel, period, custom_start, custom_end)
+        all_time = False
+    elif view in BULK_ACCOUNT_VIEWS:
+        view_title, accounts = get_bulk_account_view(normalized, None, view, period, custom_start, custom_end)
+        all_time = BULK_ACCOUNT_VIEWS[view]["all_time"]
+    else:
+        abort(404)
 
     return render_template(
         "bulk_account_view.html",
@@ -694,7 +762,7 @@ def all_sales_view():
         period=period,
         custom_start=custom_start,
         custom_end=custom_end,
-        all_time=BULK_ACCOUNT_VIEWS[view]["all_time"],
+        all_time=all_time,
         last_refreshed=data_store["last_refreshed"],
     )
 

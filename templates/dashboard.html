@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Team Leaderboard — Planet Networks</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
 </head>
 <body class="td-body">
 <div class="td-topnav">
@@ -73,7 +75,7 @@
     <section class="td-kpi-bar">
         <div class="td-kpi">
             <span class="td-kpi-label">Monthly Sales</span>
-            <span class="td-kpi-value td-text-primary">{{ "{:,}".format(monthly_forecast.month_to_date) }}</span>
+            <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(monthly_forecast.month_to_date) }}</span>
             <span class="td-kpi-note">{{ monthly_forecast.month_label }} to date</span>
         </div>
         <div class="td-kpi">
@@ -97,72 +99,120 @@
         </div>
     </section>
 
-    <!-- ================= Sales Calendar =================
-         Canonical name: "Sales Calendar". Navigable month-by-
-         month calendar of team total sales per day. Always
-         reads the full all-time dataset (independent of the
-         page's period filter), same reasoning as Planet
-         Networks Records. See README.md
+    <!-- ================= Sales Calendar & Monthly Sales Trend =================
+         Canonical name: "Sales Calendar & Monthly Sales Trend". Merged
+         2026-08-16 (by request -- "Monthly Sales trend and monthly Sales
+         calendar can be in the same row") from two separate full-width
+         sections into one row, reusing the same .td-activity-split 2-col
+         layout as the Individual Sales Profile's Sales Activity section
+         (calendar left, chart right; stacks on mobile/tablet). Both
+         halves keep their own canonical sub-names -- "Sales Calendar"
+         (navigable month-by-month calendar of team total sales per day)
+         and "Monthly Sales Trend" (MonthlySalesTrendChart line chart,
+         team-wide total sales per calendar month, trailing 12 months).
+         Both always read the full all-time dataset, independent of the
+         page's period filter, same reasoning as Planet Networks Records.
+         Distinct from the Individual Sales Profile's MonthlySalesChart,
+         which is per-rep and day-granularity within one month; this is
+         team-wide and month-granularity across a year. See README.md
          "Team Leaderboard Page — Section Names". -->
     <section class="td-section">
         <div class="td-section-heading">
-            <h2>Sales Calendar</h2>
-            <span class="td-muted-inline">Team total sales per day &middot; {{ calendar_data.total }} in {{ calendar_data.month_label }}</span>
+            <h2>Sales Calendar &amp; Monthly Sales Trend</h2>
+            <span class="td-muted-inline">Team total sales per day &amp; per month &middot; {{ calendar_data.total }} in {{ calendar_data.month_label }} &middot; independent of the period filter above</span>
         </div>
 
-        <div class="td-calendar-card">
-            <div class="td-calendar-nav">
-                <a class="td-btn td-btn-ghost"
-                   href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.prev_year, cal_month=calendar_data.prev_month) }}">&larr; Prev</a>
-                <span class="td-calendar-month-label">{{ calendar_data.month_label }}</span>
-                <a class="td-btn td-btn-ghost"
-                   href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.next_year, cal_month=calendar_data.next_month) }}">Next &rarr;</a>
-            </div>
+        <div class="td-activity-split">
+            <div class="td-calendar-card">
+                <div class="td-calendar-nav">
+                    <a class="td-btn td-btn-ghost"
+                       href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.prev_year, cal_month=calendar_data.prev_month) }}">&larr; Prev</a>
+                    <span class="td-calendar-month-label">{{ calendar_data.month_label }}</span>
+                    <a class="td-btn td-btn-ghost"
+                       href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.next_year, cal_month=calendar_data.next_month) }}">Next &rarr;</a>
+                </div>
 
-            <div class="td-calendar-scroll">
-                <div class="td-calendar-inner">
-                    <div class="td-calendar-grid td-calendar-weekdays">
-                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                    </div>
-                    {% for week in calendar_data.weeks %}
-                    <div class="td-calendar-grid">
-                        {% for cell in week %}
-                            {% if cell %}
-                            <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
-                                <span class="td-calendar-day">{{ cell.day }}</span>
-                                <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
-                            </div>
-                            {% else %}
-                            <div class="td-calendar-cell td-calendar-cell-pad"></div>
-                            {% endif %}
+                <div class="td-calendar-scroll">
+                    <div class="td-calendar-inner">
+                        <div class="td-calendar-grid td-calendar-weekdays">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        {% for week in calendar_data.weeks %}
+                        <div class="td-calendar-grid">
+                            {% for cell in week %}
+                                {% if cell %}
+                                <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
+                                    <span class="td-calendar-day">{{ cell.day }}</span>
+                                    <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
+                                </div>
+                                {% else %}
+                                <div class="td-calendar-cell td-calendar-cell-pad"></div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
                         {% endfor %}
                     </div>
-                    {% endfor %}
                 </div>
             </div>
+
+            {% set chart_id = "team-monthly-trend-chart" %}
+            {% set chart_title = "Monthly Sales" %}
+            {% set chart_subtitle = "Trailing 12 months" %}
+            {% set chart_empty = monthly_sales_trend|sum(attribute='count') == 0 %}
+            {% set chart_empty_message = "No sales recorded yet." %}
+            {% set chart_canvas_attrs %}data-months='{{ monthly_sales_trend|tojson }}'{% endset %}
+            {% include "_chart_card.html" %}
         </div>
     </section>
 
-    <!-- ================= Planet Networks Records =================
-         Canonical name: "Planet Networks Records" (aka "Records
-         Section"). All-time single-rep bests (Best Days/Weeks/
-         Months Ever) plus live top-3 rep leaderboards for the
-         ongoing day/week/month/year (Daily/Weekly/Monthly/
-         Yearly Sales), plus the reps behind the last 3 sales
-         made (Last 3 Sales, added 2026-08-14) and a separate
-         card naming the last 3 accounts sold (Last 3 Accounts
-         Sold, added 2026-08-14), which also carries the "View
-         All Sales" button (top-right corner of that card) to
-         the team-wide, time-frame-filterable Bulk Account View
-         (defaults to today). See README.md "Team Leaderboard
-         Page — Section Names". -->
+    <!-- ================= Channel & Time-of-Day Performance =================
+         Canonical name: "Channel & Time-of-Day Performance". Merged
+         2026-08-16 (by request) from two separate full-width sections
+         (Channel Performance, Time-of-Day Performance) into one row with
+         a segmented-control toggle -- same pattern as the Individual
+         Sales Profile's own merged version. Team-wide, period-filtered
+         (same period_df as the Individual Rep Leaderboard table),
+         reusing calculate_channel_breakdown()/calculate_hourly_breakdown()
+         unchanged. SalesByChannelChart bars are clickable and open a
+         channel-scoped, team-wide Bulk Account View; HourlySalesChart has
+         no drill-down. Note: an earlier per-rep "Sales by Channel"
+         breakdown table used to sit on this page and was removed by
+         request 2026-08-14 -- this is a different aggregate chart (not a
+         per-rep table) reintroduced 2026-08-16 at explicit user request.
+         See README.md "Team Leaderboard Page — Section Names". -->
     <section class="td-section">
         <div class="td-section-heading">
-            <h2>Planet Networks Records</h2>
-            <span class="td-muted-inline">All-time bests &amp; current leaders</span>
+            <h2>Channel &amp; Time-of-Day Performance</h2>
+            <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }}</span>
         </div>
 
-        <div class="td-records-grid">
+        {% set toggle_id = "team-channel-hourly-toggle" %}
+        {% set channel_canvas_id = "team-channel-chart" %}
+        {% set hourly_canvas_id = "team-hourly-chart" %}
+        {% set channel_drilldown_url = url_for('all_sales_view', view='channel', period=period, start=custom_start, end=custom_end) %}
+        {% include "_channel_hourly_toggle.html" %}
+    </section>
+
+    <!-- ================= Planet Networks Records =================
+         Canonical name: "Planet Networks Records". All-time
+         single-rep bests only: Best Days Ever, Best Weeks Ever,
+         Best Months Ever. Always reads the full all-time dataset,
+         independent of the page's period filter. Historical
+         records live here; current leaderboards and live activity
+         were split out into their own sections below (reorganized
+         2026-08-16). Collapsed by default via a native <details>
+         disclosure (no JS needed) -- click the heading to expand/
+         collapse (added 2026-08-16, by request). See README.md
+         "Team Leaderboard Page — Section Names". -->
+    <section class="td-section">
+        <details class="td-collapsible">
+            <summary class="td-section-heading td-collapsible-summary">
+                <h2>Planet Networks Records</h2>
+                <span class="td-muted-inline">All-time individual sales achievements</span>
+                <span class="td-collapsible-chevron" aria-hidden="true">&#9662;</span>
+            </summary>
+
+            <div class="td-records-grid td-records-grid--records">
             <div class="td-record-card">
                 <h3>Best Days Ever</h3>
                 {% if records.best_days %}
@@ -171,7 +221,7 @@
                     <li>
                         <span class="td-rank-badge">{{ loop.index }}</span>
                         <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
                             <span class="td-record-meta">{{ r.label }}</span>
                         </span>
                         <span class="td-record-count">{{ r.count }}</span>
@@ -191,7 +241,7 @@
                     <li>
                         <span class="td-rank-badge">{{ loop.index }}</span>
                         <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
                             <span class="td-record-meta">{{ r.label }}</span>
                         </span>
                         <span class="td-record-count">{{ r.count }}</span>
@@ -211,7 +261,7 @@
                     <li>
                         <span class="td-rank-badge">{{ loop.index }}</span>
                         <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
                             <span class="td-record-meta">{{ r.label }}</span>
                         </span>
                         <span class="td-record-count">{{ r.count }}</span>
@@ -222,26 +272,28 @@
                 <p class="td-empty">No data yet.</p>
                 {% endif %}
             </div>
+        </div>
+        </details>
+    </section>
 
-            <div class="td-record-card">
-                <h3>Daily Sales</h3>
-                {% if records.daily_leaders %}
-                <ol class="td-record-list">
-                    {% for r in records.daily_leaders %}
-                    <li>
-                        <span class="td-rank-badge">{{ loop.index }}</span>
-                        <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
-                        </span>
-                        <span class="td-record-count">{{ r.count }}</span>
-                    </li>
-                    {% endfor %}
-                </ol>
-                {% else %}
-                <p class="td-empty">No data yet.</p>
-                {% endif %}
-            </div>
+    <!-- ================= Current Sales Leaders =================
+         Canonical name: "Current Sales Leaders". Live top-3 rep
+         leaderboards for the ongoing week/month/year (Weekly,
+         Monthly, Yearly Sales) -- who's leading right now, as
+         opposed to the all-time bests in Planet Networks Records
+         above. Daily Sales moved to Live Sales Activity 2026-08-16
+         (by request, for a more even 3+3 card split between this
+         section and that one) -- each remaining card still applies
+         its own fixed time window internally; this section is
+         independent of the page's period filter. See README.md
+         "Team Leaderboard Page — Section Names". -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Current Sales Leaders</h2>
+            <span class="td-muted-inline">Top-performing reps across current periods</span>
+        </div>
 
+        <div class="td-records-grid td-records-grid--leaders">
             <div class="td-record-card">
                 <h3>Weekly Sales</h3>
                 {% if records.weekly_leaders %}
@@ -250,7 +302,7 @@
                     <li>
                         <span class="td-rank-badge">{{ loop.index }}</span>
                         <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
                         </span>
                         <span class="td-record-count">{{ r.count }}</span>
                     </li>
@@ -269,7 +321,7 @@
                     <li>
                         <span class="td-rank-badge">{{ loop.index }}</span>
                         <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
                         </span>
                         <span class="td-record-count">{{ r.count }}</span>
                     </li>
@@ -288,7 +340,53 @@
                     <li>
                         <span class="td-rank-badge">{{ loop.index }}</span>
                         <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
+                        </span>
+                        <span class="td-record-count">{{ r.count }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No data yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= Live Sales Activity =================
+         Canonical name: "Live Sales Activity". What just
+         happened, plus today's leaderboard: Daily Sales (moved
+         here from Current Sales Leaders 2026-08-16, by request,
+         for a more even 3+3 split between the two sections -- same
+         records.daily_leaders data, unchanged), the reps behind
+         the most recent sales (Latest Sales), and the accounts
+         behind those same sales (Latest Accounts Sold), which also
+         carries the "View All Sales" button (top-right corner of
+         that card) to the team-wide, time-frame-filterable Bulk
+         Account View (defaults to today). Latest Sales/Latest
+         Accounts Sold render the same records.recent_sales list
+         (currently the last 3 sales) -- the displayed count is a
+         card-level display detail, not part of the section's or
+         cards' identity, and may change later. Now a 3-column grid
+         (`.td-activity-grid`, widened 2026-08-16 to fit the third
+         card). See README.md "Team Leaderboard Page — Section
+         Names". -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Live Sales Activity</h2>
+            <span class="td-muted-inline">Most recent sales activity across Planet Networks</span>
+        </div>
+
+        <div class="td-activity-grid td-activity-grid--activity">
+            <div class="td-record-card">
+                <h3>Daily Sales</h3>
+                {% if records.daily_leaders %}
+                <ol class="td-record-list">
+                    {% for r in records.daily_leaders %}
+                    <li>
+                        <span class="td-rank-badge">{{ loop.index }}</span>
+                        <span class="td-record-body">
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
                         </span>
                         <span class="td-record-count">{{ r.count }}</span>
                     </li>
@@ -300,14 +398,14 @@
             </div>
 
             <div class="td-record-card">
-                <h3>Last 3 Sales</h3>
+                <h3>Latest Sales</h3>
                 {% if records.recent_sales %}
                 <ol class="td-record-list">
                     {% for r in records.recent_sales %}
                     <li>
                         <span class="td-rank-badge">{{ loop.index }}</span>
                         <span class="td-record-body">
-                            <span class="td-record-rep">{{ r.rep }}</span>
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep, period=period, start=custom_start, end=custom_end) }}">{{ r.rep }}</a>
                             <span class="td-record-meta">{{ r.label }}</span>
                         </span>
                     </li>
@@ -320,7 +418,7 @@
 
             <div class="td-record-card">
                 <div class="td-record-card-head">
-                    <h3>Last 3 Accounts Sold</h3>
+                    <h3>Latest Accounts Sold</h3>
                     <a class="td-btn td-btn-primary td-record-card-action" href="{{ url_for('all_sales_view') }}">View All Sales</a>
                 </div>
                 {% if records.recent_sales %}
@@ -394,12 +492,11 @@
                         <td class="td-purple">{{ row.inbound }}</td>
                         <td class="td-green">{{ row.installs }}</td>
                         <td class="td-yellow">{{ row.pending }}</td>
-                        <td class="td-orange">{{ row.cancels }}</td>
+                        <td class="td-magenta">{{ row.needs_attention }}</td>
                         <td class="td-green">{% if row.install_rate is not none %}{{ "%.1f"|format(row.install_rate) }}%{% else %}—{% endif %}</td>
-                        <td class="td-orange">{% if row.cancel_rate is not none %}{{ "%.1f"|format(row.cancel_rate) }}%{% else %}—{% endif %}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="10" class="td-empty-row">No reps match the current filters.</td></tr>
+                    <tr><td colspan="9" class="td-empty-row">No reps match the current filters.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

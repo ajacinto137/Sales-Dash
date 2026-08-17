@@ -22,6 +22,39 @@
 
     --td-radius: 6px;
     --td-radius-sm: 4px;
+
+    /* ---------------- Chart design tokens (Rep Profile charts) ---------------- */
+    --td-chart-bg: transparent;
+    --td-chart-grid: rgba(244, 244, 245, 0.06);
+    --td-chart-axis-text: var(--td-text-muted);
+    --td-chart-tooltip-bg: #1c1c21;
+    --td-chart-tooltip-border: var(--td-border);
+    --td-chart-tooltip-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --td-chart-bar-radius: 4px;
+    --td-chart-line-width: 1.5px;
+    --td-chart-line-cumulative: rgba(244, 244, 245, 0.35);
+    --td-chart-glow-blur: 18px;
+
+    /* Fixed-order palette matching SALES_CHANNELS in sales_metrics.py --
+       validated for lightness/chroma/contrast/CVD-safety against this
+       app's #0a0a0b background via the dataviz palette validator. */
+    --td-chart-channel-1: #3987e5;
+    --td-chart-channel-2: #d95926;
+    --td-chart-channel-3: #199e70;
+    --td-chart-channel-4: #c98500;
+    --td-chart-channel-5: #d55181;
+    --td-chart-channel-6: #008300;
+    --td-chart-channel-7: #9085e9;
+    --td-chart-channel-8: #e66767;
+
+    --td-accent-blue: #3987e5;
+    --td-accent-blue-bg: rgba(57, 135, 229, 0.12);
+    --td-accent-violet: #9085e9;
+    --td-accent-violet-bg: rgba(144, 133, 233, 0.12);
+    --td-accent-magenta: #d55181;
+    --td-accent-magenta-bg: rgba(213, 81, 129, 0.12);
+    --td-accent-lime: #65a30d;
+    --td-accent-lime-bg: rgba(101, 163, 13, 0.12);
 }
 
 * { box-sizing: border-box; }
@@ -73,6 +106,7 @@ html, body.td-body {
 
 .td-topnav-links a.td-topnav-active {
     color: var(--td-cyan);
+    text-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
 }
 
 .td-topnav-right {
@@ -106,6 +140,11 @@ html, body.td-body {
     background: var(--td-text-primary);
     color: #0a0a0b;
     border-color: var(--td-text-primary);
+    transition: box-shadow 0.15s ease;
+}
+
+.td-btn-primary:hover {
+    box-shadow: 0 0 14px rgba(244, 244, 245, 0.25);
 }
 
 .td-btn-ghost {
@@ -195,9 +234,12 @@ html, body.td-body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    transition: box-shadow 0.15s ease;
 }
 
 .td-kpi:last-child { border-right: none; }
+
+.td-kpi:hover { box-shadow: 0 0 var(--td-chart-glow-blur) var(--td-accent-blue-bg); }
 
 .td-kpi-label {
     font-size: 11px;
@@ -226,6 +268,27 @@ html, body.td-body {
 .td-orange { color: var(--td-orange); }
 .td-purple { color: var(--td-purple); }
 .td-cyan { color: var(--td-cyan); }
+.td-magenta { color: var(--td-accent-magenta); }
+
+/* ---------------- Glow / gradient utilities ----------------
+   Used selectively (a handful of specific elements below), not applied
+   globally -- restrained neon accents on a dark neutral surface, not a
+   wholesale re-skin. */
+
+.td-glow-blue:hover {
+    box-shadow: 0 0 var(--td-chart-glow-blur) var(--td-accent-blue-bg);
+}
+
+.td-glow-lime:hover {
+    box-shadow: 0 0 var(--td-chart-glow-blur) var(--td-accent-lime-bg);
+}
+
+.td-gradient-text {
+    background: linear-gradient(90deg, var(--td-accent-blue), var(--td-accent-violet));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
 
 /* ---------------- Section heading ---------------- */
 
@@ -254,9 +317,43 @@ html, body.td-body {
     color: var(--td-text-secondary);
 }
 
+/* ---------------- Collapsible section (native <details>, no JS) ---------------- */
+
+.td-collapsible-summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.td-collapsible-summary::-webkit-details-marker { display: none; }
+.td-collapsible-summary::marker { content: ""; }
+
+.td-collapsible-summary:hover h2 { color: var(--td-accent-blue); }
+
+.td-collapsible-chevron {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--td-text-muted);
+    transition: transform 0.15s ease;
+}
+
+.td-collapsible[open] .td-collapsible-chevron {
+    transform: rotate(180deg);
+}
+
+.td-collapsible > .td-records-grid,
+.td-collapsible > .td-activity-grid {
+    margin-top: 14px;
+}
+
 /* ---------------- Records ---------------- */
 
 .td-records-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.td-activity-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 16px;
@@ -267,6 +364,11 @@ html, body.td-body {
     border: 1px solid var(--td-border);
     border-radius: var(--td-radius);
     padding: 16px 18px;
+    transition: box-shadow 0.15s ease;
+}
+
+.td-record-card:hover {
+    box-shadow: 0 0 var(--td-chart-glow-blur) var(--td-accent-blue-bg);
 }
 
 .td-record-card h3 {
@@ -333,6 +435,28 @@ html, body.td-body {
     justify-content: center;
 }
 
+/* Color-code the top 3 positions in every record/leader/activity list --
+   a plain gray badge on every row read as flat and monochrome, so rank 1-3
+   each get one of the neon accents with a matching subtle glow. */
+.td-record-list li:nth-child(1) .td-rank-badge {
+    background: var(--td-accent-lime-bg);
+    border-color: var(--td-accent-lime);
+    color: var(--td-accent-lime);
+    box-shadow: 0 0 8px var(--td-accent-lime-bg);
+}
+
+.td-record-list li:nth-child(2) .td-rank-badge {
+    background: var(--td-accent-blue-bg);
+    border-color: var(--td-accent-blue);
+    color: var(--td-accent-blue);
+}
+
+.td-record-list li:nth-child(3) .td-rank-badge {
+    background: var(--td-accent-violet-bg);
+    border-color: var(--td-accent-violet);
+    color: var(--td-accent-violet);
+}
+
 .td-record-body {
     display: flex;
     flex-direction: column;
@@ -349,6 +473,24 @@ html, body.td-body {
     text-overflow: ellipsis;
 }
 
+/* Latest Sales / Latest Accounts Sold names stay plain white by request
+   (2026-08-16) -- color on these rows lives on the rank badge instead. */
+
+/* Every rep name across the Team Leaderboard's record/leader/activity
+   cards links to that rep's Individual Sales Profile (added 2026-08-16,
+   by request) -- .td-record-rep is also used for the Latest Accounts
+   Sold card's plain (non-link) customer name, so the link-only treatment
+   is scoped to the anchor variant specifically. */
+a.td-record-rep {
+    text-decoration: none;
+    cursor: pointer;
+}
+
+a.td-record-rep:hover {
+    color: var(--td-accent-blue);
+    text-decoration: underline;
+}
+
 .td-record-meta {
     font-size: 11.5px;
     color: var(--td-text-muted);
@@ -357,8 +499,18 @@ html, body.td-body {
 .td-record-count {
     font-size: 16px;
     font-weight: 700;
-    color: var(--td-text-primary);
+    background: linear-gradient(90deg, var(--td-accent-blue), var(--td-accent-violet));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
 }
+
+/* Per-section accent so Planet Networks Records / Current Sales Leaders /
+   Live Sales Activity read as three distinct groups, not one long gray
+   grid of identical cards. */
+.td-records-grid--records .td-record-card { border-top: 2px solid var(--td-accent-violet); }
+.td-records-grid--leaders .td-record-card { border-top: 2px solid var(--td-accent-blue); }
+.td-activity-grid--activity .td-record-card { border-top: 2px solid var(--td-accent-lime); }
 
 .td-empty {
     margin: 0;
@@ -699,7 +851,7 @@ html, body.td-body {
 }
 
 .td-profile-metrics-secondary {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     margin-top: 12px;
 }
 
@@ -843,6 +995,7 @@ html, body.td-body {
 .td-bulk-status-installed { color: var(--td-green); background: var(--td-green-bg); }
 .td-bulk-status-pending { color: var(--td-yellow); background: var(--td-yellow-bg); }
 .td-bulk-status-cancelled { color: var(--td-orange); background: var(--td-orange-bg); }
+.td-bulk-status-needs-attention { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
 
 .td-bulk-address {
     font-size: 12.5px;
@@ -881,20 +1034,110 @@ html, body.td-body {
     font-size: 12.5px;
 }
 
+/* ---------------- Rep Profile: charts (Sales Activity / Channel / Hourly) ---------------- */
+
+.td-activity-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: stretch;
+}
+
+.td-chart-card {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: box-shadow 0.15s ease;
+}
+
+.td-chart-card:hover {
+    box-shadow: 0 0 var(--td-chart-glow-blur) var(--td-accent-blue-bg);
+}
+
+.td-chart-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.td-chart-card-head h3 {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+}
+
+.td-chart-canvas-wrap {
+    position: relative;
+    height: 260px;
+}
+
+/* ---------------- Chart toggle (Sales by Channel / Sales by Hour) ---------------- */
+
+.td-chart-toggle {
+    display: inline-flex;
+    gap: 4px;
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius-sm);
+    padding: 3px;
+}
+
+.td-chart-toggle-btn {
+    border: none;
+    background: transparent;
+    color: var(--td-text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: var(--td-radius-sm);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.td-chart-toggle-btn:hover {
+    color: var(--td-text-primary);
+}
+
+.td-chart-toggle-btn.td-chart-toggle-active {
+    background: var(--td-panel);
+    color: var(--td-text-primary);
+    box-shadow: 0 0 10px var(--td-accent-blue-bg);
+}
+
+.td-activity-calendar .td-calendar-cell {
+    cursor: pointer;
+    text-decoration: none;
+    transition: box-shadow 0.15s ease;
+}
+
+.td-activity-calendar .td-calendar-cell:hover {
+    box-shadow: 0 0 12px var(--td-accent-blue-bg);
+}
+
 /* ---------------- Responsive ---------------- */
 
 @media (max-width: 900px) {
     .td-page { padding: 24px 20px 48px 20px; }
     .td-kpi { min-width: 33%; border-bottom: 1px solid var(--td-border-soft); }
-    .td-records-grid { grid-template-columns: 1fr; }
+    .td-records-grid, .td-activity-grid { grid-template-columns: repeat(2, 1fr); }
     .td-topnav { flex-wrap: wrap; row-gap: 10px; }
     .td-profile-metrics-primary { grid-template-columns: repeat(3, 1fr); }
     .td-profile-metrics-secondary { grid-template-columns: repeat(2, 1fr); }
     .td-channel-columns { grid-template-columns: 1fr; }
+    .td-activity-split { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
     .td-kpi { min-width: 50%; }
+    .td-records-grid, .td-activity-grid { grid-template-columns: 1fr; }
     .td-profile-metrics-primary { grid-template-columns: 1fr; }
     .td-profile-metrics-secondary { grid-template-columns: 1fr; }
     .td-bulk-list { grid-template-columns: 1fr; }

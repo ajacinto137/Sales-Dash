@@ -1,0 +1,35 @@
+<!-- Toggleable Sales by Channel / Sales by Hour chart card -- one row,
+     one card, a segmented control switches which chart is shown. Sales
+     by Hour is the default-shown chart (changed 2026-08-16, by request
+     -- "Sales by hour should display as default"); button/panel order
+     below is the single source of truth for the default, since
+     wireChartToggle() in charts.js activates whichever tab is listed
+     first. Expects toggle_id, channel_canvas_id, hourly_canvas_id,
+     channel_breakdown, hourly_breakdown, channel_drilldown_url set via
+     Jinja "set" statements before including. Both canvases are always
+     rendered (or their own empty-state message); wireChartToggle() shows
+     one panel at a time and lazily creates each chart the first time its
+     tab is activated. -->
+<div class="td-chart-card">
+    <div class="td-chart-card-head">
+        <div class="td-chart-toggle" id="{{ toggle_id }}">
+            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-toggle="hourly">Sales by Hour</button>
+            <button type="button" class="td-chart-toggle-btn" data-chart-toggle="channel">Sales by Channel</button>
+        </div>
+    </div>
+
+    <div class="td-chart-canvas-wrap" data-chart-panel="hourly">
+        {% if hourly_breakdown|sum(attribute='count') == 0 %}
+        <p class="td-empty">No sales recorded for this period.</p>
+        {% else %}
+        <canvas id="{{ hourly_canvas_id }}" data-chart-type="hourly" data-hours='{{ hourly_breakdown|tojson }}'></canvas>
+        {% endif %}
+    </div>
+    <div class="td-chart-canvas-wrap" data-chart-panel="channel" style="display: none;">
+        {% if channel_breakdown|sum(attribute='count') == 0 %}
+        <p class="td-empty">No sales recorded for this period.</p>
+        {% else %}
+        <canvas id="{{ channel_canvas_id }}" data-chart-type="channel" data-channels='{{ channel_breakdown|tojson }}' data-drilldown-base="{{ channel_drilldown_url }}"></canvas>
+        {% endif %}
+    </div>
+</div>

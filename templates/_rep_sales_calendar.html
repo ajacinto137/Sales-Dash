@@ -1,0 +1,38 @@
+<!-- Rep-scoped Sales Calendar, for the Sales Activity section of the
+     Individual Sales Profile. Adapted from dashboard.html's team-wide
+     .td-calendar-card; day cells link into a date-scoped Bulk Account
+     View instead of being static. Always all-time / independent of the
+     page's period filter, with its own cal_year/cal_month nav -- same
+     convention as the Team Leaderboard's Sales Calendar. -->
+<div class="td-calendar-card td-activity-calendar">
+    <div class="td-calendar-nav">
+        <a class="td-btn td-btn-ghost"
+           href="{{ url_for('rep_profile', rep_name=rep_name, period=period, start=custom_start, end=custom_end, cal_year=rep_monthly_activity.prev_year, cal_month=rep_monthly_activity.prev_month) }}">&larr; Prev</a>
+        <span class="td-calendar-month-label">{{ rep_monthly_activity.month_label }}</span>
+        <a class="td-btn td-btn-ghost"
+           href="{{ url_for('rep_profile', rep_name=rep_name, period=period, start=custom_start, end=custom_end, cal_year=rep_monthly_activity.next_year, cal_month=rep_monthly_activity.next_month) }}">Next &rarr;</a>
+    </div>
+
+    <div class="td-calendar-scroll">
+        <div class="td-calendar-inner">
+            <div class="td-calendar-grid td-calendar-weekdays">
+                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+            {% for week in rep_monthly_activity.weeks %}
+            <div class="td-calendar-grid">
+                {% for cell in week %}
+                    {% if cell %}
+                    <a class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}"
+                       href="{{ url_for('bulk_account_view', rep_name=rep_name, view='date', year=rep_monthly_activity.year, month=rep_monthly_activity.month, day=cell.day) }}">
+                        <span class="td-calendar-day">{{ cell.day }}</span>
+                        <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
+                    </a>
+                    {% else %}
+                    <div class="td-calendar-cell td-calendar-cell-pad"></div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

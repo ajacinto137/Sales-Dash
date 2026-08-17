@@ -1,0 +1,14 @@
+<!-- Shared Chart Card shell. Expects chart_id, chart_title, chart_empty,
+     chart_empty_message set via Jinja "set" statements before including;
+     chart_subtitle and chart_canvas_attrs are optional. -->
+<div class="td-chart-card">
+    <div class="td-chart-card-head">
+        <h3>{{ chart_title }}</h3>
+        {% if chart_subtitle %}<span class="td-muted-inline">{{ chart_subtitle }}</span>{% endif %}
+    </div>
+    {% if chart_empty %}
+    <p class="td-empty">{{ chart_empty_message }}</p>
+    {% else %}
+    <div class="td-chart-canvas-wrap"><canvas id="{{ chart_id }}" {{ chart_canvas_attrs|default('')|safe }}></canvas></div>
+    {% endif %}
+</div>

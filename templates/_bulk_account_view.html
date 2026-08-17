@@ -12,7 +12,7 @@
     <div class="td-bulk-card">
         <div class="td-bulk-card-head">
             <span class="td-bulk-name">{{ account.first_name }} {{ account.last_name }}</span>
-            <span class="td-bulk-status td-bulk-status-{{ account.status|lower }}">{{ account.status }}</span>
+            <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span>
         </div>
         {% if account.address %}<span class="td-bulk-address">{{ account.address }}</span>{% endif %}
         {% if account.city_state_zip %}<span class="td-bulk-address">{{ account.city_state_zip }}</span>{% endif %}

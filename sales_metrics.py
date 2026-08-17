@@ -7,7 +7,7 @@ in one place instead of being scattered across routes and templates.
 """
 
 import calendar as calendar_module
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -110,7 +110,33 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
 
     cancelled_mask = (~installed_mask) & subscriber_uuids.isin(cancelled_uuids)
 
+    # Pending vs Needs Attention (2026-08-17, by request): Pending is now
+    # ONLY an account with a real install date strictly in the future --
+    # everything else not-yet-installed/not-cancelled (no install date,
+    # explicitly "Not Scheduled", or an install date today-or-earlier)
+    # is Needs Attention instead. The two are mutually exclusive and
+    # exhaustive over the non-installed/non-cancelled population by
+    # construction. `today` compares calendar dates, not exact
+    # timestamps, so an install scheduled for later today still counts
+    # as "today" (Needs Attention), not "future" (Pending).
+    today_ts = pd.Timestamp(_today())
+    scheduled_flag = df["Scheduled"] if "Scheduled" in df.columns else pd.Series(None, index=df.index)
+    scheduled_dates_raw = (
+        pd.to_datetime(df["StartDate"], errors="coerce") if "StartDate" in df.columns
+        else pd.Series(pd.NaT, index=df.index)
+    )
+    no_date_mask = scheduled_dates_raw.isna()
+    unscheduled_mask = scheduled_flag.astype(str).str.strip().str.casefold().eq("not scheduled")
+    # .dt.normalize() (not .dt.date) -- on some pandas versions .dt.date
+    # on an all-NaT column silently stays datetime64 dtype instead of
+    # converting to object, which breaks a direct comparison against a
+    # plain date. normalize() keeps datetime64 dtype throughout, so it
+    # compares safely against another Timestamp in every case.
+    past_or_today_mask = scheduled_dates_raw.notna() & (scheduled_dates_raw.dt.normalize() <= today_ts)
+    needs_attention_mask = (~installed_mask) & (~cancelled_mask) & (no_date_mask | unscheduled_mask | past_or_today_mask)
+
     status = pd.Series("Pending", index=df.index)
+    status[needs_attention_mask] = "Needs Attention"
     status[installed_mask] = "Installed"
     status[cancelled_mask] = "Cancelled"
 
@@ -122,7 +148,7 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
         "sale_date": pd.to_datetime(df["Date"], errors="coerce") if "Date" in df.columns else pd.NaT,
         # Raw InsertDate incl. time-of-day, already in America/New_York
         # local time on the SQL Server -- no tz conversion needed, only
-        # display formatting. Used by the "Last 3 Sales" record card.
+        # display formatting. Used by the "Latest Sales" record card.
         "sale_datetime": pd.to_datetime(df["DateTime"], errors="coerce") if "DateTime" in df.columns else pd.NaT,
         "source_token": source_tokens,
         "sales_rep": source_tokens.apply(extract_rep_name),
@@ -162,6 +188,7 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
     print(f"Unique reps:                 {normalized['sales_rep'].nunique():,}")
     print(f"Installed count:             {int(installed_mask.sum()):,}")
     print(f"Pending count:               {int((status == 'Pending').sum()):,}")
+    print(f"Needs Attention count:       {int((status == 'Needs Attention').sum()):,}")
     print(f"Cancelled count:             {int(cancelled_mask.sum()):,}")
     print(f"Row count preserved:         {'YES' if row_count_ok else 'NO -- INVESTIGATE'}")
     print("=" * 60)
@@ -261,22 +288,33 @@ def calculate_rep_metrics(df):
 
     rows = []
     for rep, group in df.groupby("sales_rep"):
+        sales_count = len(group)
         installs = int((group["status"] == "Installed").sum())
         pending = int((group["status"] == "Pending").sum())
         cancels = int((group["status"] == "Cancelled").sum())
+        needs_attention = int((group["status"] == "Needs Attention").sum())
         inbound = int(group["sales_channel"].isin(INBOUND_CHANNELS).sum())
         outbound = int(group["sales_channel"].isin(OUTBOUND_CHANNELS).sum())
         denom = installs + cancels
+        # Install Rate redefined 2026-08-17, by request: 1.0 - (Needs
+        # Attention / Total Sales) -- not the installs/(installs+cancels)
+        # ratio used elsewhere. Needs Attention is always <= sales_count
+        # (it's a status subset of the same rep's rows), so this stays in
+        # [0, 100]. Cancel Rate is unchanged (still installs/cancels
+        # based) -- only Install Rate's formula and the visible Cancels
+        # count column (now Needs Attention) changed.
+        install_rate = (1 - (needs_attention / sales_count)) * 100 if sales_count else None
         rows.append({
             "sales_rep": rep,
-            "sales": len(group),
+            "sales": sales_count,
             "inbound": inbound,
             "outbound": outbound,
             "installs": installs,
             "pending": pending,
             "cancels": cancels,
+            "needs_attention": needs_attention,
             "chargebacks": None,
-            "install_rate": _rate(installs, denom),
+            "install_rate": install_rate,
             "cancel_rate": _rate(cancels, denom),
         })
 
@@ -298,9 +336,8 @@ REP_TABLE_COLUMNS = [
     ("inbound", "Inbound", "desc"),
     ("installs", "Installs", "desc"),
     ("pending", "Pending", "desc"),
-    ("cancels", "Cancels", "desc"),
+    ("needs_attention", "Needs Attention", "desc"),
     ("install_rate", "Install Rate", "desc"),
-    ("cancel_rate", "Cancel Rate", "desc"),
 ]
 REP_SORT_KEYS = {key for key, _label, _default_dir in REP_TABLE_COLUMNS}
 
@@ -472,6 +509,48 @@ def calculate_calendar_sales(df, year, month):
     }
 
 
+def calculate_monthly_sales_trend(df, months=12):
+    """Team-wide total sales per calendar month for the trailing N months
+    (oldest first, ending at and including the current month to date), for
+    the Team Leaderboard's Monthly Sales Trend line chart. Always all-time
+    / independent of the page's period filter -- same convention as
+    calculate_records()/calculate_calendar_sales(), since a multi-month
+    trend isn't meaningful squeezed into a single period-filter window.
+    Distinct from calculate_rep_monthly_activity(), which is per-rep and
+    day-granularity within one month -- this is team-wide and
+    month-granularity across many months."""
+    today = _today()
+    month_keys = []
+    year, month = today.year, today.month
+    for _ in range(months):
+        month_keys.append((year, month))
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    month_keys.reverse()
+
+    counts = {key: 0 for key in month_keys}
+    if df is not None and not df.empty:
+        valid = df.dropna(subset=["sale_date"])
+        if not valid.empty:
+            grouped = valid.groupby([valid["sale_date"].dt.year, valid["sale_date"].dt.month]).size()
+            for (year, month), count in grouped.items():
+                key = (int(year), int(month))
+                if key in counts:
+                    counts[key] = int(count)
+
+    return [
+        {
+            "year": year,
+            "month": month,
+            "month_label": datetime(year, month, 1).strftime("%b %Y"),
+            "count": counts[(year, month)],
+        }
+        for (year, month) in month_keys
+    ]
+
+
 def calculate_monthly_forecast(df):
     """Run-rate projection for the CURRENT real calendar month: month-to-date
     sales divided by days elapsed, scaled to the full month. Like
@@ -521,6 +600,104 @@ def calculate_channel_breakdown(df):
         }
         for name in SALES_CHANNELS.values()
     ]
+
+
+def calculate_hourly_breakdown(df):
+    """Per-hour sale counts (0-23, every real clock hour -- never trimmed
+    to a business-hours window) for whatever slice of the normalized
+    dataset is passed in (e.g. one rep's period-filtered rows), for the
+    Rep Profile's Time-of-Day Performance chart. Uses sale_datetime, not
+    sale_date (date-only) or scheduled_date (the future install
+    appointment, unrelated to when the sale occurred) -- sale_datetime is
+    the only field carrying the real time-of-day, already Eastern local
+    time (see EASTERN_TZ note above)."""
+    counts = {hour: 0 for hour in range(24)}
+    if df is not None and not df.empty:
+        valid = df.dropna(subset=["sale_datetime"])
+        if not valid.empty:
+            hour_counts = valid["sale_datetime"].dt.hour.value_counts().to_dict()
+            for hour, count in hour_counts.items():
+                counts[int(hour)] = int(count)
+    return [{"hour": hour, "count": counts[hour]} for hour in range(24)]
+
+
+def calculate_rep_monthly_activity(df, rep, year, month):
+    """One rep's sales per day for one calendar month, computed once and
+    shaped two ways so the Sales Activity section's calendar and
+    MonthlySalesChart never compute the same day-count twice or risk
+    disagreeing: `weeks` (calendar grid, identical shape to
+    calculate_calendar_sales()) and `days` (a flat 1..N array -- what
+    MonthlySalesChart plots -- each day also carrying its own
+    SALES_CHANNELS-shaped breakdown, non-zero channels only, for the
+    chart's per-day tooltip). Always all-time / independent of the page's
+    period filter, with its own cal_year/cal_month month nav -- same
+    convention calculate_calendar_sales() already uses on the Team
+    Leaderboard, just applied per-rep here."""
+    days_in_month = calendar_module.monthrange(year, month)[1]
+    counts = {day: 0 for day in range(1, days_in_month + 1)}
+    channel_counts = {day: {} for day in range(1, days_in_month + 1)}
+
+    if df is not None and not df.empty:
+        rep_df = df[df["sales_rep"] == rep] if rep else df
+        valid = rep_df.dropna(subset=["sale_date"])
+        month_mask = (valid["sale_date"].dt.year == year) & (valid["sale_date"].dt.month == month)
+        month_df = valid.loc[month_mask]
+        day_counts = month_df["sale_date"].dt.day.value_counts().to_dict()
+        for day, count in day_counts.items():
+            counts[int(day)] = int(count)
+        if not month_df.empty:
+            grouped = month_df.groupby([month_df["sale_date"].dt.day, "sales_channel"]).size()
+            for (day, channel), count in grouped.items():
+                channel_counts[int(day)][channel] = int(count)
+
+    first_weekday = calendar_module.monthrange(year, month)[0]  # Monday = 0
+    today = _today()
+
+    weeks = []
+    week = [None] * first_weekday
+    for day in range(1, days_in_month + 1):
+        week.append({
+            "day": day,
+            "count": counts[day],
+            "is_today": (year, month, day) == (today.year, today.month, today.day),
+        })
+        if len(week) == 7:
+            weeks.append(week)
+            week = []
+    if week:
+        week.extend([None] * (7 - len(week)))
+        weeks.append(week)
+
+    days = [
+        {
+            "day": day,
+            "count": counts[day],
+            "channels": [
+                {"channel": name, "count": channel_counts[day][name]}
+                for name in SALES_CHANNELS.values()
+                if channel_counts[day].get(name, 0) > 0
+            ],
+        }
+        for day in range(1, days_in_month + 1)
+    ]
+
+    prev_month = 12 if month == 1 else month - 1
+    prev_year = year - 1 if month == 1 else year
+    next_month = 1 if month == 12 else month + 1
+    next_year = year + 1 if month == 12 else year
+
+    return {
+        "year": year,
+        "month": month,
+        "month_label": datetime(year, month, 1).strftime("%B %Y"),
+        "weeks": weeks,
+        "days": days,
+        "total": sum(counts.values()),
+        "prev_year": prev_year,
+        "prev_month": prev_month,
+        "next_year": next_year,
+        "next_month": next_month,
+    }
 
 
 def _clean_text(value):
@@ -596,17 +773,6 @@ def _bulk_status_filter(status):
     return lambda df: df[df["status"] == status]
 
 
-def _needs_attention_filter(df):
-    """Scheduled Install Date strictly before today AND still Not Yet
-    Installed under the same Vision Packages match already computed as
-    the 'installed' column in build_sales_dataset -- no second
-    install-detection system."""
-    today = pd.Timestamp(_today())
-    scheduled_dates = pd.to_datetime(df["scheduled_date"], errors="coerce")
-    overdue_mask = (~df["installed"]) & scheduled_dates.notna() & (scheduled_dates < today)
-    return df[overdue_mask]
-
-
 # Registry of every Bulk Account View this app currently offers. Each entry
 # is a title plus a filter over the (already rep + date-scoped) normalized
 # dataset. Adding a new view -- e.g. "Show Door to Door sales in a Bulk
@@ -622,7 +788,7 @@ BULK_ACCOUNT_VIEWS = {
     "needs_attention": {
         "title": "Needs Attention",
         "all_time": True,
-        "filter": _needs_attention_filter,
+        "filter": _bulk_status_filter("Needs Attention"),
     },
     "all_sales": {
         "title": "All Sales",
@@ -661,6 +827,63 @@ def get_bulk_account_view(df, rep, view, period, start, end):
         _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
     ).sort_values("_scheduled_sort", na_position="last")
 
+    return title, build_bulk_account_rows(filtered)
+
+
+def get_channel_account_view(df, rep, channel, period, start, end):
+    """Bulk Account View scoped to one sales channel (a bar click on the
+    Rep Profile's SalesByChannelChart). Rep + period scoped exactly like a
+    non-all_time BULK_ACCOUNT_VIEWS entry, but the channel is a runtime
+    value from the click rather than one baked into the registry at
+    import time, so it can't go through get_bulk_account_view() directly.
+    Mirrors that function's own scoping steps (rep filter -> period filter
+    -> row filter -> sort by scheduled_date -> build_bulk_account_rows())
+    so results are shaped identically to every other Bulk Account View.
+    Returns (title, []) for an unknown channel or empty scope, never
+    raises."""
+    if channel not in SALES_CHANNELS.values():
+        return channel, []
+    title = f"{channel} Accounts"
+    if df is None or df.empty:
+        return title, []
+    scoped = df[df["sales_rep"] == rep] if rep else df
+    scoped = filter_by_period(scoped, period, start, end)
+    if scoped is None or scoped.empty:
+        return title, []
+    filtered = scoped[scoped["sales_channel"] == channel]
+    if filtered.empty:
+        return title, []
+    filtered = filtered.assign(
+        _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
+    ).sort_values("_scheduled_sort", na_position="last")
+    return title, build_bulk_account_rows(filtered)
+
+
+def get_calendar_day_account_view(df, rep, year, month, day):
+    """Bulk Account View scoped to one calendar day (a Rep Sales Calendar
+    day-cell click). Filters by sale_date, rep-scoped when `rep` is given,
+    and intentionally independent of the page's period filter -- same
+    reasoning as calculate_rep_monthly_activity()/calculate_calendar_sales()
+    themselves: the calendar it's clicked from doesn't respect the period
+    filter either, so neither should its drill-down. Returns (title, [])
+    for an invalid date or empty scope, never raises."""
+    try:
+        target = date(year, month, day)
+    except (TypeError, ValueError):
+        return "Invalid Date", []
+    title = target.strftime("%B %-d, %Y") + " Accounts"
+    if df is None or df.empty:
+        return title, []
+    scoped = df[df["sales_rep"] == rep] if rep else df
+    valid = scoped.dropna(subset=["sale_date"])
+    if valid.empty:
+        return title, []
+    filtered = valid[valid["sale_date"].dt.date == target]
+    if filtered.empty:
+        return title, []
+    filtered = filtered.assign(
+        _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
+    ).sort_values("_scheduled_sort", na_position="last")
     return title, build_bulk_account_rows(filtered)
 
 

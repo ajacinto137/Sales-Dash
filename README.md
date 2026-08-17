@@ -233,17 +233,45 @@ docker compose -f docker-compose.prod.yml down
 ## Team Leaderboard Page — Section Names
 
 The `/dashboard` route (`templates/dashboard.html`, styled by
-`static/css/team_dashboard.css`) has four standing sections, in this page
+`static/css/team_dashboard.css`) has nine standing sections, in this page
 order. These are the canonical names to use when referring to a section of
 this page — they're also marked with matching HTML comments in the
 template itself.
 
+Planet Networks Records, Current Sales Leaders, and Live Sales Activity
+used to be a single "Planet Networks Records" section holding all 9 cards;
+it was split into three on 2026-08-16 because only the Best Days/Weeks/
+Months Ever cards are actual historical records — the rest are current
+leaderboards or live sales activity, and the old single heading no longer
+described them accurately.
+
 | Name | Aka | What it is | Template markup |
 |------|-----|------------|------------------|
 | **Team Overview** | | Fixed set of 5 KPI cards, always in this order: Monthly Sales, Daily Sales, 7 Day Average, 30 Day Average, Monthly Projection (reconfigured 2026-08-14, by request — replaces the earlier Total Sales/Installed/Pending/Total Daily Sales/Team Install Rate/Monthly Forecast set). All five are always computed from the full all-time dataset and today's real date — they do NOT change with the page's period filter | `<section class="td-kpi-bar">` |
-| **Sales Calendar** | | Navigable month-by-month calendar of team total sales per day | `<section class="td-section">` containing `<h2>Sales Calendar</h2>` |
-| **Planet Networks Records** | "Records Section" | All-time single-rep bests (Best Days/Weeks/Months Ever) plus live top-3 rep leaderboards for the ongoing day/week/month/year (Daily/Weekly/Monthly/Yearly Sales), plus the reps behind the last 3 sales made with date and time (Last 3 Sales, added 2026-08-14), plus a separate card naming the customers on those same 3 sales (Last 3 Accounts Sold, added 2026-08-14) which also carries the "View All Sales" button in its top-right corner | `<section class="td-section">` containing `<h2>Planet Networks Records</h2>` |
-| **Individual Rep Leaderboard** | "Rep Leaderboard", "Leaderboard Table", "Rep Performance Section" | The rep search field plus the ranked table (Rank, Sales Rep, Sales, Outbound, Inbound, Installs, Pending, Cancels, Install Rate, Cancel Rate) — every column header is clickable to sort the table by that column | `<h2>Individual Rep Leaderboard</h2>` + `<form class="td-search-form">` + `<section class="td-table-card">` |
+| **Sales Calendar & Monthly Sales Trend** | | One row (`.td-activity-split`, same 2-col layout the Individual Sales Profile's own Sales Activity section uses — merged 2026-08-16, by request), pairing two sub-sections that each keep their own canonical name: **Sales Calendar** (navigable month-by-month calendar of team total sales per day) and **Monthly Sales Trend** (team-wide total sales per calendar month, trailing 12 months, as a MonthlySalesTrendChart line chart, added 2026-08-16). Both always all-time, independent of the period filter — same convention as Records/Calendar. Monthly Sales Trend is distinct from the Individual Sales Profile's MonthlySalesChart (per-rep, day-granularity within one month) | `<section class="td-section">` containing `<h2>Sales Calendar &amp; Monthly Sales Trend</h2>` + `<div class="td-activity-split">` |
+| **Channel & Time-of-Day Performance** | | One row, one card, a segmented-control toggle switches between the team-wide SalesByChannelChart and HourlySalesChart (merged from two separate sections 2026-08-16, by request). **Sales by Hour is the default-shown chart** (changed 2026-08-16, by request). Period-filtered, reusing `calculate_channel_breakdown()`/`calculate_hourly_breakdown()` unchanged — the same functions/charts already used on the Individual Sales Profile, just not rep-scoped. Channel bars are clickable, opening a channel-scoped team-wide Bulk Account View; the hourly chart has no drill-down. Each chart is created lazily the first time its tab is opened (`wireChartToggle()` in `static/js/charts.js`) | `<section class="td-section">` containing `<h2>Channel &amp; Time-of-Day Performance</h2>` + `{% include "_channel_hourly_toggle.html" %}` |
+| **Planet Networks Records** | "Records Section" | Historical all-time individual sales achievements: Best Days Ever, Best Weeks Ever, Best Months Ever. **Collapsed by default** (added 2026-08-16, by request) — a native `<details>`/`<summary>` disclosure, no JS involved; click the heading to expand/collapse | `<section class="td-section">` containing `<details class="td-collapsible"><summary class="td-section-heading td-collapsible-summary"><h2>Planet Networks Records</h2>` |
+| **Current Sales Leaders** | | Current-period individual sales leaderboards — who's leading right now: Weekly Sales, Monthly Sales, Yearly Sales (each card is its own live top-3, independent of the page's period filter). Daily Sales moved to Live Sales Activity 2026-08-16 (by request, for an even 3+3 card split with that section) | `<section class="td-section">` containing `<h2>Current Sales Leaders</h2>` |
+| **Live Sales Activity** | | Today's leaderboard plus recent sales and account activity: Daily Sales (moved here from Current Sales Leaders 2026-08-16 — same `records.daily_leaders` data, unchanged), Latest Sales (the reps behind the most recent sales), and Latest Accounts Sold (the accounts behind those same sales, renamed from "Last 3 Sales"/"Last 3 Accounts Sold" 2026-08-16 since the displayed count is a display detail, not part of the card's identity), which also carries the "View All Sales" button in its top-right corner. Now a 3-column grid (`.td-activity-grid`, widened 2026-08-16 to fit the third card) | `<section class="td-section">` containing `<h2>Live Sales Activity</h2>` |
+| **Individual Rep Leaderboard** | "Rep Leaderboard", "Leaderboard Table", "Rep Performance Section" | The rep search field plus the ranked table (Rank, Sales Rep, Sales, Outbound, Inbound, Installs, Pending, **Needs Attention** (replaced the Cancels count column 2026-08-17, by request), Install Rate) — every column header is clickable to sort the table by that column. **Cancel Rate column removed 2026-08-17, by request** | `<h2>Individual Rep Leaderboard</h2>` + `<form class="td-search-form">` + `<section class="td-table-card">` |
+
+**Every rep name on this page links to that rep's Individual Sales
+Profile** (added 2026-08-16, by request — "Everytime a reps name appears
+in the team leaderboard... link to their individual rep profile"). This
+was already true of the Individual Rep Leaderboard table (`.td-rep-link`,
+added earlier); as of 2026-08-16 it also applies to every `r.rep` shown
+in Planet Networks Records (Best Days/Weeks/Months Ever), Current Sales
+Leaders (Weekly/Monthly/Yearly Sales), and Live Sales Activity (Daily
+Sales, Latest Sales) — all now `<a class="td-record-rep"
+href="{{ url_for('rep_profile', rep_name=r.rep, period=period,
+start=custom_start, end=custom_end) }}">` instead of a plain `<span>`,
+carrying the page's current period filter forward the same way the
+"Back to Team Leaderboard" and Rep Leaderboard table links already do.
+**Exception:** the Latest Accounts Sold card's `r.account` (a customer
+name, not a rep) intentionally stays a plain `<span class="td-record-rep">`
+— `.td-record-rep` is shared CSS between the two, but only the anchor
+variant (`a.td-record-rep`) gets link styling/hover treatment. Don't
+link account names to a rep profile if this pattern is extended further.
 
 Column sorting (`?sort=<column>&dir=asc|desc`) is a pure display-ordering
 concern applied after search/selection, via `sort_rep_rows()` in
@@ -255,27 +283,43 @@ sorted by; sorting by `rank` (the default) just restores that original
 order. Rates with no denominator (`None`, shown as "—") always sort to
 the bottom in either direction.
 
-The Individual Rep Leaderboard reads from the period-filtered dataset
-(`period_df` in `dashboard_page()`, `app.py`), so a date-range change
-affects it. Team Overview, Planet Networks Records, and the Sales
-Calendar are all independent of the selected date range — they always
-use the all-time dataset / today's real date (see
-`calculate_total_daily_sales()`, `calculate_daily_averages()`,
-`calculate_monthly_forecast()`, `calculate_records()`, and
-`calculate_calendar_sales()` in `sales_metrics.py`). The Sales Calendar
-has its own independent month navigation (`cal_year`/`cal_month` query
-params, defaulting to the current month) that doesn't affect the period
-filter or any other section.
+The Individual Rep Leaderboard and Channel & Time-of-Day Performance
+sections all read from the period-filtered dataset (`period_df` in
+`dashboard_page()`, `app.py`), so a date-range change affects them. Team Overview, Planet Networks Records, Current Sales
+Leaders, Live Sales Activity, Monthly Sales Trend, and the Sales Calendar
+are all independent of the selected date range — they always use the
+all-time dataset / today's real date (see `calculate_total_daily_sales()`,
+`calculate_daily_averages()`, `calculate_monthly_forecast()`,
+`calculate_records()`, `calculate_monthly_sales_trend()`, and
+`calculate_calendar_sales()` in `sales_metrics.py`). Planet Networks
+Records, Current Sales Leaders, and Live Sales Activity all read from the
+same `calculate_records()` output (`records` in the template) — the split
+into three sections is purely a template/CSS reorganization, not a new
+data function. The Sales Calendar has its own independent month
+navigation (`cal_year`/`cal_month` query params, defaulting to the
+current month) that doesn't affect the period filter or any other
+section.
 
-Note: there used to be a "Sales by Channel" section (per-rep breakdown
-across the 8 raw channels) between Planet Networks Records and Rep
-Leaderboard — it was removed by request and must not be reintroduced on
-this page without being asked again. The underlying channel data
-(`SALES_CHANNELS`, `INBOUND_CHANNELS`/`OUTBOUND_CHANNELS` in
+Note: there used to be a per-rep "Sales by Channel" breakdown section
+(a table, per-rep counts across the 8 raw channels) between Planet
+Networks Records and Rep Leaderboard — it was removed by request
+2026-08-14. The current **Channel Performance** section (added
+2026-08-16, at explicit user request) is a different thing: a team-wide
+aggregate SalesByChannelChart, not a per-rep table, reusing the same
+`calculate_channel_breakdown()` the Individual Sales Profile already
+used. Don't conflate the two or assume the old per-rep table should come
+back — that request would need to be made explicitly again. The
+underlying channel data (`SALES_CHANNELS`, `INBOUND_CHANNELS`/`OUTBOUND_CHANNELS` in
 `sales_metrics.py`) is still intact and still powers the Rep
 Leaderboard's Inbound/Outbound columns. `calculate_channel_breakdown()`
-was later reintroduced, but scoped to a single rep for the Rep Profile's
-Overview tab (see below) — it does not power anything on this page.
+was reintroduced for the Rep Profile's Overview tab 2026-08-14 (scoped to
+a single rep there), then reused unchanged for this page's own Channel
+Performance section 2026-08-16 (team-wide, no rep filter) — one function,
+two callers, never duplicated. `calculate_hourly_breakdown()` (added
+2026-08-16) is its sibling for the Time-of-Day Performance chart on both
+pages — same period-scoping pattern, grouped by hour instead of channel,
+called with `rep_period_df` on the Rep Profile and team-wide `period_df`
+here.
 
 The Team Overview KPI bar's Monthly Sales and Monthly Projection cards
 both read `calculate_monthly_forecast()`'s output: Monthly Sales is
@@ -299,8 +343,8 @@ page has two tabs:
 
 | Name | What it is |
 |------|------------|
-| **Overview** | Metric cards for Total Sales, Installed, Install Rate (primary) and Inbound, Outbound, Pending, Cancelled, Cancel Rate (secondary), plus a Sales by Channel breakdown (Inbound/Outbound columns). All period-filtered. |
-| **Needs Attention** | Accounts for this rep where the Scheduled Install Date is strictly before today and the account is still Not Yet Installed. Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below). |
+| **Overview** | Metric cards for Total Sales, Installed, Install Rate (primary) and Inbound, Outbound, Pending (secondary, now 3 cards — Cancelled and Cancel Rate removed 2026-08-17, by request) — all period-filtered — plus two chart sections (added 2026-08-16): **Sales Activity** (a rep-scoped Sales Calendar beside a `MonthlySalesChart` bar chart, day-of-month with a cumulative trend line and per-day channel breakdown in the tooltip; always all-time with its own `cal_year`/`cal_month` nav, independent of the period filter, same convention as the Team Leaderboard's Sales Calendar); **Channel & Time-of-Day Performance** (one row, one card, a segmented-control toggle between a `SalesByChannelChart` horizontal bar chart — replacing the former plain-text Inbound/Outbound columns, reuses `calculate_channel_breakdown()` unchanged, bars clickable into a channel-scoped Bulk Account View — and an `HourlySalesChart` across all 24 real hours built from `sale_datetime` via `calculate_hourly_breakdown()`, merged from two separate sections into one toggle 2026-08-16 by request; Sales by Hour is the default-shown chart, changed the same day by request). Renders via Chart.js v4.4.4 (loaded in `rep_profile.html`'s `<head>`, same version already used on the `/overview` page) and the shared `static/js/charts.js` helper module — see "Chart Card" below. |
+| **Needs Attention** | Accounts for this rep that are not Installed/Cancelled and have no install date in the future — i.e. no install date at all, explicitly "Not Scheduled", or an install date today or earlier (redefined 2026-08-17, see "Pending vs Needs Attention" below). Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below). |
 
 The Overview tab's metric cards reuse `calculate_rep_metrics()` — the
 exact same function/output that produces the Individual Rep Leaderboard table rows
@@ -335,6 +379,63 @@ can change; the component stays the same.** Concretely:
   Bulk Account View — e.g. "show Installed accounts" or "show Door to
   Door sales" — means adding one entry to this registry, not building a
   new list UI.**
+- **Pending vs Needs Attention (redefined 2026-08-17, by request)**: both
+  `pending` and `needs_attention` are just `_bulk_status_filter(status)`
+  over the `status` column now — the actual classification logic lives
+  in one place, `build_sales_dataset()`, not duplicated across two
+  filter functions (there used to be a separate `_needs_attention_filter`
+  doing its own independent date comparison; it's gone, replaced by a
+  plain status-equality filter, same pattern as `pending`). For any
+  account that is not Installed and not Cancelled: **Pending** = has a
+  `StartDate` (install date) that falls strictly after today; **Needs
+  Attention** = everything else — no install date at all, `Scheduled ==
+  "Not Scheduled"`, or an install date that is today or earlier. The two
+  are mutually exclusive and exhaustive by construction. Date comparison
+  is calendar-date-only via `.dt.normalize()` (deliberately not `.dt.date`
+  — on some pandas versions `.dt.date` on an all-NaT column silently
+  stays `datetime64` dtype instead of converting to `object`, breaking a
+  direct comparison against a plain `date`; `normalize()` avoids that by
+  staying in `datetime64` throughout and comparing against a
+  `pd.Timestamp`), so an install slot later today still counts as
+  "today" (Needs Attention), not "future" (Pending).
+  `calculate_rep_metrics()`'s "Pending" column count, the Rep Profile's
+  clickable Pending metric, the Individual Rep Leaderboard's Pending
+  column, and both Bulk Account Views all read from this single `status`
+  value — they cannot disagree.
+- **Install Rate formula changed 2026-08-17 (by request)**: no longer
+  `installs / (installs + cancels)`. It's now `1.0 - (needs_attention /
+  total_sales)` (scaled to a percentage for display, same as every other
+  rate in this app). `needs_attention` is always ≤ `total_sales` for a
+  given rep (it's a subset of that rep's own rows), so the result always
+  stays in the 0–100% range.
+- **Cancel Rate and Cancelled removed from the UI entirely, 2026-08-17
+  (by request, same day)**: the Individual Rep Leaderboard's Cancel Rate
+  column and the Rep Profile's Cancelled + Cancel Rate metric cards
+  (`.td-profile-metrics-secondary`, now 3 cards — Inbound, Outbound,
+  Pending — not 5) are gone. `calculate_rep_metrics()` in
+  `sales_metrics.py` still internally computes `cancels`/`cancel_rate`
+  per rep (left in place rather than deleted, since the underlying
+  `status == "Cancelled"` classification and Bulk Account View badge
+  color are untouched — only the two display surfaces were removed) —
+  don't be surprised these fields still exist in the row dict even
+  though nothing currently renders them.
+- Two more view keys exist *outside* the registry: `channel` and `date`
+  (added 2026-08-16, for `SalesByChannelChart` bar clicks and Sales
+  Activity calendar day clicks). They're handled by
+  `get_channel_account_view()` / `get_calendar_day_account_view()` in
+  `sales_metrics.py` rather than a `BULK_ACCOUNT_VIEWS` entry, because
+  the channel/date is a runtime value from the click (`?channel=...` /
+  `?year=&month=&day=`), not a fixed filter known at import time like
+  every registry entry's filter is. `date` is rep-scoped only (the Rep
+  Profile's Sales Activity calendar, resolved in `bulk_account_view()`
+  in `app.py`) — the Team Leaderboard's Sales Calendar isn't clickable.
+  `channel` is wired into **both** `bulk_account_view()` (rep-scoped, for
+  the Rep Profile's Channel Performance chart) and `all_sales_view()`
+  (team-wide, `rep=None`, for the Team Leaderboard's own Channel
+  Performance chart, added 2026-08-16) via the same `if view ==
+  "channel" / ... / in BULK_ACCOUNT_VIEWS` branch pattern in both route
+  handlers — the 3 registry entries above are otherwise unaffected in
+  either route.
 - `get_bulk_account_view(df, rep, view, period, start, end)` is the one
   function every feature should call to resolve a view key into
   `(title, accounts)`. It handles rep scoping (pass `rep=None` for a
@@ -346,8 +447,9 @@ can change; the component stays the same.** Concretely:
   Profile's clickable Pending metric); the team-wide
   `/dashboard/accounts?view=<key>` page (`all_sales_view()` in `app.py`,
   added 2026-08-14 — reached from the "View All Sales" button in the
-  top-right corner of the Last 3 Accounts Sold card in the Planet
-  Networks Records section, defaults to `view=all_sales` and
+  top-right corner of the Latest Accounts Sold card in the Live Sales
+  Activity section (renamed from "Last 3 Accounts Sold" / "Planet
+  Networks Records" 2026-08-16), defaults to `view=all_sales` and
   `period=today` so it opens on "what happened today"); and the Rep
   Profile's inline Needs Attention tab, which includes the partial
   directly rather than duplicating its markup. All three share
@@ -363,6 +465,67 @@ Extend `build_bulk_account_rows()` if a field is missing (e.g. "add phone
 number") — that one change then applies everywhere the component is
 used. Do not create a duplicate account-list component just because the
 source metric or filter differs.
+
+### Chart Card
+
+> The standardized shell for a single Chart.js visualization, used by
+> every chart on both the Rep Profile and Team Leaderboard pages (added
+> 2026-08-16).
+
+This app has no component framework (no React, no build step) — a
+"chart component" here means a Jinja partial + `data-*` attributes +
+a small vanilla-JS factory function, the same pattern
+`_bulk_account_view.html` already established for account lists:
+
+- `templates/_chart_card.html` is the shared card shell — title,
+  optional subtitle, and either a `<canvas>` or an empty-state message
+  (`chart_empty`/`chart_empty_message`, so a rep/period with zero sales
+  never renders a broken or fabricated chart). Set `chart_id`,
+  `chart_title`, `chart_empty`, `chart_empty_message` (and optionally
+  `chart_subtitle`, `chart_canvas_attrs`) via Jinja `set` statements
+  before including it — reset any of these explicitly before a second
+  `include` in the same template, since Jinja `set` persists across the
+  whole template rather than being scoped to the include.
+- `static/js/charts.js` is the shared JS module (loaded after the
+  Chart.js v4.4.4 CDN script, now on both `rep_profile.html` and
+  `dashboard.html`): `getChartTokens()` reads the `--td-chart-*` /
+  `--td-accent-*` CSS custom properties from `team_dashboard.css` so
+  every chart automatically follows the current theme; `buildTooltipConfig()`
+  gives every chart the same tooltip chrome; `createMonthlySalesChart()`,
+  `createMonthlySalesTrendChart()`, `createChannelChart()`,
+  `createHourlyChart()` are the four chart factories, each reading its
+  data from `data-*` attributes on its own `<canvas>` (rendered
+  server-side via Jinja `|tojson` — no separate JSON endpoint).
+  `createChannelChart()` and `createHourlyChart()` are fully generic —
+  the Team Leaderboard's team-wide Channel Performance / Time-of-Day
+  Performance charts call the *exact same* factory functions as the Rep
+  Profile's rep-scoped ones, just pointed at a different canvas id and
+  different `data-*` payload (team-wide vs. rep-scoped counts). Only
+  the trend line (`createMonthlySalesTrendChart()`, month-granularity,
+  many months) is distinct from the per-rep `createMonthlySalesChart()`
+  (day-granularity, one month) — they answer different questions and
+  read different backend functions (`calculate_monthly_sales_trend()`
+  vs. `calculate_rep_monthly_activity()`).
+- `templates/_channel_hourly_toggle.html` (added 2026-08-16) is a second
+  shared partial for the specific case of two charts sharing one row via
+  a segmented-control toggle — currently the Channel & Time-of-Day
+  Performance section on both pages. It renders both canvases (or each
+  one's own empty-state message) up front; `wireChartToggle()` in
+  `charts.js` shows one panel at a time and creates each chart lazily on
+  first activation (a canvas created while `display:none` sizes to 0 in
+  Chart.js and won't self-correct, so the default-active tab's chart is
+  created immediately on page load and the other is deferred until its
+  first click). `wireChartToggle()` is generic — it maps each canvas's
+  `data-chart-type` attribute to a factory via `CHART_TOGGLE_FACTORIES`,
+  so adding a third toggle pair later means adding one entry to that map,
+  not a new toggle handler.
+- Currently used by the Rep Profile's Sales Activity and Channel &
+  Time-of-Day Performance sections, and the Team Leaderboard's Monthly
+  Sales Trend and Channel & Time-of-Day Performance sections (see "Rep
+  Profile Page — Section Names" and "Team Leaderboard Page — Section
+  Names" above) — the same `_chart_card.html` / `_channel_hourly_toggle.html`
+  + `charts.js` pair should be reused for any future chart rather than
+  hand-rolling new canvas/tooltip/token-reading code.
 
 ## What's intentionally not built yet
 
