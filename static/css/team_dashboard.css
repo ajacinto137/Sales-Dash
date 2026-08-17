@@ -632,9 +632,19 @@ a.td-record-rep:hover {
     overflow-x: auto;
 }
 
+/* table-layout: fixed + the <colgroup> in dashboard.html (9 equal-width
+   <col>s) is what keeps every Individual Rep Leaderboard column the same
+   width regardless of header label length -- without it, auto table
+   layout was sizing each column to fit its own content/header text,
+   which is why "Needs Attention" (the longest header label) was
+   stretching wider than every other column. Header/data text wraps
+   (white-space: normal below) instead of forcing nowrap, since an equal
+   1/9-width column can't guarantee every label or rep name fits on one
+   line. */
 .td-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
     font-size: 13px;
 }
 
@@ -647,7 +657,7 @@ a.td-record-rep:hover {
     color: var(--td-text-secondary);
     padding: 0;
     border-bottom: 1px solid var(--td-border);
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .td-sort-link {
@@ -739,7 +749,8 @@ a.td-record-rep:hover {
 .td-table tbody td {
     padding: 14px 16px;
     border-bottom: 1px solid var(--td-border-soft);
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: break-word;
     text-align: center;
 }
 

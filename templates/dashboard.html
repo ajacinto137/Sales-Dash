@@ -465,6 +465,17 @@
     <section class="td-table-card">
         <div class="td-table-scroll">
             <table class="td-table">
+                <!-- 9 equal-width columns (#, Sales Rep, Sales, Outbound,
+                     Inbound, Installs, Pending, Needs Attention, Install
+                     Rate) -- matches table-layout: fixed in
+                     team_dashboard.css, which is what keeps "Needs
+                     Attention" (the longest header label) from stretching
+                     wider than the rest under auto layout. -->
+                <colgroup>
+                    {% for _ in rep_table_columns %}
+                    <col style="width: 11.1111%">
+                    {% endfor %}
+                </colgroup>
                 <thead>
                     <tr>
                         {% for col in rep_table_columns %}
