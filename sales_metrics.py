@@ -960,3 +960,25 @@ def calculate_needs_attention(df, rep):
     the "needs_attention" entry in BULK_ACCOUNT_VIEWS."""
     _, accounts = get_bulk_account_view(df, rep, "needs_attention", None, None, None)
     return accounts
+
+
+OUTBOUND_BADGE_THRESHOLD = 10
+
+
+def has_outbound_badge(df, rep):
+    """True if `rep` has ever recorded OUTBOUND_BADGE_THRESHOLD+ outbound
+    sales in a single calendar day. Always all-time, independent of the
+    page's period filter -- same convention as Records/Sales Calendar
+    (calculate_records(), etc.): this is a permanent achievement, not a
+    period-scoped stat. Purely cosmetic (powers the samurai icon next to
+    a rep's name on their Individual Sales Profile, see README.md "Rep
+    Profile Page -- Section Names") -- not read by any metric
+    calculation, so it can never affect Sales/Outbound/Install Rate/etc."""
+    if df is None or df.empty:
+        return False
+    outbound = df[(df["sales_rep"] == rep) & (df["sales_channel"].isin(OUTBOUND_CHANNELS))]
+    outbound = outbound.dropna(subset=["sale_date"])
+    if outbound.empty:
+        return False
+    daily_counts = outbound.groupby(outbound["sale_date"].dt.date).size()
+    return bool((daily_counts >= OUTBOUND_BADGE_THRESHOLD).any())
