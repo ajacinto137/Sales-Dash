@@ -173,6 +173,22 @@ up for Flask itself to report healthy):
 }
 ```
 
+Note: `/health` itself never triggers a data load — `planetweb_connected`/
+`kpi_connected`/`last_refreshed` are whatever the last real page load (or
+manual "Refresh Data" click) already populated, and are `null` before
+that has happened once.
+
+### Data loading
+
+Every full-page request re-queries both source databases (`ensure_data_loaded()`
+in `app.py`, changed 2026-08-17, by request — previously it loaded once
+lazily and served that same in-memory snapshot until someone clicked
+"Refresh Data"). This trades request latency for always-current data:
+every page view now costs a live PlanetWeb (Main Sales) + KPI (Vision
+Packages, Service Cancellations) round trip. The "Refresh Data" button
+(`POST /refresh`) still works the same way; it's just redundant with what
+a plain page load already does now.
+
 ## Production Deployment
 
 Uses `docker-compose.prod.yml` — a separate stack from local dev, run
@@ -363,7 +379,7 @@ page has two tabs:
 | Name | What it is |
 |------|------------|
 | **Overview** | Metric cards for Total Sales, Installed, Install Rate (primary) and Inbound, Outbound, Pending (secondary, now 3 cards — Cancelled and Cancel Rate removed 2026-08-17, by request) — all period-filtered — plus two chart sections (added 2026-08-16): **Sales Activity** (a rep-scoped Sales Calendar beside a `MonthlySalesChart` bar chart, day-of-month with a cumulative trend line and per-day channel breakdown in the tooltip; always all-time with its own `cal_year`/`cal_month` nav, independent of the period filter, same convention as the Team Leaderboard's Sales Calendar); **Channel & Time-of-Day Performance** (one row, one card, a segmented-control toggle between a `SalesByChannelChart` horizontal bar chart — replacing the former plain-text Inbound/Outbound columns, reuses `calculate_channel_breakdown()` unchanged, bars clickable into a channel-scoped Bulk Account View — and an `HourlySalesChart` across all 24 real hours built from `sale_datetime` via `calculate_hourly_breakdown()`, merged from two separate sections into one toggle 2026-08-16 by request; Sales by Hour is the default-shown chart, changed the same day by request). Renders via Chart.js v4.4.4 (loaded in `rep_profile.html`'s `<head>`, same version already used on the `/overview` page) and the shared `static/js/charts.js` helper module — see "Chart Card" below. |
-| **Needs Attention** | Accounts for this rep that are not Installed/Cancelled and have no install date in the future — i.e. no install date at all, explicitly "Not Scheduled", or an install date today or earlier (redefined 2026-08-17, see "Pending vs Needs Attention" below). Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below), extended with the **Needs Attention Workflow** (Attention Status + notes — see its own section further down). |
+| **Needs Attention** | Accounts for this rep that are not Installed/Cancelled and have an install date strictly before today — i.e. no install date at all, explicitly "Not Scheduled", or a past install date (redefined 2026-08-17, twice the same day — today itself moved from Needs Attention to Pending in the second pass, see "Pending vs Needs Attention" below). Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below), extended with the **Needs Attention Workflow** (Attention Status + notes — see its own section further down). |
 
 The Overview tab's metric cards reuse `calculate_rep_metrics()` — the
 exact same function/output that produces the Individual Rep Leaderboard table rows
@@ -595,25 +611,33 @@ can change; the component stays the same.** Concretely:
   Bulk Account View — e.g. "show Installed accounts" or "show Door to
   Door sales" — means adding one entry to this registry, not building a
   new list UI.**
-- **Pending vs Needs Attention (redefined 2026-08-17, by request)**: both
-  `pending` and `needs_attention` are just `_bulk_status_filter(status)`
-  over the `status` column now — the actual classification logic lives
-  in one place, `build_sales_dataset()`, not duplicated across two
-  filter functions (there used to be a separate `_needs_attention_filter`
-  doing its own independent date comparison; it's gone, replaced by a
-  plain status-equality filter, same pattern as `pending`). For any
-  account that is not Installed and not Cancelled: **Pending** = has a
-  `StartDate` (install date) that falls strictly after today; **Needs
-  Attention** = everything else — no install date at all, `Scheduled ==
-  "Not Scheduled"`, or an install date that is today or earlier. The two
-  are mutually exclusive and exhaustive by construction. Date comparison
-  is calendar-date-only via `.dt.normalize()` (deliberately not `.dt.date`
+- **Pending vs Needs Attention (redefined 2026-08-17, by request; today's
+  bucket flipped again the same day, also by request)**: both `pending`
+  and `needs_attention` are just `_bulk_status_filter(status)` over the
+  `status` column now — the actual classification logic lives in one
+  place, `build_sales_dataset()`, not duplicated across two filter
+  functions (there used to be a separate `_needs_attention_filter` doing
+  its own independent date comparison; it's gone, replaced by a plain
+  status-equality filter, same pattern as `pending`). For any account
+  that is not Installed and not Cancelled: **Pending** = has a
+  `StartDate` (install date) today or in the future; **Needs Attention**
+  = everything else — no install date at all, `Scheduled == "Not
+  Scheduled"`, or an install date strictly before today. The two are
+  mutually exclusive and exhaustive by construction. Date comparison is
+  calendar-date-only via `.dt.normalize()` (deliberately not `.dt.date`
   — on some pandas versions `.dt.date` on an all-NaT column silently
   stays `datetime64` dtype instead of converting to `object`, breaking a
   direct comparison against a plain `date`; `normalize()` avoids that by
   staying in `datetime64` throughout and comparing against a
   `pd.Timestamp`), so an install slot later today still counts as
-  "today" (Needs Attention), not "future" (Pending).
+  "today" (Pending), not "past" (Needs Attention). **This flipped from
+  the original 2026-08-17 rule**, where today was deliberately put in
+  Needs Attention as "the more conservative/actionable default" — a
+  same-day follow-up request explicitly moved it to Pending instead
+  ("should not be flagged as Needs Attention if the install date is for
+  today, only if scheduled before today"). If this is ever revisited
+  again, treat it the same way both previous changes were treated: a
+  business decision to confirm with the user, not infer.
   `calculate_rep_metrics()`'s "Pending" column count, the Rep Profile's
   clickable Pending metric, the Individual Rep Leaderboard's Pending
   column, and both Bulk Account Views all read from this single `status`

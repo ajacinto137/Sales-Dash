@@ -293,8 +293,15 @@ def load_all_data():
 
 
 def ensure_data_loaded():
-    if data_store["last_refreshed"] is None:
-        load_all_data()
+    # By request (2026-08-17): every page load re-queries both source
+    # databases, rather than lazily loading once and serving stale
+    # in-memory data until someone clicks "Refresh Data". This means
+    # every full-page GET now costs a live PlanetWeb + KPI round trip
+    # (Main Sales/Vision Packages/Service Cancellations) -- accepted
+    # trade-off for always-current data over request latency. The
+    # "Refresh Data" button (refresh() below) still works the same way,
+    # just redundant with what a plain page load now already does.
+    load_all_data()
 
 
 # ================================================================

@@ -859,6 +859,14 @@ a.td-record-rep:hover {
     color: var(--td-text-primary);
 }
 
+.td-profile-name-icon {
+    height: 1.2em;
+    width: auto;
+    vertical-align: middle;
+    margin-left: 8px;
+    image-rendering: pixelated;
+}
+
 .td-profile-subtitle {
     margin: 6px 0 0 0;
     color: var(--td-cyan);

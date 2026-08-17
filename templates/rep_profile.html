@@ -36,7 +36,12 @@
         <div class="td-profile-headline">
             <div class="td-header-titles">
                 <p class="td-profile-subtitle">Individual Sales Profile</p>
-                <h1 class="td-profile-name">{{ rep_name }}</h1>
+                <h1 class="td-profile-name">
+                    {{ rep_name }}
+                    {% if rep_name == 'Dylan Zupkay' %}
+                    <img src="{{ url_for('static', filename='images/samurai.gif') }}" alt="" class="td-profile-name-icon">
+                    {% endif %}
+                </h1>
             </div>
 
             <form class="td-period-form" method="get" action="{{ url_for('rep_profile', rep_name=rep_name) }}">

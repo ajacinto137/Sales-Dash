@@ -110,15 +110,16 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
 
     cancelled_mask = (~installed_mask) & subscriber_uuids.isin(cancelled_uuids)
 
-    # Pending vs Needs Attention (2026-08-17, by request): Pending is now
-    # ONLY an account with a real install date strictly in the future --
+    # Pending vs Needs Attention (redefined again 2026-08-17, by request --
+    # today no longer counts as Needs Attention). Pending is now any
+    # account with a real install date today OR in the future;
     # everything else not-yet-installed/not-cancelled (no install date,
-    # explicitly "Not Scheduled", or an install date today-or-earlier)
-    # is Needs Attention instead. The two are mutually exclusive and
+    # explicitly "Not Scheduled", or an install date strictly BEFORE
+    # today) is Needs Attention. The two are mutually exclusive and
     # exhaustive over the non-installed/non-cancelled population by
     # construction. `today` compares calendar dates, not exact
     # timestamps, so an install scheduled for later today still counts
-    # as "today" (Needs Attention), not "future" (Pending).
+    # as "today" (Pending), not "past" (Needs Attention).
     today_ts = pd.Timestamp(_today())
     scheduled_flag = df["Scheduled"] if "Scheduled" in df.columns else pd.Series(None, index=df.index)
     scheduled_dates_raw = (
@@ -132,8 +133,8 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
     # converting to object, which breaks a direct comparison against a
     # plain date. normalize() keeps datetime64 dtype throughout, so it
     # compares safely against another Timestamp in every case.
-    past_or_today_mask = scheduled_dates_raw.notna() & (scheduled_dates_raw.dt.normalize() <= today_ts)
-    needs_attention_mask = (~installed_mask) & (~cancelled_mask) & (no_date_mask | unscheduled_mask | past_or_today_mask)
+    past_mask = scheduled_dates_raw.notna() & (scheduled_dates_raw.dt.normalize() < today_ts)
+    needs_attention_mask = (~installed_mask) & (~cancelled_mask) & (no_date_mask | unscheduled_mask | past_mask)
 
     status = pd.Series("Pending", index=df.index)
     status[needs_attention_mask] = "Needs Attention"
