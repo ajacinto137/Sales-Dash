@@ -992,6 +992,17 @@ def _has_monthly_sales_badge(df, rep, threshold=60):
     return bool((monthly_counts > threshold).any())
 
 
+def _has_door_to_door_badge(df, rep, threshold=10):
+    # Cumulative all-time total, unlike the other two badges above --
+    # this one has no "in a day"/"in a month" qualifier in its wording,
+    # and a per-day reading would be unreachable in practice (checked
+    # against live data: no rep has ever recorded more than 5 Door to
+    # Door sales in a single day, so a >=10-per-day threshold would
+    # award this badge to nobody).
+    door_to_door = df[(df["sales_rep"] == rep) & (df["sales_channel"] == "Door to Door")]
+    return len(door_to_door) >= threshold
+
+
 ACHIEVEMENTS = [
     {
         "key": "outbound_day",
@@ -1004,6 +1015,12 @@ ACHIEVEMENTS = [
         "icon": "squirtle_cool.gif",
         "label": "More Than 60 Sales in a Month",
         "check": _has_monthly_sales_badge,
+    },
+    {
+        "key": "door_to_door",
+        "icon": "door.gif",
+        "label": "10+ Door to Door Sales",
+        "check": _has_door_to_door_badge,
     },
 ]
 

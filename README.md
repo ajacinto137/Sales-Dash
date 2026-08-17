@@ -411,6 +411,7 @@ Currently defined, in `ACHIEVEMENTS` (`sales_metrics.py`):
 |-------|------|----------|-----------------|
 | **10+ Outbound Sales in a Day** | `static/images/samurai.gif` | Rep has recorded 10 or more outbound-channel sales (`OUTBOUND_CHANNELS`) on at least one single calendar day, ever. | `_has_daily_outbound_badge()` |
 | **More Than 60 Sales in a Month** | `static/images/squirtle_cool.gif` | Rep has recorded more than 60 total sales (any channel/status) in at least one single calendar month, ever. | `_has_monthly_sales_badge()` |
+| **10+ Door to Door Sales** | `static/images/door.gif` | Rep has recorded 10 or more Door to Door-channel sales, cumulative all-time — **not** a per-day/per-month threshold like the other two (its wording had no time-window qualifier, and checked against live data, no rep has ever hit more than 5 Door to Door sales in a single day, so a per-day reading would be unearnable). | `_has_door_to_door_badge()` |
 
 **Architecture:**
 - `ACHIEVEMENTS` (`sales_metrics.py`) is the registry — a list of
