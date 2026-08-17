@@ -1,0 +1,64 @@
+<!-- ================= Needs Attention: per-account controls =================
+     Included only from the Cards view of _bulk_account_view.html, only
+     when view == 'needs_attention' -- not added to the Table view, to
+     keep that shared grid's column layout (see team_dashboard.css's
+     .td-bulk-grid comment) identical for every other view that reuses
+     it. Expects `account` (the current loop item, already carrying
+     `attention_status`/`attention_notes` from app.py's
+     attach_attention_metadata()) and `attention_statuses` in context.
+     JS wiring lives in static/js/attention.js -- expand/collapse, save
+     (fetch to /dashboard/attention/<sale_id>/status or /notes), and
+     updating this block's badge/history in place on success. -->
+<div class="td-attention" data-attention-block>
+    <div class="td-attention-status-row">
+        <span class="td-attention-badge {{ 'td-attention-badge-' ~ account.attention_status|lower|replace(' ', '-') if account.attention_status else 'td-attention-badge-unclassified' }}" data-attention-badge>
+            {{ account.attention_status if account.attention_status else 'Unclassified' }}
+        </span>
+        <div class="td-attention-actions">
+            <button type="button" class="td-attention-link" data-attention-open="classify">{{ 'Change Status' if account.attention_status else 'Classify' }}</button>
+            <button type="button" class="td-attention-link" data-attention-open="note"{% if not account.attention_status %} style="display:none;"{% endif %}>Add Note</button>
+            <button type="button" class="td-attention-link" data-attention-open="history"{% if not account.attention_notes %} style="display:none;"{% endif %}>View Notes (<span data-attention-notes-count>{{ account.attention_notes|length }}</span>)</button>
+        </div>
+    </div>
+
+    <div class="td-attention-panel" data-attention-panel="classify" style="display:none;">
+        <label class="td-attention-label" for="attn-status-{{ account.sale_id }}">Attention Status</label>
+        <select class="td-select" data-attention-status-input id="attn-status-{{ account.sale_id }}">
+            <option value="">Select status…</option>
+            {% for status in attention_statuses %}
+            <option value="{{ status }}" {{ 'selected' if status == account.attention_status else '' }}>{{ status }}</option>
+            {% endfor %}
+        </select>
+        <label class="td-attention-label" for="attn-status-note-{{ account.sale_id }}">Required Note</label>
+        <textarea class="td-attention-textarea" data-attention-note-input id="attn-status-note-{{ account.sale_id }}" maxlength="2000" rows="3" placeholder="Explain what's happening with this account…"></textarea>
+        <div class="td-attention-error" data-attention-error style="display:none;"></div>
+        <div class="td-attention-panel-actions">
+            <button type="button" class="td-btn td-btn-ghost" data-attention-cancel>Cancel</button>
+            <button type="button" class="td-btn td-btn-primary" data-attention-save="status">Save</button>
+        </div>
+    </div>
+
+    <div class="td-attention-panel" data-attention-panel="note" style="display:none;">
+        <label class="td-attention-label" for="attn-note-{{ account.sale_id }}">New Note</label>
+        <textarea class="td-attention-textarea" data-attention-note-input id="attn-note-{{ account.sale_id }}" maxlength="2000" rows="3" placeholder="Add an update…"></textarea>
+        <div class="td-attention-error" data-attention-error style="display:none;"></div>
+        <div class="td-attention-panel-actions">
+            <button type="button" class="td-btn td-btn-ghost" data-attention-cancel>Cancel</button>
+            <button type="button" class="td-btn td-btn-primary" data-attention-save="note">Save Note</button>
+        </div>
+    </div>
+
+    <div class="td-attention-panel" data-attention-panel="history" style="display:none;">
+        <div class="td-attention-history-list" data-attention-history-list>
+            {% for note in account.attention_notes %}
+            <div class="td-attention-history-item">
+                {% if note.previous_status %}
+                <div class="td-attention-history-change">Attention Status changed from {{ note.previous_status }} to {{ note.attention_status }}</div>
+                {% endif %}
+                <div class="td-attention-history-meta">{{ note.created_at_display }}{% if note.created_by %} — {{ note.created_by }}{% endif %}</div>
+                <div class="td-attention-history-note">{{ note.note }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

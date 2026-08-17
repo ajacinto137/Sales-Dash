@@ -17,6 +17,19 @@ KPI_DATABASE = os.environ.get("KPI_DATABASE", "")
 KPI_USERNAME = os.environ.get("KPI_USERNAME", "")
 KPI_PASSWORD = os.environ.get("KPI_PASSWORD", "")
 
+# App-owned database -- NOT one of the two read-only source databases
+# above. This is a separate Postgres instance (its own "appdb" Docker
+# Compose service, see docker-compose.yml) that this app is free to write
+# to, used today by attention_store.py for the Needs Attention workflow
+# (Attention Status + notes). PlanetWeb and KPI stay strictly read-only;
+# nothing in this codebase should ever execute anything but SELECT
+# against them. See README.md "Needs Attention Workflow".
+APPDB_HOST = os.environ.get("APPDB_HOST", "")
+APPDB_PORT = int(os.environ.get("APPDB_PORT", "5432"))
+APPDB_DATABASE = os.environ.get("APPDB_DATABASE", "")
+APPDB_USERNAME = os.environ.get("APPDB_USERNAME", "")
+APPDB_PASSWORD = os.environ.get("APPDB_PASSWORD", "")
+
 CONNECT_TIMEOUT_SECONDS = 10
 
 
@@ -45,11 +58,22 @@ def get_kpi_connection():
     )
 
 
+def get_appdb_connection():
+    return psycopg2.connect(
+        host=APPDB_HOST,
+        port=APPDB_PORT,
+        dbname=APPDB_DATABASE,
+        user=APPDB_USERNAME,
+        password=APPDB_PASSWORD,
+        connect_timeout=CONNECT_TIMEOUT_SECONDS,
+    )
+
+
 def sanitize_error(message):
     """Strips known secrets out of a raw driver error message before it is
     shown in the UI or logs."""
     text = str(message)
-    for secret in (PLANETWEB_PASSWORD, KPI_PASSWORD):
+    for secret in (PLANETWEB_PASSWORD, KPI_PASSWORD, APPDB_PASSWORD):
         if secret:
             text = text.replace(secret, "***")
     return text
@@ -75,6 +99,22 @@ def test_kpi_connection():
     conn = None
     try:
         conn = get_kpi_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        cursor.close()
+        return True, None
+    except Exception as exc:
+        return False, sanitize_error(exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def test_appdb_connection():
+    conn = None
+    try:
+        conn = get_appdb_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         cursor.fetchone()

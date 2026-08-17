@@ -9,27 +9,34 @@ The entire application runs in Docker — the SQL Server ODBC driver is
 installed **inside the container**, so you do not need to install it on
 your Mac to use this project.
 
-This application is **read-only**. It only ever executes `SELECT`
-statements against both source databases.
+This application is **read-only against its two source databases** (PlanetWeb
+SQL Server and KPI PostgreSQL) — it only ever executes `SELECT` statements
+against them. It does have one app-owned database of its own, a separate
+Postgres instance ("appdb") that backs the Needs Attention workflow
+(rep-entered Attention Status + notes) — see "Needs Attention Workflow"
+below. That data never comes from, or writes back to, either source
+database.
 
 ## Stack
 
 **Backend**
 - [Flask](https://flask.palletsprojects.com/) (Python) — web app and routes (`app.py`)
 - [pandas](https://pandas.pydata.org/) — data wrangling and metrics calculations (`sales_metrics.py`)
-- [pyodbc](https://github.com/mkleehammer/pyodbc) + Microsoft ODBC Driver 18 — connects to the PlanetWeb **SQL Server** database
-- [psycopg2](https://www.psycopg.org/) — connects to the KPI **PostgreSQL** database
+- [pyodbc](https://github.com/mkleehammer/pyodbc) + Microsoft ODBC Driver 18 — connects to the PlanetWeb **SQL Server** database (read-only)
+- [psycopg2](https://www.psycopg.org/) — connects to the KPI **PostgreSQL** database (read-only) and the app-owned **appdb** PostgreSQL database (read/write, see "Needs Attention Workflow")
 - [python-dotenv](https://github.com/theskumar/python-dotenv) — loads credentials from `.env`
 - Raw SQL queries defined in `queries.py`, DB connection/health-check helpers in `db.py`
+- `attention_store.py` — the Needs Attention workflow's persistence layer (Attention Status + notes), the only module in this app that writes to a database
 
 **Frontend**
 - Server-rendered [Jinja2](https://jinja.palletsprojects.com/) templates (`templates/`)
-- Vanilla JavaScript (`static/js/dashboard.js`, `static/js/team_dashboard.js`) — no frontend framework or build step
+- Vanilla JavaScript (`static/js/dashboard.js`, `static/js/team_dashboard.js`, `static/js/attention.js`) — no frontend framework or build step
 - [Chart.js](https://www.chartjs.org/) (v4, via CDN) — sales-over-time chart
 - Plain CSS (`static/css/dashboard.css`, `static/css/team_dashboard.css`)
 
 **Infrastructure**
 - Docker / Docker Compose — the entire app, including the SQL Server ODBC driver, runs in a container (`Dockerfile`, `docker-compose.yml`)
+- A second container, `appdb` (`postgres:16-alpine`, its own named volume) — the app-owned database backing the Needs Attention workflow, entirely separate from the two read-only source databases
 - Base image: `python:3.12-slim-bookworm`
 - App served on port `3005`
 
@@ -46,7 +53,7 @@ production setup described further down.
 
 ### 2. Configure credentials
 
-Copy the template and fill in the four database credential values:
+Copy the template and fill in the credential values:
 
 ```bash
 cp .env.example .env
@@ -58,11 +65,20 @@ PLANETWEB_PASSWORD=
 
 KPI_USERNAME=
 KPI_PASSWORD=
+
+APPDB_PASSWORD=
 ```
 
-These are the **only four values** you should need to manually enter.
-Everything else (hosts, database names, ports, driver name, SSL settings,
-and the queries themselves) is already filled in.
+The first four are the source-database credentials your team already
+uses. Everything else about them (hosts, database names, ports, driver
+name, SSL settings, and the queries themselves) is already filled in.
+
+`APPDB_PASSWORD` is different in kind: it's not an existing credential to
+look up anywhere — it sets the password for a brand-new, empty Postgres
+database (`appdb` in `docker-compose.yml`) that this app creates for
+itself on first `docker compose up`, used only by the Needs Attention
+workflow (see "Needs Attention Workflow" below). Any value works; there's
+nothing to "get right" beyond picking one.
 
 `.env` is excluded from Git via `.gitignore` — never commit it once it
 contains real credentials. `.env.example` is the tracked template that's
@@ -75,8 +91,11 @@ docker compose up --build
 ```
 
 This builds the image (installing ODBC Driver 18 for SQL Server and all
-Python dependencies inside the container), then starts Flask on
-`0.0.0.0:3005` inside the container, mapped to your Mac at `3005:3005`.
+Python dependencies inside the container), starts the `appdb` Postgres
+container alongside it (pulled from Docker Hub, not built), then starts
+Flask on `0.0.0.0:3005` inside the container, mapped to your Mac at
+`3005:3005`. `appdb` has no port published to the host — only the
+`dashboard` container talks to it, over the Compose-internal network.
 
 ### 4. Open
 
@@ -344,13 +363,208 @@ page has two tabs:
 | Name | What it is |
 |------|------------|
 | **Overview** | Metric cards for Total Sales, Installed, Install Rate (primary) and Inbound, Outbound, Pending (secondary, now 3 cards — Cancelled and Cancel Rate removed 2026-08-17, by request) — all period-filtered — plus two chart sections (added 2026-08-16): **Sales Activity** (a rep-scoped Sales Calendar beside a `MonthlySalesChart` bar chart, day-of-month with a cumulative trend line and per-day channel breakdown in the tooltip; always all-time with its own `cal_year`/`cal_month` nav, independent of the period filter, same convention as the Team Leaderboard's Sales Calendar); **Channel & Time-of-Day Performance** (one row, one card, a segmented-control toggle between a `SalesByChannelChart` horizontal bar chart — replacing the former plain-text Inbound/Outbound columns, reuses `calculate_channel_breakdown()` unchanged, bars clickable into a channel-scoped Bulk Account View — and an `HourlySalesChart` across all 24 real hours built from `sale_datetime` via `calculate_hourly_breakdown()`, merged from two separate sections into one toggle 2026-08-16 by request; Sales by Hour is the default-shown chart, changed the same day by request). Renders via Chart.js v4.4.4 (loaded in `rep_profile.html`'s `<head>`, same version already used on the `/overview` page) and the shared `static/js/charts.js` helper module — see "Chart Card" below. |
-| **Needs Attention** | Accounts for this rep that are not Installed/Cancelled and have no install date in the future — i.e. no install date at all, explicitly "Not Scheduled", or an install date today or earlier (redefined 2026-08-17, see "Pending vs Needs Attention" below). Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below). |
+| **Needs Attention** | Accounts for this rep that are not Installed/Cancelled and have no install date in the future — i.e. no install date at all, explicitly "Not Scheduled", or an install date today or earlier (redefined 2026-08-17, see "Pending vs Needs Attention" below). Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below), extended with the **Needs Attention Workflow** (Attention Status + notes — see its own section further down). |
 
 The Overview tab's metric cards reuse `calculate_rep_metrics()` — the
 exact same function/output that produces the Individual Rep Leaderboard table rows
 — so the two pages can never disagree for the same period. The Needs
 Attention tab's count is shown directly in the tab label
 (`Needs Attention (N)`), with a subtle warning treatment when `N > 0`.
+
+## Needs Attention Workflow
+
+> Lets a sales rep classify each Needs Attention account (why it needs
+> attention, what's being done about it) and leave a running note history
+> — added 2026-08-17. This is **operational metadata layered on top of**
+> the Needs Attention Bulk Account View, not a change to what "Needs
+> Attention" means or how many accounts are in it.
+
+**The two rules this feature must never break:**
+1. **The Needs Attention count never changes based on anything a rep does
+   in this workflow.** It's still whatever `build_sales_dataset()` /
+   `calculate_rep_metrics()` / `calculate_needs_attention()` compute from
+   the source data alone (see "Pending vs Needs Attention" above) —
+   classifying every single account in a rep's list doesn't remove or
+   hide a single one of them from that count.
+2. **The Install Rate formula never changes.** Still `1.0 -
+   (needs_attention / total_sales)`, exactly as before this feature
+   existed. Attention Status is not read by `calculate_rep_metrics()` at
+   all — `sales_metrics.py` has no import of, or dependency on, this
+   feature's code, in either direction.
+
+Both hold structurally, not just by convention: `attention_store.py` (the
+only module that touches this feature's data) is never imported by
+`sales_metrics.py`, and nothing in `sales_metrics.py` was changed to
+build this feature — only `build_bulk_account_rows()` gained one new
+passthrough field (`sale_id`, see below), which no calculation reads.
+
+### Attention Status
+
+One of exactly six values — **Duplicate, Cancellation, Engineering
+Issues, Underground Issues, Existing Customer, Other** — or unset
+("Unclassified" in the UI, never a stored value; there is deliberately no
+"Unreviewed"/"In Progress"/"Addressed"/"Resolved" status). Validated
+against this fixed list server-side on every write
+(`attention_store.ATTENTION_STATUS_SET`), regardless of what the
+`<select>` in the browser already restricted it to.
+
+**A status can never exist without a note.** The only function that ever
+writes `attention_status` is `attention_store.set_attention_status(sale_id,
+status, note, author)`, and it rejects a blank/whitespace-only note before
+writing anything — so "a status requires a note" is enforced by there
+being exactly one write path, not a rule duplicated across two code
+paths that could drift apart. Changing an already-set status back to a
+*different* value also requires a new note (same function, same
+validation) — the previous status/notes are never deleted, only added to.
+
+**Addressed** = has a non-null `attention_status` (which, by the rule
+above, always means at least one note exists too — the two conditions
+in the task's spec collapse to one check in practice).
+**Remaining** = Needs Attention total − Addressed. Both are pure
+workflow metrics, shown as a progress bar/stat row and a set of
+client-side filter chips (All / Unclassified / Addressed / each status)
+at the top of the Needs Attention Bulk Account View — filtering only
+hides/shows already-rendered accounts (`static/js/attention.js`), it
+never re-queries or changes the underlying list.
+
+### Notes
+
+Append-only activity history — one row per note, never updated or
+deleted, newest first. Every note records which `attention_status` was
+in effect when it was written, and (only when that save *changed* the
+status) the `previous_status` it changed from, which is what lets the UI
+render an audit line like "Attention Status changed from Engineering
+Issues to Cancellation" without a separate audit table. After an account
+is classified, a rep can add further notes without touching its status
+(`attention_store.add_note()` — requires the account to already have a
+status; there's nothing to "add another note" to before the first one).
+
+### Persistence
+
+A dedicated, app-owned PostgreSQL database — **not** the KPI PostgreSQL
+source database, and not a table added to either source database. The
+task that introduced this feature was explicit that this app shouldn't
+assume permission to write into an existing business database, and the
+README's own read-only rule already covered both PlanetWeb and KPI — so
+this feature gets a third database, `appdb`, that's entirely this app's
+own from the start (`docker-compose.yml` / `docker-compose.prod.yml`,
+`postgres:16-alpine`, its own named volume so data survives a container
+restart/redeployment). Credentials: `APPDB_HOST`/`APPDB_PORT`/
+`APPDB_DATABASE`/`APPDB_USERNAME`/`APPDB_PASSWORD` in `.env` (see
+"Configure credentials" above) — `db.get_appdb_connection()` is the
+connection helper, parallel to `get_planetweb_connection()`/
+`get_kpi_connection()`.
+
+Schema (auto-created on first use via `CREATE TABLE IF NOT EXISTS`,
+`attention_store._ensure_schema()` — no separate migration step or
+tooling; this app has none today, so a startup-time idempotent schema
+check is the smallest thing that could work):
+
+```sql
+account_attention (
+    sale_id BIGINT PRIMARY KEY,        -- see "why sale_id" below
+    attention_status TEXT NOT NULL,
+    created_at, updated_at, updated_by
+)
+
+account_attention_notes (
+    id SERIAL PRIMARY KEY,
+    sale_id BIGINT NOT NULL REFERENCES account_attention(sale_id),
+    note TEXT NOT NULL,
+    attention_status TEXT NOT NULL,     -- status in effect when written
+    previous_status TEXT,               -- set only on an actual status change
+    created_at, created_by
+)
+```
+
+`account_attention`'s primary key on `sale_id` is what makes a second
+classification of the same account an upsert (`INSERT ... ON CONFLICT
+(sale_id) DO UPDATE`) rather than a duplicate row — "no duplicate
+attention record for the same account" holds by construction, not by a
+pre-check. All queries are parameterized (`cur.execute(sql, (params,))`
+throughout `attention_store.py`) — no string-built SQL anywhere in this
+module.
+
+**Why `sale_id`, not `subscriber_uuid`:** the task suggested preferring
+the subscriber UUID already used for Vision links
+(`vi_subscriber_uuid`/`subscriber_uuid` in the normalized dataset).
+Checked against live data before committing to it — at the time of
+writing, ~6.5% of Needs Attention accounts (42 of 647) have no
+`subscriber_uuid` at all, concentrated in exactly the not-yet-installed
+population this feature exists to serve (that field is only reliably
+populated once an account is further along). `sale_id` — Main Sales' own
+primary key (`FTTPFormData.ID`, the `sale_id` column already in the
+normalized dataset) — has 0 nulls and 100% uniqueness across the whole
+dataset, so it's the only identifier that lets *every* Needs Attention
+account be classified. Full reasoning lives in `attention_store.py`'s
+module docstring.
+
+### Failure handling
+
+If `appdb` is unreachable, every read function in `attention_store.py`
+returns an explicit `available=False` (never raises, never silently
+implies "zero accounts classified"). `app.py`'s
+`attach_attention_metadata()` surfaces that as `attention_available` in
+the template context: `_attention_overview.html` shows a plain "Attention
+Status & notes are temporarily unavailable" notice instead of the
+progress bar, and `_attention_controls.html` (the per-card edit UI) is
+skipped entirely rather than rendering Save buttons that would just fail.
+Everything else on the page — the Needs Attention account list itself,
+`Needs Attention (N)` in the tab label, Install Rate, every other Rep
+Profile section — renders completely normally, since none of it reads
+from `attention_store.py`. Verified by stopping the `appdb` container
+and confirming the Rep Profile still returns 200 with the notice shown
+and the source-data numbers unchanged.
+
+### Routes / functions
+
+- `POST /dashboard/attention/<int:sale_id>/status` — set or change
+  Attention Status (`attention_set_status()` in `app.py` →
+  `attention_store.set_attention_status()`). JSON body:
+  `{status, note, author}`. Returns the account's full updated note list.
+- `POST /dashboard/attention/<int:sale_id>/notes` — add a note without
+  changing status (`attention_add_note()` → `attention_store.add_note()`).
+  JSON body: `{note, author}`.
+- Both validate `sale_id` against the currently loaded normalized dataset
+  (`_known_sale_id()`) before touching `attention_store` at all — a
+  `sale_id` is a value the browser sends back to us, so it's never
+  trusted to correspond to a real account without checking first (404 if
+  not). Both validate/trim/length-cap the note and validate the status
+  against the approved list **server-side**, independent of whatever the
+  browser already checked — the task was explicit not to rely on
+  JS-only validation.
+- `attach_attention_metadata(accounts)` (`app.py`) — the one function
+  that joins Attention Status/notes onto an already-built list of
+  `build_bulk_account_rows()` dicts, and computes the Addressed/Remaining
+  progress numbers. Called from `rep_profile()` (the inline Needs
+  Attention tab), `bulk_account_view()`, and `all_sales_view()`
+  (the standalone/team-wide Bulk Account View pages), every time
+  **only** for `view == "needs_attention"`.
+
+### How this extends Bulk Account View
+
+No new list component, exactly per the project's existing rule (see
+"Reusable Views" below) — the Needs Attention Bulk Account View is still
+`_bulk_account_view.html`, unchanged for every other view. Two small
+additions, both gated on `view == 'needs_attention'` so no other view
+(Pending, All Sales, channel/metric/date drill-downs) is affected:
+- `templates/_attention_overview.html` — the progress bar/stats + filter
+  chips, included once near the top.
+- `templates/_attention_controls.html` — the per-account badge +
+  Classify/Add Note/View Notes controls, included inside each `.td-bulk-card`
+  in the **Cards** view only. The **Table** view intentionally doesn't
+  get inline edit controls (would mean a 7th column and a much more
+  cramped CSS Grid for every other view too) but its rows still carry the
+  same `data-sale-id`/`data-attention-status` attributes as their Cards
+  counterpart, so the filter chips stay in sync no matter which view mode
+  is showing.
+- `build_bulk_account_rows()` gained one new field, `sale_id` — see "Why
+  `sale_id`" above. It's a plain passthrough (Main Sales' existing
+  primary key), read by no calculation, so every other Bulk Account View
+  caller is unaffected by its presence.
+- `static/js/attention.js` — new, loaded on `rep_profile.html` and
+  `bulk_account_view.html` (both already load `team_dashboard.js`). A
+  no-op on every page/view without `[data-attention-*]` elements.
 
 ## Reusable Views
 
@@ -367,8 +581,10 @@ can change; the component stays the same.** Concretely:
   partial, included wherever a filtered account list needs to appear. It
   expects an `accounts` list (rows shaped by `build_bulk_account_rows()`
   in `sales_metrics.py`) and an `empty_message` string, and renders each
-  account's First Name, Last Name, Address, Scheduled Install Date,
-  status/category badge, and a Vision link (new tab, `noopener
+  account's `sale_id` (stable identifier, added 2026-08-17 for the Needs
+  Attention Workflow — see its own section above), First Name, Last Name,
+  Address, Scheduled Install Date, status/category badge, Sales Channel,
+  and a Vision link (new tab, `noopener
   noreferrer`, built from `vi_subscriber_uuid` via `build_vision_url()`,
   omitted rather than broken when the UUID is missing).
 - `BULK_ACCOUNT_VIEWS` (`sales_metrics.py`) is the registry mapping a
@@ -466,6 +682,17 @@ number") — that one change then applies everywhere the component is
 used. Do not create a duplicate account-list component just because the
 source metric or filter differs.
 
+- **Needs Attention Workflow controls** (added 2026-08-17, see its own
+  section above) are the one exception to "the component stays visually
+  identical everywhere it's used" — `_bulk_account_view.html` conditionally
+  includes `_attention_overview.html`/`_attention_controls.html`, but only
+  when `view == 'needs_attention'` (true for the rep-scoped standalone
+  page, the team-wide standalone page, and the Rep Profile's inline tab —
+  false for every other view: Pending, All Sales, and the channel/metric/
+  date drill-downs). This is a template-level `{% if %}`, not a second
+  component — the underlying card/table markup, sorting, and Cards/Table
+  toggle are unchanged and shared by every view exactly as before.
+
 ### Chart Card
 
 > The standardized shell for a single Chart.js visualization, used by
@@ -529,9 +756,20 @@ a small vanilla-JS factory function, the same pattern
 
 ## What's intentionally not built yet
 
-User authentication, sales rep login, admin portal, database writes,
-scheduled ETL, email/SMS reports, and CRM integration are all out of
-scope for this phase. See code comments in `app.py` and `queries.py`
-for notes on the future data model (linking `main_sales`,
-`vision_packages`, and `service_cancellations` via subscriber UUID)
-once that relationship is confirmed.
+User authentication, sales rep login, admin portal, scheduled ETL,
+email/SMS reports, and CRM integration are all out of scope for this
+phase. See code comments in `app.py` and `queries.py` for notes on the
+future data model (linking `main_sales`, `vision_packages`, and
+`service_cancellations` via subscriber UUID) once that relationship is
+confirmed.
+
+**Database writes** are no longer entirely out of scope — the Needs
+Attention Workflow (added 2026-08-17, see its own section above) writes
+to `appdb`, an app-owned Postgres database created specifically for it.
+**PlanetWeb SQL Server and KPI PostgreSQL remain strictly read-only** —
+nothing in this codebase executes anything but `SELECT` against either of
+those two. `created_by`/`updated_by` on that feature's tables are
+freeform text today (a "Your name" field, cached in the browser's
+`localStorage`) rather than tied to a real user account, specifically so
+real authenticated users can be wired in later without a schema change —
+see "Needs Attention Workflow" → Persistence.

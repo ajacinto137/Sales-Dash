@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/attention.js') }}" defer></script>
 </head>
 <body class="td-body">
 <div class="td-topnav">
@@ -167,6 +168,7 @@
 
         {% set accounts = needs_attention %}
         {% set empty_message = "No accounts currently need attention." %}
+        {% set view = "needs_attention" %}
         {% include "_bulk_account_view.html" %}
     </section>
 

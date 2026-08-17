@@ -1130,6 +1130,293 @@ a.td-record-rep:hover {
     font-size: 12.5px;
 }
 
+/* ---------------- Needs Attention workflow ----------------
+   Attention Status + notes, layered onto the Cards view of the shared
+   Bulk Account View (see _attention_overview.html, _attention_controls.html,
+   static/js/attention.js), only ever rendered when view == 'needs_attention'.
+   Purely workflow metadata -- see README.md "Needs Attention Workflow"
+   for the immutability rules this UI must never violate. Reuses the
+   existing token/badge/panel/button language rather than introducing a
+   new visual system. */
+
+.td-attention-banner {
+    background: var(--td-orange-bg);
+    color: var(--td-orange);
+    border: 1px solid var(--td-orange);
+    border-radius: var(--td-radius-sm);
+    padding: 10px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.td-attention-overview {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.td-attention-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.td-attention-progress-stats {
+    display: flex;
+    gap: 28px;
+}
+
+.td-attention-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.td-attention-stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--td-text-primary);
+}
+
+.td-attention-stat-addressed .td-attention-stat-value { color: var(--td-green); }
+.td-attention-stat-remaining .td-attention-stat-value { color: var(--td-orange); }
+
+.td-attention-stat-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+}
+
+.td-attention-progress-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--td-panel-alt);
+    overflow: hidden;
+}
+
+.td-attention-progress-bar-fill {
+    height: 100%;
+    background: var(--td-green);
+    border-radius: 999px;
+    transition: width 0.2s ease;
+}
+
+.td-attention-progress-label {
+    font-size: 11.5px;
+    color: var(--td-text-secondary);
+    font-weight: 600;
+}
+
+.td-attention-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-top: 14px;
+    border-top: 1px solid var(--td-border-soft);
+}
+
+.td-attention-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.td-attention-filter-btn {
+    border: 1px solid var(--td-border);
+    background: var(--td-panel-alt);
+    color: var(--td-text-secondary);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.td-attention-filter-btn:hover {
+    color: var(--td-text-primary);
+}
+
+.td-attention-filter-btn.td-attention-filter-active {
+    color: var(--td-cyan);
+    border-color: var(--td-cyan);
+    box-shadow: 0 0 8px var(--td-cyan-bg);
+}
+
+.td-attention-author-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.td-attention-author-field label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--td-text-secondary);
+    white-space: nowrap;
+}
+
+.td-attention-author-field input {
+    width: 150px;
+}
+
+/* Per-account block, appended inside .td-bulk-card. */
+
+.td-attention {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--td-border-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.td-attention-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.td-attention-badge {
+    flex-shrink: 0;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.td-attention-badge-unclassified { color: var(--td-orange); background: var(--td-orange-bg); }
+.td-attention-badge-duplicate { color: var(--td-purple); background: var(--td-purple-bg); }
+.td-attention-badge-cancellation { color: var(--td-yellow); background: var(--td-yellow-bg); }
+.td-attention-badge-engineering-issues { color: var(--td-cyan); background: var(--td-cyan-bg); }
+.td-attention-badge-underground-issues { color: var(--td-accent-lime); background: var(--td-accent-lime-bg); }
+.td-attention-badge-existing-customer { color: var(--td-accent-violet); background: var(--td-accent-violet-bg); }
+.td-attention-badge-other { color: var(--td-text-secondary); background: var(--td-panel-alt); }
+
+.td-attention-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.td-attention-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--td-cyan);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.td-attention-link:hover {
+    text-decoration: underline;
+}
+
+.td-attention-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius-sm);
+    padding: 12px;
+    margin-top: 4px;
+}
+
+.td-attention-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--td-text-secondary);
+}
+
+.td-attention-textarea {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius-sm);
+    color: var(--td-text-primary);
+    padding: 8px 10px;
+    font-size: 12.5px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.td-attention-textarea:focus {
+    outline: none;
+    border-color: var(--td-cyan);
+}
+
+.td-attention-error {
+    color: var(--td-orange);
+    font-size: 11.5px;
+    font-weight: 600;
+}
+
+.td-attention-panel-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.td-attention-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.td-attention-history-item {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--td-border);
+}
+
+.td-attention-history-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.td-attention-history-change {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--td-cyan);
+    margin-bottom: 3px;
+}
+
+.td-attention-history-meta {
+    font-size: 10.5px;
+    color: var(--td-text-muted);
+    margin-bottom: 3px;
+}
+
+.td-attention-history-note {
+    font-size: 12.5px;
+    color: var(--td-text-primary);
+    line-height: 1.4;
+    white-space: pre-wrap;
+}
+
+.td-attention-filtered-out {
+    display: none !important;
+}
+
 /* ---------------- Rep Profile: charts (Sales Activity / Channel / Hourly) ---------------- */
 
 .td-activity-split {

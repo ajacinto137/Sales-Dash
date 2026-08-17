@@ -36,6 +36,22 @@ services:
     expose:
       - "3005"
     restart: unless-stopped
+    depends_on:
+      - appdb
+
+  # App-owned Postgres database for the Needs Attention workflow
+  # (Attention Status + notes) -- see docker-compose.yml's own appdb
+  # service comment and README.md "Needs Attention Workflow". Not
+  # exposed to the host; only the dashboard container talks to it.
+  appdb:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${APPDB_DATABASE:-sales_dash_app}
+      POSTGRES_USER: ${APPDB_USERNAME:-sales_dash_app}
+      POSTGRES_PASSWORD: ${APPDB_PASSWORD:?Set APPDB_PASSWORD in .env}
+    volumes:
+      - appdb-data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   nginx:
     image: nginx:1.27-alpine
@@ -56,3 +72,11 @@ services:
       - ${SSL_CERTS_DIR}:/etc/nginx/certs:ro
       - ./webroot:/var/www/certbot:ro
     restart: unless-stopped
+
+volumes:
+  # Named volume -- survives container recreation/redeployment, only
+  # wiped by an explicit `docker compose -f docker-compose.prod.yml
+  # down -v`. A separate volume from docker-compose.yml's own
+  # appdb-data (different compose project), which is expected -- prod
+  # and local dev are intentionally separate stacks/data.
+  appdb-data:

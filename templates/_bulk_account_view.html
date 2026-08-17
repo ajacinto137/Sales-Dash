@@ -8,6 +8,11 @@
      should not. See README.md "Reusable Views". -->
 {% if accounts %}
 <div class="td-bulk-view" data-bulk-view>
+
+    {% if view == 'needs_attention' %}
+    {% include "_attention_overview.html" %}
+    {% endif %}
+
     <div class="td-bulk-view-toggle-row">
         <div class="td-chart-toggle">
             <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-bulk-view-btn="cards">Cards</button>
@@ -17,7 +22,7 @@
 
     <div class="td-bulk-list" data-bulk-view-panel="cards">
         {% for account in accounts %}
-        <div class="td-bulk-card">
+        <div class="td-bulk-card"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}"{% endif %}>
             <div class="td-bulk-card-head">
                 <span class="td-bulk-name">{{ account.first_name }} {{ account.last_name }}</span>
                 <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span>
@@ -33,6 +38,9 @@
                 <span class="td-bulk-vision-disabled">Vision unavailable</span>
                 {% endif %}
             </div>
+            {% if view == 'needs_attention' and attention_available %}
+            {% include "_attention_controls.html" %}
+            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -62,7 +70,7 @@
                 <div class="td-bulk-grid-cell td-bulk-grid-head" data-sort-key="vision" role="columnheader" tabindex="0">Vision<span class="td-sort-arrow" data-sort-arrow></span></div>
 
                 {% for account in accounts %}
-                <div class="td-bulk-grid-row" role="row">
+                <div class="td-bulk-grid-row" role="row"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}"{% endif %}>
                     <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ (account.last_name ~ ' ' ~ account.first_name)|lower|trim }}">{{ account.first_name }} {{ account.last_name }}</div>
                     <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ (account.sales_channel or '')|lower }}">{{ account.sales_channel or '—' }}</div>
                     <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ account.status|lower }}"><span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span></div>

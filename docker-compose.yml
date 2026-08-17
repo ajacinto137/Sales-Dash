@@ -14,3 +14,27 @@ services:
     ports:
       - "3005:3005"
     restart: unless-stopped
+    depends_on:
+      - appdb
+
+  # App-owned Postgres database -- NOT one of the two read-only source
+  # databases (PlanetWeb SQL Server / KPI PostgreSQL). This is where the
+  # Needs Attention workflow's Attention Status + notes live
+  # (attention_store.py); the app is free to write here since it's not
+  # shared with any other system. See README.md "Needs Attention Workflow".
+  appdb:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${APPDB_DATABASE:-sales_dash_app}
+      POSTGRES_USER: ${APPDB_USERNAME:-sales_dash_app}
+      POSTGRES_PASSWORD: ${APPDB_PASSWORD:?Set APPDB_PASSWORD in .env}
+    volumes:
+      - appdb-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  # Named volume, not a bind mount -- survives `docker compose down` and
+  # container recreation/rebuilds, only wiped by an explicit `docker
+  # compose down -v`. This is what makes Attention Status/notes persist
+  # across a Docker restart/redeployment, per the feature's requirements.
+  appdb-data:

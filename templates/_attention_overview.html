@@ -1,0 +1,56 @@
+<!-- ================= Needs Attention: progress + filters =================
+     Included only when view == 'needs_attention' (see
+     _bulk_account_view.html). A pure workflow-progress display + a
+     client-side filter bar (static/js/attention.js) over Attention
+     Status metadata -- these numbers are DERIVED from that metadata and
+     must never be confused with the Needs Attention count itself, which
+     comes from calculate_rep_metrics()/calculate_needs_attention() in
+     sales_metrics.py and is entirely unaffected by anything rendered
+     here. See README.md "Needs Attention Workflow".
+     Expects `attention_available` (bool) and, when true,
+     `attention_progress` ({total, addressed, remaining, by_status}) and
+     `attention_statuses` (the fixed 6-value list) in context -- all set
+     by app.py's attach_attention_metadata() before this partial (or its
+     parent) is included. -->
+{% if attention_available %}
+<div class="td-attention-overview" data-attention-overview data-attention-statuses='{{ attention_statuses|tojson }}'>
+    <div class="td-attention-progress">
+        <div class="td-attention-progress-stats">
+            <div class="td-attention-stat">
+                <span class="td-attention-stat-value" data-attention-count="all">{{ attention_progress.total }}</span>
+                <span class="td-attention-stat-label">Needs Attention</span>
+            </div>
+            <div class="td-attention-stat td-attention-stat-addressed">
+                <span class="td-attention-stat-value" data-attention-count="addressed">{{ attention_progress.addressed }}</span>
+                <span class="td-attention-stat-label">Addressed</span>
+            </div>
+            <div class="td-attention-stat td-attention-stat-remaining">
+                <span class="td-attention-stat-value" data-attention-count="unclassified">{{ attention_progress.remaining }}</span>
+                <span class="td-attention-stat-label">Remaining</span>
+            </div>
+        </div>
+        <div class="td-attention-progress-bar">
+            <div class="td-attention-progress-bar-fill" data-attention-progress-fill
+                 style="width: {{ ((attention_progress.addressed / attention_progress.total * 100) if attention_progress.total else 0)|round(1) }}%;"></div>
+        </div>
+        <span class="td-attention-progress-label" data-attention-progress-label>{{ attention_progress.addressed }} / {{ attention_progress.total }} Addressed</span>
+    </div>
+
+    <div class="td-attention-controls">
+        <div class="td-attention-filters" data-attention-filters>
+            <button type="button" class="td-attention-filter-btn td-attention-filter-active" data-attention-filter="all">All <span data-attention-count="all">{{ attention_progress.total }}</span></button>
+            <button type="button" class="td-attention-filter-btn" data-attention-filter="unclassified">Unclassified <span data-attention-count="unclassified">{{ attention_progress.remaining }}</span></button>
+            <button type="button" class="td-attention-filter-btn" data-attention-filter="addressed">Addressed <span data-attention-count="addressed">{{ attention_progress.addressed }}</span></button>
+            {% for status in attention_statuses %}
+            <button type="button" class="td-attention-filter-btn" data-attention-filter="{{ status }}">{{ status }} <span data-attention-count="{{ status }}">{{ attention_progress.by_status.get(status, 0) }}</span></button>
+            {% endfor %}
+        </div>
+        <div class="td-attention-author-field">
+            <label for="attention-author">Your name</label>
+            <input type="text" id="attention-author" class="td-search-input" data-attention-author placeholder="Your name" maxlength="120">
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="td-attention-banner">Attention Status &amp; notes are temporarily unavailable right now — the Needs Attention list below is unaffected.</div>
+{% endif %}

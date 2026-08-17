@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 
+import attention_store
 import db
 from queries import (
     MAIN_SALES_QUERY,
@@ -387,6 +388,50 @@ def report_period(df):
     }
 
 
+def _format_note_timestamp(dt):
+    if dt is None:
+        return ""
+    return dt.astimezone(EASTERN_TZ).strftime("%b %-d, %Y · %-I:%M %p")
+
+
+def _serialize_note(note):
+    """Shapes one attention_store note dict for a JSON response -- same
+    display fields attach_attention_metadata() adds for the server-rendered
+    page, so the initial render and every AJAX update after it are always
+    byte-identical in how a note is presented."""
+    return {
+        "note": note["note"],
+        "attention_status": note["attention_status"],
+        "previous_status": note["previous_status"],
+        "created_at_display": _format_note_timestamp(note["created_at"]),
+        "created_by": note["created_by"],
+    }
+
+
+def attach_attention_metadata(accounts):
+    """Needs Attention workflow only: mutates `accounts` in place, adding
+    `attention_status` (None if unclassified) and `attention_notes`
+    (newest first, each with a display-formatted timestamp) to every
+    account dict from attention_store.get_attention_overview(). Returns
+    (attention_available, attention_progress) for the page header/progress
+    bar -- see attention_store.py's module docstring for the availability
+    contract. Purely additive: `accounts` already has everything the Bulk
+    Account View needs from the source data alone, so a down appdb still
+    leaves a fully renderable (just unclassified-looking) account list.
+    Callers must only invoke this for the needs_attention view -- see
+    bulk_account_view()/rep_profile() below."""
+    sale_ids = [a["sale_id"] for a in accounts]
+    available, status_map, notes_map, progress = attention_store.get_attention_overview(sale_ids)
+    for account in accounts:
+        notes = notes_map.get(account["sale_id"], [])
+        account["attention_status"] = status_map.get(account["sale_id"])
+        account["attention_notes"] = [
+            {**note, "created_at_display": _format_note_timestamp(note["created_at"])}
+            for note in notes
+        ]
+    return available, progress
+
+
 # ================================================================
 # ROUTES
 # ================================================================
@@ -639,6 +684,13 @@ def rep_profile(rep_name):
     # calculate_needs_attention()'s docstring.
     needs_attention = calculate_needs_attention(normalized, rep_name)
 
+    # Needs Attention workflow controls -- see attach_attention_metadata()
+    # and README.md "Needs Attention Workflow". needs_attention_count
+    # stays len(needs_attention) below, computed before this call and
+    # completely unaffected by it -- Attention Status is metadata attached
+    # to the same accounts, never a filter over them.
+    attention_available, attention_progress = attach_attention_metadata(needs_attention)
+
     return render_template(
         "rep_profile.html",
         active_page="dashboard",
@@ -652,6 +704,9 @@ def rep_profile(rep_name):
         rep_monthly_activity=rep_monthly_activity,
         needs_attention=needs_attention,
         needs_attention_count=len(needs_attention),
+        attention_available=attention_available,
+        attention_progress=attention_progress,
+        attention_statuses=attention_store.ATTENTION_STATUSES,
         last_refreshed=data_store["last_refreshed"],
     )
 
@@ -709,6 +764,16 @@ def bulk_account_view(rep_name):
     else:
         abort(404)
 
+    # Needs Attention workflow controls (Attention Status + notes) only
+    # ever attach to the needs_attention view -- every other Bulk Account
+    # View (Pending, All Sales, channel/metric/date drill-downs) renders
+    # exactly as before, untouched. See attach_attention_metadata()'s
+    # docstring and README.md "Needs Attention Workflow".
+    attention_available = None
+    attention_progress = None
+    if view == "needs_attention":
+        attention_available, attention_progress = attach_attention_metadata(accounts)
+
     return render_template(
         "bulk_account_view.html",
         active_page="dashboard",
@@ -721,8 +786,81 @@ def bulk_account_view(rep_name):
         custom_start=custom_start,
         custom_end=custom_end,
         all_time=all_time,
+        attention_available=attention_available,
+        attention_progress=attention_progress,
+        attention_statuses=attention_store.ATTENTION_STATUSES,
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+def _known_sale_id(sale_id):
+    """True if sale_id belongs to a real account in the currently loaded
+    normalized dataset. Every attention write route checks this before
+    touching attention_store -- a sale_id is a value the browser sends
+    back to us, so it must never be trusted to correspond to an account
+    this app can actually see without checking first."""
+    ensure_data_loaded()
+    normalized = build_sales_dataset(
+        data_store["main_sales"],
+        data_store["vision_packages"],
+        data_store["service_cancellations"],
+    )
+    if normalized is None or normalized.empty:
+        return False
+    return sale_id in set(normalized["sale_id"])
+
+
+@app.route("/dashboard/attention/<int:sale_id>/status", methods=["POST"])
+def attention_set_status(sale_id):
+    """Sets/changes an account's Attention Status -- the only write path
+    that can ever create or move an account_attention row, which is what
+    makes 'a status always has a note' structural rather than a rule that
+    has to be remembered in two places. See attention_store.set_attention_status()."""
+    if not _known_sale_id(sale_id):
+        abort(404)
+
+    payload = request.get_json(silent=True) or {}
+    ok, error, notes = attention_store.set_attention_status(
+        sale_id,
+        (payload.get("status") or "").strip(),
+        payload.get("note") or "",
+        payload.get("author") or "",
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+
+    current_status = notes[0]["attention_status"] if notes else None
+    return jsonify({
+        "ok": True,
+        "sale_id": sale_id,
+        "attention_status": current_status,
+        "notes": [_serialize_note(n) for n in notes],
+    })
+
+
+@app.route("/dashboard/attention/<int:sale_id>/notes", methods=["POST"])
+def attention_add_note(sale_id):
+    """Appends a note without changing Attention Status. Requires the
+    account to already be classified -- see attention_store.add_note()."""
+    if not _known_sale_id(sale_id):
+        abort(404)
+
+    payload = request.get_json(silent=True) or {}
+    ok, error, notes = attention_store.add_note(
+        sale_id,
+        payload.get("note") or "",
+        payload.get("author") or "",
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+
+    current_status = notes[0]["attention_status"] if notes else None
+    return jsonify({
+        "ok": True,
+        "sale_id": sale_id,
+        "attention_status": current_status,
+        "notes": [_serialize_note(n) for n in notes],
+    })
 
 
 @app.route("/dashboard/accounts")
@@ -760,6 +898,14 @@ def all_sales_view():
     else:
         abort(404)
 
+    # See the matching block in bulk_account_view() above -- team-wide
+    # Needs Attention (reachable via ?view=needs_attention here, same
+    # registry entry) gets the same workflow controls, gated the same way.
+    attention_available = None
+    attention_progress = None
+    if view == "needs_attention":
+        attention_available, attention_progress = attach_attention_metadata(accounts)
+
     return render_template(
         "bulk_account_view.html",
         active_page="dashboard",
@@ -771,6 +917,9 @@ def all_sales_view():
         custom_start=custom_start,
         custom_end=custom_end,
         all_time=all_time,
+        attention_available=attention_available,
+        attention_progress=attention_progress,
+        attention_statuses=attention_store.ATTENTION_STATUSES,
         last_refreshed=data_store["last_refreshed"],
     )
 

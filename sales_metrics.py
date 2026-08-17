@@ -729,8 +729,9 @@ def build_vision_url(state, subscriber_uuid):
 
 def build_bulk_account_rows(df):
     """Shapes any slice of the normalized dataset into the standard Bulk
-    Account View row: First Name, Last Name, Address, Scheduled Install
-    Date, account status/category, Sales Channel, and Vision link. This is the ONE place
+    Account View row: sale_id (stable identifier), First Name, Last Name,
+    Address, Scheduled Install Date, account status/category, Sales
+    Channel, and Vision link. This is the ONE place
     that defines what a Bulk Account View shows -- every feature that
     surfaces a filtered list of accounts (Pending, Needs Attention,
     Installed, Cancelled, ...) goes through this function rather than
@@ -758,6 +759,12 @@ def build_bulk_account_rows(df):
         scheduled = scheduled_dates.loc[idx]
 
         accounts.append({
+            # Main Sales' own primary key (FTTPFormData.ID) -- the stable
+            # identifier the Needs Attention workflow (attention_store.py)
+            # keys Attention Status/notes off of. Always present and
+            # unique, unlike subscriber_uuid (see attention_store.py's
+            # module docstring for why that one was rejected).
+            "sale_id": int(row["sale_id"]),
             "first_name": _clean_text(row["first_name"]) or "",
             "last_name": _clean_text(row["last_name"]) or "",
             "address": address,
