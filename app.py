@@ -1422,6 +1422,28 @@ def admin_send_setup(user_id):
     return jsonify({"ok": True})
 
 
+@app.route("/admin/users/<int:user_id>/set-password", methods=["POST"])
+@auth.admin_required
+def admin_set_password(user_id):
+    """Lets an Admin set a user's password directly, bypassing the
+    emailed-link flow entirely -- added 2026-08-18 for exactly the case
+    SMTP isn't configured (or an Admin just wants to hand someone a
+    password over the phone/in person). Still goes through
+    user_store.set_password() (hashed immediately, never stored or
+    logged in plaintext) and still activates the account -- the only
+    difference from the token flow is who is choosing the password and
+    how they learn it."""
+    user = user_store.get_user_by_id(user_id)
+    if user is None:
+        return jsonify({"ok": False, "error": "User not found."}), 404
+    payload = request.get_json(silent=True) or {}
+    password = payload.get("password") or ""
+    ok, error = user_store.set_password(user_id, password)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
 @app.route("/admin/users/<int:user_id>/send-reset", methods=["POST"])
 @auth.admin_required
 def admin_send_reset(user_id):

@@ -93,5 +93,59 @@ document.addEventListener("DOMContentLoaded", function () {
                     });
             });
         });
+
+        // ---- Set Password: an Admin types a password directly and
+        // hands it to the user out of band (phone/in person) -- bypasses
+        // the emailed-link flow entirely, for when SMTP isn't configured
+        // or an Admin just doesn't want to wait on email. ----
+        var setPasswordPanel = row.querySelector("[data-set-password-panel]");
+        var setPasswordInput = row.querySelector("[data-set-password-input]");
+        var openBtn = row.querySelector('[data-action="set-password-open"]');
+        var cancelSetPasswordBtn = row.querySelector('[data-action="set-password-cancel"]');
+        var saveSetPasswordBtn = row.querySelector('[data-action="set-password-save"]');
+
+        if (openBtn) {
+            openBtn.addEventListener("click", function () {
+                var isOpen = setPasswordPanel.style.display !== "none";
+                setPasswordPanel.style.display = isOpen ? "none" : "flex";
+                clearError();
+                if (!isOpen) setPasswordInput.focus();
+            });
+        }
+        if (cancelSetPasswordBtn) {
+            cancelSetPasswordBtn.addEventListener("click", function () {
+                setPasswordPanel.style.display = "none";
+                setPasswordInput.value = "";
+                clearError();
+            });
+        }
+        if (saveSetPasswordBtn) {
+            saveSetPasswordBtn.addEventListener("click", function () {
+                var password = setPasswordInput.value;
+                if (password.length < 8) {
+                    showError("Password must be at least 8 characters.");
+                    return;
+                }
+                saveSetPasswordBtn.disabled = true;
+                fetch("/admin/users/" + userId + "/set-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: password }),
+                })
+                    .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+                    .then(function (result) {
+                        saveSetPasswordBtn.disabled = false;
+                        if (!result.ok || !result.data.ok) {
+                            showError((result.data && result.data.error) || "Could not set password.");
+                            return;
+                        }
+                        window.location.reload();
+                    })
+                    .catch(function () {
+                        saveSetPasswordBtn.disabled = false;
+                        showError("Network error -- please try again.");
+                    });
+            });
+        }
     });
 });

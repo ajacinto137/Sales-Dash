@@ -102,7 +102,24 @@
                                 {% else %}
                                 <button type="button" class="td-btn" data-action="send-reset">Send Reset</button>
                                 {% endif %}
+                                <button type="button" class="td-btn" data-action="set-password-open">Set Password</button>
                             </div>
+
+                            <!-- Direct admin-set password -- bypasses the emailed-link
+                                 flow entirely (added 2026-08-18, for when SMTP isn't
+                                 configured or an Admin just wants to hand someone a
+                                 password directly). type="text", not "password" --
+                                 deliberately visible so the Admin can read back what
+                                 they typed to relay it to the user out of band. -->
+                            <div class="td-attention-panel" data-set-password-panel style="display:none;">
+                                <label class="td-attention-label" for="set-password-{{ user.id }}">New Password (min 8 characters)</label>
+                                <input type="text" class="td-search-input" id="set-password-{{ user.id }}" data-set-password-input minlength="8" placeholder="Type a password to hand to this user">
+                                <div class="td-attention-panel-actions">
+                                    <button type="button" class="td-btn td-btn-ghost" data-action="set-password-cancel">Cancel</button>
+                                    <button type="button" class="td-btn td-btn-primary" data-action="set-password-save">Set Password</button>
+                                </div>
+                            </div>
+
                             <div class="td-attention-error" data-row-error style="display:none;"></div>
                         </td>
                     </tr>

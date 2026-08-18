@@ -406,6 +406,19 @@ setup, 24h for reset).
   this form must never be usable to enumerate which emails have
   accounts. An Admin can also trigger this directly from `/admin/users`
   ("Send Reset") without the user having to ask.
+- **Set Password directly** (added 2026-08-18) — `POST
+  /admin/users/<id>/set-password` — an Admin types a password for a user
+  right there in `/admin/users` and relays it out of band (phone, in
+  person), bypassing the token/email flow entirely. Added specifically
+  for when SMTP isn't configured yet (see "Email Configuration" below):
+  the setup/reset emails still work in that state, they just log their
+  link to stdout instead of sending — this gives an Admin a way to get
+  someone in immediately without touching server logs at all. Still goes
+  through `user_store.set_password()` (hashed immediately, same as every
+  other path — never stored or logged in plaintext) and still activates
+  the account. The one deliberate UI difference from the self-service
+  forms: this field is `type="text"`, not `type="password"`, since the
+  Admin needs to read back what they typed to tell the user.
 
 ### Needs Attention Ownership & the 15-Day Rule
 
