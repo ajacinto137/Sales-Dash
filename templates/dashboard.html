@@ -87,67 +87,106 @@
 
     <!-- ================= Sales Calendar & Monthly Sales Trend =================
          Canonical name: "Sales Calendar & Monthly Sales Trend". Merged
-         2026-08-16 (by request -- "Monthly Sales trend and monthly Sales
-         calendar can be in the same row") from two separate full-width
-         sections into one row, reusing the same .td-activity-split 2-col
-         layout as the Individual Sales Profile's Sales Activity section
-         (calendar left, chart right; stacks on mobile/tablet). Both
+         2026-08-16 into one .td-activity-split row (calendar left, chart
+         right; stacks on mobile/tablet). Each half gained its own 4-way
+         Team/NJ/NY/VA segmented toggle 2026-08-18 (by request -- "I want
+         4 separate calendars ... Dont add more rows ... Let me select
+         which calendars and graphs I want to see") -- all 4 views per
+         half are server-rendered up front (calendar_views/
+         monthly_trend_views, keyed by dashboard_view_options' keys) and
+         a client-side toggle shows one at a time, so switching views
+         never reloads the page. The two toggles are independent (you can
+         view the NJ calendar next to the Team trend chart, etc). Both
          halves keep their own canonical sub-names -- "Sales Calendar"
-         (navigable month-by-month calendar of team total sales per day)
-         and "Monthly Sales Trend" (MonthlySalesTrendChart line chart,
-         team-wide total sales per calendar month, trailing 12 months).
-         Both always read the full all-time dataset, independent of the
-         page's period filter, same reasoning as Planet Networks Records.
-         Distinct from the Individual Sales Profile's MonthlySalesChart,
-         which is per-rep and day-granularity within one month; this is
-         team-wide and month-granularity across a year. See README.md
-         "Team Leaderboard Page — Section Names". -->
+         (navigable month-by-month calendar of total sales per day) and
+         "Monthly Sales Trend" (MonthlySalesTrendChart line chart, total
+         sales per calendar month, trailing 12 months). Both always read
+         the full all-time dataset (each view pre-filtered by state, not
+         period_df), independent of the page's period filter, same
+         reasoning as Planet Networks Records. Distinct from the
+         Individual Sales Profile's MonthlySalesChart, which is per-rep
+         and day-granularity within one month; this is month-granularity
+         across a year. cal_year/cal_month (Prev/Next month nav) and
+         cal_view/trend_view (which toggle tab) are independent query
+         params -- Prev/Next carries the current cal_view forward so
+         paging months doesn't reset which state you're looking at. See
+         README.md "Team Leaderboard Page — Section Names". -->
     <section class="td-section">
         <div class="td-section-heading">
             <h2>Sales Calendar &amp; Monthly Sales Trend</h2>
-            <span class="td-muted-inline">Team total sales per day &amp; per month &middot; {{ calendar_data.total }} in {{ calendar_data.month_label }} &middot; independent of the period filter above</span>
+            <span class="td-muted-inline">Total sales per day &amp; per month, by state &middot; independent of the period filter above</span>
         </div>
 
         <div class="td-activity-split">
             <div class="td-calendar-card">
-                <div class="td-calendar-nav">
-                    <a class="td-btn td-btn-ghost"
-                       href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.prev_year, cal_month=calendar_data.prev_month) }}">&larr; Prev</a>
-                    <span class="td-calendar-month-label">{{ calendar_data.month_label }}</span>
-                    <a class="td-btn td-btn-ghost"
-                       href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=calendar_data.next_year, cal_month=calendar_data.next_month) }}">Next &rarr;</a>
-                </div>
-
-                <div class="td-calendar-scroll">
-                    <div class="td-calendar-inner">
-                        <div class="td-calendar-grid td-calendar-weekdays">
-                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                        </div>
-                        {% for week in calendar_data.weeks %}
-                        <div class="td-calendar-grid">
-                            {% for cell in week %}
-                                {% if cell %}
-                                <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
-                                    <span class="td-calendar-day">{{ cell.day }}</span>
-                                    <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
-                                </div>
-                                {% else %}
-                                <div class="td-calendar-cell td-calendar-cell-pad"></div>
-                                {% endif %}
-                            {% endfor %}
-                        </div>
+                <div class="td-calendar-card-head">
+                    <div class="td-chart-toggle" id="team-calendar-toggle">
+                        {% for opt in dashboard_view_options %}
+                        <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == cal_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
                         {% endfor %}
                     </div>
                 </div>
+
+                {% for opt in dashboard_view_options %}
+                {% set cal = calendar_views[opt.key] %}
+                <div data-chart-panel="{{ opt.key }}" style="{{ '' if opt.key == cal_view else 'display:none;' }}">
+                    <div class="td-calendar-nav">
+                        <a class="td-btn td-btn-ghost"
+                           href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=cal.prev_year, cal_month=cal.prev_month, cal_view=opt.key, trend_view=trend_view) }}">&larr; Prev</a>
+                        <span class="td-calendar-month-label">{{ cal.month_label }} &middot; {{ cal.total }}</span>
+                        <a class="td-btn td-btn-ghost"
+                           href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=cal.next_year, cal_month=cal.next_month, cal_view=opt.key, trend_view=trend_view) }}">Next &rarr;</a>
+                    </div>
+
+                    <div class="td-calendar-scroll">
+                        <div class="td-calendar-inner">
+                            <div class="td-calendar-grid td-calendar-weekdays">
+                                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                            </div>
+                            {% for week in cal.weeks %}
+                            <div class="td-calendar-grid">
+                                {% for cell in week %}
+                                    {% if cell %}
+                                    <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
+                                        <span class="td-calendar-day">{{ cell.day }}</span>
+                                        <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
+                                    </div>
+                                    {% else %}
+                                    <div class="td-calendar-cell td-calendar-cell-pad"></div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
 
-            {% set chart_id = "team-monthly-trend-chart" %}
-            {% set chart_title = "Monthly Sales" %}
-            {% set chart_subtitle = "Trailing 12 months" %}
-            {% set chart_empty = monthly_sales_trend|sum(attribute='count') == 0 %}
-            {% set chart_empty_message = "No sales recorded yet." %}
-            {% set chart_canvas_attrs %}data-months='{{ monthly_sales_trend|tojson }}'{% endset %}
-            {% include "_chart_card.html" %}
+            <div class="td-chart-card">
+                <div class="td-chart-card-head">
+                    <div>
+                        <h3>Monthly Sales</h3>
+                        <span class="td-muted-inline">Trailing 12 months</span>
+                    </div>
+                    <div class="td-chart-toggle" id="team-monthly-trend-toggle">
+                        {% for opt in dashboard_view_options %}
+                        <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == trend_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {% for opt in dashboard_view_options %}
+                {% set trend = monthly_trend_views[opt.key] %}
+                <div class="td-chart-canvas-wrap" data-chart-panel="{{ opt.key }}" style="{{ '' if opt.key == trend_view else 'display:none;' }}">
+                    {% if trend|sum(attribute='count') == 0 %}
+                    <p class="td-empty">No sales recorded yet.</p>
+                    {% else %}
+                    <canvas id="team-monthly-trend-chart-{{ opt.key }}" data-chart-type="monthlyTrend" data-months='{{ trend|tojson }}'></canvas>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </section>
 

@@ -689,13 +689,42 @@ def dashboard_page():
     except (TypeError, ValueError):
         cal_year, cal_month = today.year, today.month
 
-    calendar_data = calculate_calendar_sales(normalized, cal_year, cal_month)
+    # Team + one row per state, so the Sales Calendar and Monthly Sales
+    # Trend can each show 4 independently-selectable views without adding
+    # another row to the page (a segmented toggle switches between them
+    # client-side -- see wireCalendarToggle()/wireChartToggle() in
+    # charts.js). "state" is the normalized dataset's passthrough of
+    # PlanetWeb's State column (build_sales_dataset() in sales_metrics.py),
+    # same 2-letter values build_vision_url()'s VISION_BASE_URLS already
+    # keys off of -- upper-cased/stripped here for the same reason that
+    # comparison does, since the raw column isn't guaranteed clean.
+    DASHBOARD_VIEWS = [("team", "Team", None), ("nj", "NJ", "NJ"), ("ny", "NY", "NY"), ("va", "VA", "VA")]
+    dashboard_view_options = [{"key": key, "label": label} for key, label, _ in DASHBOARD_VIEWS]
+    valid_view_keys = {key for key, _, _ in DASHBOARD_VIEWS}
+
+    cal_view = request.args.get("cal_view", "team")
+    if cal_view not in valid_view_keys:
+        cal_view = "team"
+    trend_view = request.args.get("trend_view", "team")
+    if trend_view not in valid_view_keys:
+        trend_view = "team"
+
+    def _state_filtered(df, state_code):
+        if state_code is None:
+            return df
+        if df is None or df.empty or "state" not in df.columns:
+            return df
+        return df[df["state"].astype(str).str.strip().str.upper() == state_code]
+
+    state_filtered_normalized = {key: _state_filtered(normalized, state_code) for key, _, state_code in DASHBOARD_VIEWS}
+
+    calendar_views = {key: calculate_calendar_sales(view_df, cal_year, cal_month) for key, view_df in state_filtered_normalized.items()}
     monthly_forecast = calculate_monthly_forecast(normalized)
 
     # Always all-time / independent of the period filter -- a 12-month
     # trend isn't meaningful squeezed into a single period-filter window,
     # same reasoning as Records/Calendar above.
-    monthly_sales_trend = calculate_monthly_sales_trend(normalized)
+    monthly_trend_views = {key: calculate_monthly_sales_trend(view_df) for key, view_df in state_filtered_normalized.items()}
 
     # Team-wide, period-filtered -- same convention as the Individual Rep
     # Leaderboard table (period_df), just not scoped to one rep. Reuses
@@ -720,9 +749,12 @@ def dashboard_page():
         sort=sort,
         sort_dir=sort_dir,
         records=records,
-        calendar_data=calendar_data,
+        calendar_views=calendar_views,
+        cal_view=cal_view,
         monthly_forecast=monthly_forecast,
-        monthly_sales_trend=monthly_sales_trend,
+        monthly_trend_views=monthly_trend_views,
+        trend_view=trend_view,
+        dashboard_view_options=dashboard_view_options,
         channel_breakdown=channel_breakdown,
         hourly_breakdown=hourly_breakdown,
         last_refreshed=data_store["last_refreshed"],

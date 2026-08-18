@@ -291,32 +291,59 @@ function createHourlyChart(canvasEl, tokens) {
 
 // Factory lookup for wireChartToggle() below, keyed by each canvas's
 // data-chart-type attribute -- lets one generic toggle handler drive any
-// pair of charts without hardcoding canvas ids.
+// pair of charts without hardcoding canvas ids. "monthlyTrend" backs the
+// Sales Calendar & Monthly Sales Trend section's Team/NJ/NY/VA toggle
+// (added 2026-08-18) -- same factory as the plain single-chart usage,
+// just invoked once per state's canvas instead of once for the page.
 const CHART_TOGGLE_FACTORIES = {
     channel: createChannelChart,
     hourly: createHourlyChart,
+    monthlyTrend: createMonthlySalesTrendChart,
 };
 
-// Wires a "Sales by Channel" / "Sales by Hour" segmented-control toggle:
-// one .td-chart-toggle-btn per tab (data-chart-toggle="<key>"), one
-// [data-chart-panel="<key>"] wrapper per chart. Only one panel is shown
-// at a time; each chart is created lazily the first time its tab is
-// activated (a Chart.js canvas created while display:none sizes to 0 and
-// won't self-correct later, so the default-active tab's chart is created
-// immediately and the other is deferred until its first click).
-function wireChartToggle(root) {
+// Shared button-wiring for a .td-chart-toggle segmented control: one
+// .td-chart-toggle-btn per tab (data-chart-toggle="<key>"), clicking one
+// marks it active and calls onActivate(key) so the caller can show/hide
+// panels (and, for chart toggles, lazily create a chart). The initially
+// active tab is whichever button the server already marked
+// .td-chart-toggle-active (so Prev/Next month nav on the Sales Calendar
+// can carry the selected view forward across a full page reload); falls
+// back to the first button if the server didn't mark one.
+function wireToggleButtons(root, onActivate) {
     if (!root) return;
     const buttons = root.querySelectorAll(".td-chart-toggle-btn");
     if (!buttons.length) return;
-    const card = root.closest(".td-chart-card") || root.parentElement;
-    const panels = card.querySelectorAll("[data-chart-panel]");
-    const created = new Set();
-    const tokens = getChartTokens();
 
     function activate(key) {
         buttons.forEach((btn) => {
             btn.classList.toggle("td-chart-toggle-active", btn.dataset.chartToggle === key);
         });
+        onActivate(key);
+    }
+
+    buttons.forEach((btn) => {
+        btn.addEventListener("click", () => activate(btn.dataset.chartToggle));
+    });
+
+    const initialBtn = root.querySelector(".td-chart-toggle-btn.td-chart-toggle-active") || buttons[0];
+    activate(initialBtn.dataset.chartToggle);
+}
+
+// Wires a chart-backed toggle (Sales by Channel / Sales by Hour, or the
+// Sales Calendar & Monthly Sales Trend's Team/NJ/NY/VA trend toggle):
+// one [data-chart-panel="<key>"] wrapper per chart. Only one panel is
+// shown at a time; each chart is created lazily the first time its tab
+// is activated (a Chart.js canvas created while display:none sizes to 0
+// and won't self-correct later, so the default-active tab's chart is
+// created immediately and the rest are deferred until their first click).
+function wireChartToggle(root) {
+    if (!root) return;
+    const card = root.closest(".td-chart-card") || root.parentElement;
+    const panels = card.querySelectorAll("[data-chart-panel]");
+    const created = new Set();
+    const tokens = getChartTokens();
+
+    wireToggleButtons(root, (key) => {
         panels.forEach((panel) => {
             panel.style.display = panel.dataset.chartPanel === key ? "" : "none";
         });
@@ -327,13 +354,23 @@ function wireChartToggle(root) {
             const factory = canvas ? CHART_TOGGLE_FACTORIES[canvas.dataset.chartType] : null;
             if (factory) factory(canvas, tokens);
         }
-    }
-
-    buttons.forEach((btn) => {
-        btn.addEventListener("click", () => activate(btn.dataset.chartToggle));
     });
+}
 
-    activate(buttons[0].dataset.chartToggle);
+// Wires a plain panel toggle with no chart involved -- the Sales
+// Calendar's Team/NJ/NY/VA toggle (added 2026-08-18). Same show/hide
+// behavior as wireChartToggle() minus the lazy chart creation, since
+// every panel here is just pre-rendered calendar markup.
+function wireCalendarToggle(root) {
+    if (!root) return;
+    const card = root.closest(".td-calendar-card") || root.parentElement;
+    const panels = card.querySelectorAll("[data-chart-panel]");
+
+    wireToggleButtons(root, (key) => {
+        panels.forEach((panel) => {
+            panel.style.display = panel.dataset.chartPanel === key ? "" : "none";
+        });
+    });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -343,9 +380,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const monthlyEl = document.getElementById("monthly-sales-chart");
     if (monthlyEl) createMonthlySalesChart(monthlyEl, tokens);
 
-    const teamTrendEl = document.getElementById("team-monthly-trend-chart");
-    if (teamTrendEl) createMonthlySalesTrendChart(teamTrendEl, tokens);
-
     wireChartToggle(document.getElementById("channel-hourly-toggle"));
     wireChartToggle(document.getElementById("team-channel-hourly-toggle"));
+    wireCalendarToggle(document.getElementById("team-calendar-toggle"));
+    wireChartToggle(document.getElementById("team-monthly-trend-toggle"));
 });

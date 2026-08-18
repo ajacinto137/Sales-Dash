@@ -632,6 +632,11 @@ a.td-record-rep:hover {
     gap: 14px;
 }
 
+.td-calendar-card-head {
+    display: flex;
+    justify-content: flex-end;
+}
+
 .td-calendar-nav {
     display: flex;
     align-items: center;
