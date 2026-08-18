@@ -1489,6 +1489,21 @@ def health():
     )
 
 
+# Runs once when this module is imported -- by gunicorn's worker process
+# in production, or by `python app.py` locally -- NOT lazily on first
+# request like every other ensure_data_loaded() call site. This closes a
+# real deadlock: since every route that used to trigger a data load now
+# requires login (@auth.login_required), and /health deliberately stays
+# lightweight and never loads data, there was no longer any PUBLIC route
+# that could ever run load_all_data() -- which is also what runs
+# _bootstrap_initial_admin(). Without this, a brand-new deployment could
+# never create its first Admin account: nobody could log in (no users
+# exist yet) to trigger the load that would create the first user.
+# Safe with gunicorn's required --workers 1 (see docker-compose.prod.yml)
+# -- this module is imported exactly once per process either way.
+ensure_data_loaded()
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("APP_PORT", "3005"))
     debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
