@@ -171,7 +171,8 @@ html, body.td-body {
     cursor: pointer;
 }
 
-.td-global-search-item:hover {
+.td-global-search-item:hover,
+.td-global-search-item-active {
     background: var(--td-panel-alt);
 }
 
@@ -1795,8 +1796,13 @@ a.td-record-rep:hover {
 
 .td-admin-tabs {
     display: flex;
+    align-items: center;
     gap: 6px;
     margin-bottom: 4px;
+}
+
+.td-admin-new-user-toggle {
+    margin-left: auto;
 }
 
 .td-admin-tab {
@@ -1869,6 +1875,48 @@ a.td-record-rep:hover {
 .td-admin-row-actions .td-btn {
     padding: 4px 9px;
     font-size: 11px;
+}
+
+.td-admin-actions-menu {
+    position: relative;
+}
+
+.td-admin-actions-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    flex-direction: column;
+    min-width: 168px;
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius-sm);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    padding: 4px;
+    z-index: 40;
+}
+
+.td-admin-actions-menu.td-admin-actions-open .td-admin-actions-dropdown {
+    display: flex;
+}
+
+.td-admin-actions-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 7px 10px;
+    border: none;
+    border-radius: var(--td-radius-sm);
+    background: transparent;
+    color: var(--td-text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.td-admin-actions-item:hover {
+    background: var(--td-panel-alt);
 }
 
 .td-admin-inline-select {

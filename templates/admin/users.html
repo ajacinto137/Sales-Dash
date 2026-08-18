@@ -21,7 +21,39 @@
         <a class="td-admin-tab td-admin-tab-active" href="{{ url_for('admin_users') }}">User Management</a>
         <a class="td-admin-tab" href="{{ url_for('admin_import_page') }}">Import Users</a>
         <a class="td-admin-tab" href="{{ url_for('admin_audit') }}">Audit Log</a>
+        <button type="button" class="td-btn td-btn-primary td-admin-new-user-toggle" data-action="new-user-open">+ New User</button>
     </nav>
+
+    <!-- Manual single-user creation, alongside the Excel import flow
+         (Import Users tab) -- goes through the same /admin/users/create
+         route as user_store.create_user(), so the new row lands as
+         status=pending with no password and no auto-sent email, exactly
+         like an imported user. -->
+    <section class="td-attention-panel" data-new-user-panel style="display:none;">
+        <label class="td-attention-label" for="new-user-email">Email</label>
+        <input type="email" class="td-search-input" id="new-user-email" data-new-user-input="email" placeholder="name@company.com">
+
+        <label class="td-attention-label" for="new-user-role">Role</label>
+        <select class="td-admin-inline-select" id="new-user-role" data-new-user-input="role">
+            {% for role in roles %}
+            <option value="{{ role }}">{{ role }}</option>
+            {% endfor %}
+        </select>
+
+        <label class="td-attention-label" for="new-user-sales-rep">Sales Rep</label>
+        <select class="td-admin-inline-select" id="new-user-sales-rep" data-new-user-input="sales_rep_id">
+            <option value="">— None —</option>
+            {% for rep in sales_reps %}
+            <option value="{{ rep.id }}">{{ rep.name }}</option>
+            {% endfor %}
+        </select>
+
+        <div class="td-attention-error" data-new-user-error style="display:none;"></div>
+        <div class="td-attention-panel-actions">
+            <button type="button" class="td-btn td-btn-ghost" data-action="new-user-cancel">Cancel</button>
+            <button type="button" class="td-btn td-btn-primary" data-action="new-user-save">Create User</button>
+        </div>
+    </section>
 
     <section class="td-table-card">
         <div class="td-table-scroll">
@@ -88,21 +120,31 @@
                             {% endif %}
                         </td>
                         <td>
+                            <!-- Collapsed into a single dropdown (2026-08-18) -- the
+                                 previous per-row button strip (edit/disable/send-setup/
+                                 set-password all inline) was flagged as clunky once
+                                 there were 5+ actions per row. Save/Cancel stay outside
+                                 the menu since they're only relevant mid-edit. -->
                             <div class="td-admin-row-actions">
-                                <button type="button" class="td-btn" data-action="edit">Edit</button>
+                                <div class="td-admin-actions-menu" data-actions-menu>
+                                    <button type="button" class="td-btn" data-action="actions-toggle">Actions ▾</button>
+                                    <div class="td-admin-actions-dropdown" data-actions-dropdown>
+                                        <button type="button" class="td-admin-actions-item" data-action="edit">Edit</button>
+                                        {% if user.status == 'disabled' %}
+                                        <button type="button" class="td-admin-actions-item" data-action="enable">Enable</button>
+                                        {% else %}
+                                        <button type="button" class="td-admin-actions-item" data-action="disable">Disable</button>
+                                        {% endif %}
+                                        {% if user.status == 'pending' %}
+                                        <button type="button" class="td-admin-actions-item" data-action="send-setup">Send Setup Email</button>
+                                        {% else %}
+                                        <button type="button" class="td-admin-actions-item" data-action="send-reset">Send Reset</button>
+                                        {% endif %}
+                                        <button type="button" class="td-admin-actions-item" data-action="set-password-open">Set Password</button>
+                                    </div>
+                                </div>
                                 <button type="button" class="td-btn" data-action="save" style="display:none;">Save</button>
                                 <button type="button" class="td-btn td-btn-ghost" data-action="cancel" style="display:none;">Cancel</button>
-                                {% if user.status == 'disabled' %}
-                                <button type="button" class="td-btn" data-action="enable">Enable</button>
-                                {% else %}
-                                <button type="button" class="td-btn" data-action="disable">Disable</button>
-                                {% endif %}
-                                {% if user.status == 'pending' %}
-                                <button type="button" class="td-btn" data-action="send-setup">Send Setup Email</button>
-                                {% else %}
-                                <button type="button" class="td-btn" data-action="send-reset">Send Reset</button>
-                                {% endif %}
-                                <button type="button" class="td-btn" data-action="set-password-open">Set Password</button>
                             </div>
 
                             <!-- Direct admin-set password -- bypasses the emailed-link

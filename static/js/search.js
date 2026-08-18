@@ -13,13 +13,38 @@ document.addEventListener("DOMContentLoaded", function () {
     var resultsPanel = container.querySelector("[data-global-search-results]");
     var debounceTimer = null;
     var activeController = null;
+    var activeIndex = -1;
 
     function closeResults() {
         resultsPanel.style.display = "none";
         resultsPanel.textContent = "";
+        activeIndex = -1;
+    }
+
+    function getItems() {
+        return resultsPanel.querySelectorAll(".td-global-search-item");
+    }
+
+    function setActiveIndex(index) {
+        var items = getItems();
+        if (!items.length) {
+            activeIndex = -1;
+            return;
+        }
+        if (index < 0) index = items.length - 1;
+        if (index >= items.length) index = 0;
+
+        items.forEach(function (item) {
+            item.classList.remove("td-global-search-item-active");
+        });
+        activeIndex = index;
+        var active = items[activeIndex];
+        active.classList.add("td-global-search-item-active");
+        active.scrollIntoView({ block: "nearest" });
     }
 
     function renderMessage(message) {
+        activeIndex = -1;
         resultsPanel.textContent = "";
         var empty = document.createElement("div");
         empty.className = "td-global-search-empty";
@@ -73,6 +98,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderResults(data) {
+        activeIndex = -1;
         resultsPanel.textContent = "";
         var reps = data.reps || [];
         var accounts = data.accounts || [];
@@ -149,6 +175,30 @@ document.addEventListener("DOMContentLoaded", function () {
         if (e.key === "Escape") {
             closeResults();
             input.blur();
+            return;
+        }
+
+        if (e.key === "ArrowDown") {
+            if (resultsPanel.style.display !== "block") return;
+            e.preventDefault();
+            setActiveIndex(activeIndex + 1);
+            return;
+        }
+
+        if (e.key === "ArrowUp") {
+            if (resultsPanel.style.display !== "block") return;
+            e.preventDefault();
+            setActiveIndex(activeIndex - 1);
+            return;
+        }
+
+        if (e.key === "Enter") {
+            if (activeIndex < 0) return;
+            var items = getItems();
+            var active = items[activeIndex];
+            if (!active) return;
+            e.preventDefault();
+            active.click();
         }
     });
 

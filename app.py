@@ -1380,6 +1380,25 @@ def admin_users():
     )
 
 
+@app.route("/admin/users/create", methods=["POST"])
+@auth.admin_required
+def admin_create_user():
+    """Manual single-user creation from the Admin Portal, alongside the
+    existing Excel import flow (import_service.py/admin_import.js) --
+    goes through user_store.create_user() directly, so it lands in the
+    same no-password/status=pending state as an imported row and does
+    not auto-send a setup email (an Admin triggers "Send Setup" or "Set
+    Password" afterward, same as for imported users)."""
+    email = request.form.get("email", "")
+    role = request.form.get("role", "")
+    sales_rep_id_raw = request.form.get("sales_rep_id", "")
+    sales_rep_id = int(sales_rep_id_raw) if sales_rep_id_raw else None
+    ok, error, user = user_store.create_user(email, role, sales_rep_id=sales_rep_id)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True, "user_id": user["id"]})
+
+
 @app.route("/admin/users/<int:user_id>", methods=["POST"])
 @auth.admin_required
 def admin_update_user(user_id):
