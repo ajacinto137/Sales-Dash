@@ -4,3 +4,5 @@ pyodbc
 psycopg2-binary
 python-dotenv
 gunicorn
+openpyxl
+pytest

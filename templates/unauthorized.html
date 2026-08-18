@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Unauthorized — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+</head>
+<body class="td-body">
+<div class="td-auth-page">
+    <div class="td-auth-card">
+        <div class="td-auth-brand">Planet Networks</div>
+        <h1 class="td-auth-title">Access Restricted</h1>
+        <p class="td-auth-subtitle">
+            {% if current_user %}
+            Your account ({{ current_user.role }}) doesn't have permission to view this page.
+            {% else %}
+            You need to log in to view this page.
+            {% endif %}
+        </p>
+        <a class="td-btn td-btn-primary td-btn-block" style="text-align:center;" href="{{ url_for('dashboard_page') if current_user else url_for('login') }}">
+            {{ 'Back to Dashboard' if current_user else 'Log In' }}
+        </a>
+    </div>
+</div>
+</body>
+</html>

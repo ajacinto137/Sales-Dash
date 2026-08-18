@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Import Users — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/admin_import.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    <nav class="td-admin-tabs">
+        <a class="td-admin-tab" href="{{ url_for('admin_users') }}">User Management</a>
+        <a class="td-admin-tab td-admin-tab-active" href="{{ url_for('admin_import_page') }}">Import Users</a>
+        <a class="td-admin-tab" href="{{ url_for('admin_audit') }}">Audit Log</a>
+    </nav>
+
+    <section class="td-table-card" style="padding: 24px;">
+        <div class="td-import-steps">
+            <div class="td-import-step td-import-step-active" data-import-step="select">1. Select File</div>
+            <div class="td-import-step" data-import-step="validate">2. Validate</div>
+            <div class="td-import-step" data-import-step="preview">3. Preview</div>
+            <div class="td-import-step" data-import-step="import">4. Import</div>
+            <div class="td-import-step" data-import-step="results">5. Results</div>
+        </div>
+
+        <p class="td-admin-muted">
+            Spreadsheet must be <strong>.xlsx</strong> with exactly these columns: <strong>Rep Name</strong>, <strong>Email</strong>, <strong>Group</strong>.
+            Group must be one of: Sales Rep, Customer Success, Other.
+        </p>
+
+        <div data-import-panel="select">
+            <div class="td-import-dropzone">
+                <input type="file" id="import-file" accept=".xlsx" data-import-file-input>
+                <p style="margin-top: 10px;">Select a .xlsx file to begin.</p>
+            </div>
+        </div>
+
+        <div data-import-panel="validate-result" style="display:none; margin-top: 16px;">
+            <div class="td-auth-error" data-import-file-error style="display:none;"></div>
+            <div data-import-summary-wrap style="display:none;">
+                <div class="td-auth-success" data-import-valid-message></div>
+                <div class="td-import-summary" data-import-summary></div>
+
+                <div class="td-table-scroll" style="margin-top: 12px;">
+                    <table class="td-table td-admin-table">
+                        <thead>
+                            <tr>
+                                <th>Row</th>
+                                <th>Rep Name</th>
+                                <th>Email</th>
+                                <th>Group</th>
+                                <th>Matching Dashboard Rep</th>
+                                <th>Proposed Action</th>
+                            </tr>
+                        </thead>
+                        <tbody data-import-preview-body></tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 16px; display: flex; gap: 10px;">
+                    <button type="button" class="td-btn" data-import-reset>Choose a Different File</button>
+                    <button type="button" class="td-btn td-btn-primary" data-import-commit disabled>Import</button>
+                </div>
+            </div>
+        </div>
+
+        <div data-import-panel="results" style="display:none; margin-top: 16px;">
+            <div class="td-import-summary" data-import-results-summary></div>
+            <div class="td-import-results-list" data-import-results-list></div>
+            <button type="button" class="td-btn" data-import-reset style="margin-top: 16px;">Import Another File</button>
+        </div>
+    </section>
+</div>
+</body>
+</html>

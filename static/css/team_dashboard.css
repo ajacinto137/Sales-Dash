@@ -1438,6 +1438,20 @@ a.td-record-rep:hover {
     text-decoration: underline;
 }
 
+.td-attention-locked {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--td-text-muted);
+    cursor: help;
+}
+
+.td-attention-locked-reason {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--td-text-secondary);
+    line-height: 1.4;
+}
+
 .td-attention-panel {
     display: flex;
     flex-direction: column;
@@ -1636,4 +1650,327 @@ a.td-record-rep:hover {
     .td-profile-metrics-secondary { grid-template-columns: 1fr; }
     .td-bulk-list { grid-template-columns: 1fr; }
     .td-tabs { overflow-x: auto; }
+}
+
+/* ================================================================
+   Authentication (login, first-time setup, password reset,
+   unauthorized) -- added 2026-08-18. Same dark/premium visual
+   language as the rest of the app (tokens, radius, glow), just a
+   centered single-card layout instead of the topnav'd dashboard
+   shell, since these pages exist specifically for someone who isn't
+   authenticated (or is blocked) yet -- no nav, no search, no data.
+   ================================================================ */
+
+.td-auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+}
+
+.td-auth-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.td-auth-brand {
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--td-text-secondary);
+    letter-spacing: 0.02em;
+    text-align: center;
+}
+
+.td-auth-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--td-text-primary);
+    text-align: center;
+}
+
+.td-auth-subtitle {
+    margin: -10px 0 0 0;
+    font-size: 12.5px;
+    color: var(--td-text-secondary);
+    text-align: center;
+    line-height: 1.5;
+}
+
+.td-auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.td-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.td-field label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+}
+
+.td-field input[type="email"],
+.td-field input[type="password"],
+.td-field input[type="text"] {
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius-sm);
+    color: var(--td-text-primary);
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.td-field input:focus {
+    outline: none;
+    border-color: var(--td-cyan);
+}
+
+.td-auth-error {
+    background: var(--td-orange-bg);
+    color: var(--td-orange);
+    border: 1px solid var(--td-orange);
+    border-radius: var(--td-radius-sm);
+    padding: 10px 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.td-auth-success {
+    background: var(--td-green-bg);
+    color: var(--td-green);
+    border: 1px solid var(--td-green);
+    border-radius: var(--td-radius-sm);
+    padding: 10px 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.td-auth-links {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+}
+
+.td-auth-links a {
+    color: var(--td-cyan);
+    text-decoration: none;
+}
+
+.td-auth-links a:hover {
+    text-decoration: underline;
+}
+
+.td-btn-block {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+
+/* ================================================================
+   Admin Portal -- same page shell (.td-page, .td-topnav via
+   _topnav.html), same table styling (.td-table-card/.td-table) as
+   the Individual Rep Leaderboard, extended with a small set of
+   admin-specific pieces: status/role pills, the Excel import
+   stepper, and inline edit controls. Nothing here introduces a new
+   visual language.
+   ================================================================ */
+
+.td-admin-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.td-admin-tab {
+    padding: 8px 16px;
+    border-radius: var(--td-radius-sm);
+    border: 1px solid var(--td-border);
+    background: var(--td-panel-alt);
+    color: var(--td-text-secondary);
+    text-decoration: none;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.td-admin-tab:hover {
+    color: var(--td-text-primary);
+}
+
+.td-admin-tab.td-admin-tab-active {
+    color: var(--td-text-primary);
+    border-color: var(--td-cyan);
+    box-shadow: 0 0 10px var(--td-cyan-bg);
+}
+
+.td-pill {
+    display: inline-flex;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.td-pill-admin { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
+.td-pill-sales-rep { color: var(--td-cyan); background: var(--td-cyan-bg); }
+.td-pill-customer-success { color: var(--td-accent-violet); background: var(--td-accent-violet-bg); }
+.td-pill-other { color: var(--td-text-secondary); background: var(--td-panel-alt); }
+
+.td-pill-active { color: var(--td-green); background: var(--td-green-bg); }
+.td-pill-pending { color: var(--td-yellow); background: var(--td-yellow-bg); }
+.td-pill-disabled { color: var(--td-text-muted); background: var(--td-panel-alt); }
+
+.td-pill-review-needed { color: var(--td-orange); background: var(--td-orange-bg); }
+.td-pill-review-active { color: var(--td-green); background: var(--td-green-bg); }
+
+.td-admin-table td {
+    white-space: nowrap;
+    text-align: left;
+    padding: 12px 14px;
+}
+
+.td-admin-table thead th {
+    text-align: left;
+    padding: 0 14px 10px 14px;
+}
+
+.td-admin-table .td-sort-link {
+    justify-content: flex-start;
+    padding: 0;
+    width: auto;
+}
+
+.td-admin-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.td-admin-row-actions .td-btn {
+    padding: 4px 9px;
+    font-size: 11px;
+}
+
+.td-admin-inline-select {
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius-sm);
+    color: var(--td-text-primary);
+    padding: 4px 8px;
+    font-size: 11.5px;
+}
+
+.td-admin-muted {
+    color: var(--td-text-muted);
+    font-size: 12px;
+}
+
+/* ---------------- Excel import stepper ---------------- */
+
+.td-import-steps {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.td-import-step {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: var(--td-radius-sm);
+    border: 1px solid var(--td-border);
+    background: var(--td-panel-alt);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--td-text-muted);
+    text-align: center;
+}
+
+.td-import-step.td-import-step-active {
+    color: var(--td-cyan);
+    border-color: var(--td-cyan);
+    box-shadow: 0 0 10px var(--td-cyan-bg);
+}
+
+.td-import-step.td-import-step-done {
+    color: var(--td-green);
+    border-color: var(--td-green);
+}
+
+.td-import-dropzone {
+    border: 2px dashed var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--td-text-secondary);
+    font-size: 13px;
+}
+
+.td-import-summary {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 16px;
+}
+
+.td-import-summary-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.td-import-summary-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--td-text-primary);
+}
+
+.td-import-summary-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+}
+
+.td-import-row-error {
+    color: var(--td-orange);
+    font-size: 11.5px;
+}
+
+.td-import-results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.td-import-result-item {
+    padding: 10px 12px;
+    border-radius: var(--td-radius-sm);
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    font-size: 12.5px;
+}
+
+.td-import-result-item strong {
+    color: var(--td-text-primary);
 }

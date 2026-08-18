@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>User Management — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/admin_users.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    <nav class="td-admin-tabs">
+        <a class="td-admin-tab td-admin-tab-active" href="{{ url_for('admin_users') }}">User Management</a>
+        <a class="td-admin-tab" href="{{ url_for('admin_import_page') }}">Import Users</a>
+        <a class="td-admin-tab" href="{{ url_for('admin_audit') }}">Audit Log</a>
+    </nav>
+
+    <section class="td-table-card">
+        <div class="td-table-scroll">
+            <table class="td-table td-admin-table">
+                <thead>
+                    <tr>
+                        <th>Name / Rep</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Sales Rep</th>
+                        <th>Status</th>
+                        <th>Last Login</th>
+                        <th>Last NA Activity</th>
+                        <th>NA Count</th>
+                        <th>15+ Days</th>
+                        <th>Actions 7d</th>
+                        <th>Actions 30d</th>
+                        <th>Review</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    {% set user = row.user %}
+                    <tr data-user-row data-user-id="{{ user.id }}">
+                        <td>{{ user.display_name }}</td>
+                        <td>
+                            <span data-field-display="email">{{ user.email }}</span>
+                            <input type="email" class="td-admin-inline-select" data-field-input="email" value="{{ user.email }}" style="display:none;">
+                        </td>
+                        <td>
+                            <span data-field-display="role" class="td-pill td-pill-{{ user.role|lower|replace(' ', '-') }}">{{ user.role }}</span>
+                            <select class="td-admin-inline-select" data-field-input="role" style="display:none;">
+                                {% for role in roles %}
+                                <option value="{{ role }}" {{ 'selected' if role == user.role else '' }}>{{ role }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <span data-field-display="sales_rep">{{ user.sales_rep_name or '—' }}</span>
+                            <select class="td-admin-inline-select" data-field-input="sales_rep_id" style="display:none;">
+                                <option value="">— None —</option>
+                                {% for rep in sales_reps %}
+                                <option value="{{ rep.id }}" {{ 'selected' if rep.id == user.sales_rep_id else '' }}>{{ rep.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <span class="td-pill td-pill-{{ user.status }}" data-status-pill>
+                                {{ {"pending": "Pending / Never Logged In", "active": "Active", "disabled": "Disabled"}[user.status] }}
+                            </span>
+                        </td>
+                        <td>{{ user.last_login_at.strftime('%m/%d/%Y %-I:%M %p') if user.last_login_at else '—' }}</td>
+                        <td>{{ user.last_needs_attention_activity_at.strftime('%m/%d/%Y %-I:%M %p') if user.last_needs_attention_activity_at else '—' }}</td>
+                        <td>{{ row.needs_attention_count }}</td>
+                        <td>{{ row.needs_attention_aged }}</td>
+                        <td>{{ row.actions_7d }}</td>
+                        <td>{{ row.actions_30d }}</td>
+                        <td>
+                            {% if row.review_status %}
+                            <span class="td-pill {{ 'td-pill-review-needed' if row.review_status == 'Needs Review' else 'td-pill-review-active' }}">{{ row.review_status }}</span>
+                            {% else %}
+                            <span class="td-admin-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="td-admin-row-actions">
+                                <button type="button" class="td-btn" data-action="edit">Edit</button>
+                                <button type="button" class="td-btn" data-action="save" style="display:none;">Save</button>
+                                <button type="button" class="td-btn td-btn-ghost" data-action="cancel" style="display:none;">Cancel</button>
+                                {% if user.status == 'disabled' %}
+                                <button type="button" class="td-btn" data-action="enable">Enable</button>
+                                {% else %}
+                                <button type="button" class="td-btn" data-action="disable">Disable</button>
+                                {% endif %}
+                                {% if user.status == 'pending' %}
+                                <button type="button" class="td-btn" data-action="send-setup">Send Setup Email</button>
+                                {% else %}
+                                <button type="button" class="td-btn" data-action="send-reset">Send Reset</button>
+                                {% endif %}
+                            </div>
+                            <div class="td-attention-error" data-row-error style="display:none;"></div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="13" class="td-empty-row">No users yet — use Import Users to add your team.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+</body>
+</html>

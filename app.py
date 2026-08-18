@@ -4,10 +4,16 @@ import threading
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, session, url_for
 
 import attention_store
+import auth
 import db
+import email_service
+import import_service
+import needs_attention_service
+import permissions
+import user_store
 from queries import (
     MAIN_SALES_QUERY,
     SERVICE_CANCELLATIONS_QUERY,
@@ -41,6 +47,31 @@ from sales_metrics import (
 
 app = Flask(__name__)
 app.jinja_env.globals["zip"] = zip
+
+# Signed-cookie session secret -- required for auth.py's session to work
+# at all (Flask refuses to set a session cookie without one). No
+# fallback default: an app handling real logins must never silently run
+# with a guessable/empty key. Generate one with
+# `python3 -c "import secrets; print(secrets.token_hex(32))"` and put it
+# in .env as SECRET_KEY (see README.md "Authentication").
+app.secret_key = os.environ.get("SECRET_KEY")
+if not app.secret_key:
+    raise RuntimeError(
+        "SECRET_KEY is not set. Add one to .env -- see README.md \"Authentication\" "
+        "for how to generate it. The app refuses to start without it once logins are "
+        "involved, since Flask's session cookie can't be signed securely otherwise."
+    )
+
+INITIAL_ADMIN_EMAIL = os.environ.get("INITIAL_ADMIN_EMAIL", "avelino@planet.net")
+
+
+@app.context_processor
+def inject_auth_context():
+    """Makes current_user/permissions available in every template without
+    passing them explicitly in every render_template() call -- used by
+    _topnav.html to show/hide Admin-only nav items and by any page that
+    needs to know who's logged in."""
+    return {"current_user": auth.current_user(), "permissions": permissions}
 
 # The container clock runs in UTC, but every sale/scheduled date in the
 # data is Eastern local time (SQL Server InsertDate). The "Last refreshed"
@@ -286,12 +317,68 @@ def _touch_last_refreshed():
     data_store["last_refreshed"] = datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z")
 
 
+def _sync_reps_and_needs_attention():
+    """Keeps sales_reps (user_store.py) and needs_attention_tracking
+    (needs_attention_service.py) in lockstep with the source data on
+    every refresh -- sales_reps gets any newly-seen rep name;
+    needs_attention_tracking gets a first_seen_at row for any account
+    newly in Needs Attention, and loses the row for any account that's
+    left, so a later re-entry starts a fresh 15-day clock. Silently
+    no-ops on appdb failure inside each function -- must never block the
+    dashboard itself from loading."""
+    normalized = build_sales_dataset(
+        data_store["main_sales"],
+        data_store["vision_packages"],
+        data_store["service_cancellations"],
+    )
+    if normalized is None or normalized.empty:
+        return
+    user_store.sync_sales_reps(normalized["sales_rep"].dropna().unique().tolist())
+    needs_attention_ids = normalized.loc[normalized["status"] == "Needs Attention", "sale_id"].tolist()
+    needs_attention_service.sync_tracking(needs_attention_ids)
+
+
+_admin_bootstrap_done = False
+
+
+def _bootstrap_initial_admin():
+    """Creates the initial Admin account (INITIAL_ADMIN_EMAIL, default
+    avelino@planet.net) the very first time this process ever finds it
+    missing -- no manual database work, no .env editing beyond the
+    one-time deployment config (SECRET_KEY/APPDB_*/SMTP_*) this app
+    already requires. Sends a first-time setup email; if SMTP isn't
+    configured yet (a fresh deployment), email_service logs the setup
+    link to stdout instead (see that module's docstring) so the very
+    first Admin is never locked out waiting on email to be live.
+    Runs at most once per process; a still-pending admin gets the
+    current valid link re-logged (never re-emailed) on every later call
+    in this process, so a restart before setup is finished doesn't spam
+    a real inbox but also never leaves you stuck. See README.md
+    "First-Time Admin Setup"."""
+    global _admin_bootstrap_done
+    if _admin_bootstrap_done:
+        return
+    user = user_store.get_user_by_email(INITIAL_ADMIN_EMAIL)
+    if user is None:
+        ok, error, user = user_store.create_user(INITIAL_ADMIN_EMAIL, "Admin")
+        if not ok:
+            print(f"Could not bootstrap initial Admin account: {error}")
+            return
+    if user["status"] == "pending":
+        token_ok, token_error, raw_token = user_store.create_token(user["id"], "setup")
+        if token_ok:
+            email_service.send_setup_email(user, raw_token)
+    _admin_bootstrap_done = True
+
+
 def load_all_data():
     with _lock:
         _load_planetweb()
         _load_kpi()
         _apply_install_date()
+        _sync_reps_and_needs_attention()
         _touch_last_refreshed()
+        _bootstrap_initial_admin()
 
 
 def ensure_data_loaded():
@@ -419,9 +506,13 @@ def _serialize_note(note):
 
 def attach_attention_metadata(accounts):
     """Needs Attention workflow only: mutates `accounts` in place, adding
-    `attention_status` (None if unclassified) and `attention_notes`
-    (newest first, each with a display-formatted timestamp) to every
-    account dict from attention_store.get_attention_overview(). Returns
+    `attention_status` (None if unclassified), `attention_notes` (newest
+    first, each with a display-formatted timestamp), and `can_work`/
+    `cannot_work_reason` (the CURRENT user's permission for this specific
+    account, from the one authoritative permissions.can_work_account() --
+    used only to proactively disable Classify/Add Note in the UI; the
+    real enforcement is server-side on every write, see
+    _authorize_account_action() above) to every account dict. Returns
     (attention_available, attention_progress) for the page header/progress
     bar -- see attention_store.py's module docstring for the availability
     contract. Purely additive: `accounts` already has everything the Bulk
@@ -431,13 +522,19 @@ def attach_attention_metadata(accounts):
     bulk_account_view()/rep_profile() below."""
     sale_ids = [a["sale_id"] for a in accounts]
     available, status_map, notes_map, progress = attention_store.get_attention_overview(sale_ids)
+    since_map = needs_attention_service.get_first_seen_map(sale_ids)
+    user = auth.current_user()
     for account in accounts:
-        notes = notes_map.get(account["sale_id"], [])
-        account["attention_status"] = status_map.get(account["sale_id"])
+        sale_id = account["sale_id"]
+        notes = notes_map.get(sale_id, [])
+        account["attention_status"] = status_map.get(sale_id)
         account["attention_notes"] = [
             {**note, "created_at_display": _format_note_timestamp(note["created_at"])}
             for note in notes
         ]
+        can_work, reason = permissions.can_work_account(user, account.get("sales_rep"), since_map.get(sale_id))
+        account["can_work"] = can_work
+        account["cannot_work_reason"] = reason
     return available, progress
 
 
@@ -447,10 +544,14 @@ def attach_attention_metadata(accounts):
 
 @app.route("/")
 def index():
-    return redirect(url_for("overview"))
+    # Not /overview -- that's Admin-only as of 2026-08-18, and most users
+    # of this app now are not Admins. /dashboard's own @login_required
+    # sends a logged-out visitor to /login (with ?next= back to here).
+    return redirect(url_for("dashboard_page"))
 
 
 @app.route("/overview")
+@auth.admin_required
 def overview():
     ensure_data_loaded()
     main_sales = data_store["main_sales"]
@@ -477,6 +578,7 @@ def overview():
 
 
 @app.route("/main-sales")
+@auth.admin_required
 def main_sales_page():
     ensure_data_loaded()
     df = data_store["main_sales"]
@@ -517,6 +619,7 @@ def main_sales_page():
 
 
 @app.route("/dashboard")
+@auth.login_required
 def dashboard_page():
     ensure_data_loaded()
 
@@ -627,6 +730,7 @@ def dashboard_page():
 
 
 @app.route("/dashboard/reps/<rep_name>")
+@auth.login_required
 def rep_profile(rep_name):
     ensure_data_loaded()
 
@@ -726,6 +830,7 @@ def rep_profile(rep_name):
 
 
 @app.route("/dashboard/reps/<rep_name>/accounts")
+@auth.login_required
 def bulk_account_view(rep_name):
     ensure_data_loaded()
 
@@ -807,12 +912,15 @@ def bulk_account_view(rep_name):
     )
 
 
-def _known_sale_id(sale_id):
-    """True if sale_id belongs to a real account in the currently loaded
-    normalized dataset. Every attention write route checks this before
+def _lookup_account_owner(sale_id):
+    """(found, owner_rep_name) for a sale_id against the currently loaded
+    normalized dataset. Every attention write route checks `found` before
     touching attention_store -- a sale_id is a value the browser sends
     back to us, so it must never be trusted to correspond to an account
-    this app can actually see without checking first."""
+    this app can actually see without checking first. `owner_rep_name` is
+    whatever sales_metrics.py already attributes the sale to (never
+    changed by this module -- see permissions.py/README.md "Needs
+    Attention Ownership") and feeds permissions.can_work_account()."""
     ensure_data_loaded()
     normalized = build_sales_dataset(
         data_store["main_sales"],
@@ -820,28 +928,60 @@ def _known_sale_id(sale_id):
         data_store["service_cancellations"],
     )
     if normalized is None or normalized.empty:
-        return False
-    return sale_id in set(normalized["sale_id"])
+        return False, None
+    matches = normalized.loc[normalized["sale_id"] == sale_id, "sales_rep"]
+    if matches.empty:
+        return False, None
+    owner = matches.iloc[0]
+    return True, (owner if pd.notna(owner) else None)
+
+
+def _authorize_account_action(sale_id):
+    """Shared by both attention write routes below: looks up the account,
+    404s if it isn't real, then runs the ONE authoritative permission
+    check (permissions.can_work_account()) for the current user against
+    it. Returns (owner_rep, current_user) on success; sends a 403 JSON
+    response and returns None otherwise. needs_attention_since comes from
+    needs_attention_service, never inferred from install/sale/invoice
+    dates (see that module's docstring)."""
+    found, owner_rep = _lookup_account_owner(sale_id)
+    if not found:
+        abort(404)
+
+    user = auth.current_user()
+    since = needs_attention_service.get_needs_attention_since(sale_id)
+    allowed, reason = permissions.can_work_account(user, owner_rep, since)
+    if not allowed:
+        return None, None, (jsonify({"ok": False, "error": reason}), 403)
+    return owner_rep, user, None
 
 
 @app.route("/dashboard/attention/<int:sale_id>/status", methods=["POST"])
+@auth.login_required
 def attention_set_status(sale_id):
     """Sets/changes an account's Attention Status -- the only write path
     that can ever create or move an account_attention row, which is what
     makes 'a status always has a note' structural rather than a rule that
-    has to be remembered in two places. See attention_store.set_attention_status()."""
-    if not _known_sale_id(sale_id):
-        abort(404)
+    has to be remembered in two places. See attention_store.set_attention_status().
+    Server-side permission check (permissions.can_work_account()) runs
+    before anything is written -- the 15-day ownership rule is never
+    enforced by hiding a button alone."""
+    owner_rep, user, denied = _authorize_account_action(sale_id)
+    if denied:
+        return denied
 
     payload = request.get_json(silent=True) or {}
     ok, error, notes = attention_store.set_attention_status(
         sale_id,
         (payload.get("status") or "").strip(),
         payload.get("note") or "",
-        payload.get("author") or "",
+        user,
+        owner_rep=owner_rep,
     )
     if not ok:
         return jsonify({"ok": False, "error": error}), 400
+
+    user_store.record_needs_attention_activity(user["id"])
 
     current_status = notes[0]["attention_status"] if notes else None
     return jsonify({
@@ -853,20 +993,26 @@ def attention_set_status(sale_id):
 
 
 @app.route("/dashboard/attention/<int:sale_id>/notes", methods=["POST"])
+@auth.login_required
 def attention_add_note(sale_id):
     """Appends a note without changing Attention Status. Requires the
-    account to already be classified -- see attention_store.add_note()."""
-    if not _known_sale_id(sale_id):
-        abort(404)
+    account to already be classified -- see attention_store.add_note().
+    Same server-side permission check as attention_set_status() above."""
+    owner_rep, user, denied = _authorize_account_action(sale_id)
+    if denied:
+        return denied
 
     payload = request.get_json(silent=True) or {}
     ok, error, notes = attention_store.add_note(
         sale_id,
         payload.get("note") or "",
-        payload.get("author") or "",
+        user,
+        owner_rep=owner_rep,
     )
     if not ok:
         return jsonify({"ok": False, "error": error}), 400
+
+    user_store.record_needs_attention_activity(user["id"])
 
     current_status = notes[0]["attention_status"] if notes else None
     return jsonify({
@@ -878,6 +1024,7 @@ def attention_add_note(sale_id):
 
 
 @app.route("/dashboard/accounts")
+@auth.login_required
 def all_sales_view():
     """Team-wide (not rep-scoped) Bulk Account View -- reached via the
     "View All Sales" button on the Planet Networks Records section.
@@ -939,6 +1086,7 @@ def all_sales_view():
 
 
 @app.route("/cancellations")
+@auth.admin_required
 def cancellations_page():
     ensure_data_loaded()
     df = data_store["service_cancellations"]
@@ -961,6 +1109,7 @@ def cancellations_page():
 
 
 @app.route("/vision-packages")
+@auth.admin_required
 def vision_packages_page():
     ensure_data_loaded()
     df = data_store["vision_packages"]
@@ -983,6 +1132,7 @@ def vision_packages_page():
 
 
 @app.route("/refresh", methods=["POST"])
+@auth.login_required
 def refresh():
     dataset = request.args.get("dataset", "all")
 
@@ -1003,6 +1153,7 @@ def refresh():
 
 
 @app.route("/search")
+@auth.login_required
 def search():
     """Global search bar (top nav, templates/_topnav.html +
     static/js/search.js) -- reps and customer accounts by substring
@@ -1047,6 +1198,283 @@ def search():
         })
 
     return jsonify({"reps": reps, "accounts": accounts})
+
+
+# ================================================================
+# AUTHENTICATION
+# ================================================================
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if auth.current_user() is not None:
+        return redirect(url_for("dashboard_page"))
+
+    error = None
+    if request.method == "POST":
+        user = user_store.get_user_by_email(request.form.get("email", ""))
+        password = request.form.get("password", "")
+        if user is None or user["status"] != "active" or not user_store.verify_password(user, password):
+            error = "Incorrect email or password."
+        else:
+            auth.login_user(user)
+            user_store.record_login(user["id"])
+            next_url = request.args.get("next") or url_for("dashboard_page")
+            # Only ever redirect to a same-site relative path -- never
+            # follow a `next` value off this domain (open-redirect
+            # protection on a value that came from the query string).
+            if not next_url.startswith("/"):
+                next_url = url_for("dashboard_page")
+            return redirect(next_url)
+
+    return render_template("login.html", error=error, next=request.args.get("next", ""))
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    auth.logout_user()
+    return redirect(url_for("login"))
+
+
+@app.route("/setup/<token>", methods=["GET", "POST"])
+def account_setup(token):
+    """First-time account setup -- reached only via the emailed single-
+    use link (see email_service.send_setup_email()). Also the completion
+    step for an Admin's "Resend setup email" action."""
+    ok, user_id, token_error = user_store.verify_token(token, "setup")
+    if not ok:
+        return render_template("setup_account.html", token_error=token_error, user=None), 400
+
+    user = user_store.get_user_by_id(user_id)
+    form_error = None
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        if password != confirm:
+            form_error = "Passwords do not match."
+        else:
+            set_ok, set_error = user_store.set_password(user_id, password)
+            if not set_ok:
+                form_error = set_error
+            else:
+                user_store.consume_token(token)
+                auth.login_user(user_store.get_user_by_id(user_id))
+                user_store.record_login(user_id)
+                return redirect(url_for("dashboard_page"))
+
+    return render_template("setup_account.html", user=user, token=token, form_error=form_error)
+
+
+@app.route("/reset-password", methods=["GET", "POST"])
+def reset_password_request():
+    sent = False
+    if request.method == "POST":
+        user = user_store.get_user_by_email(request.form.get("email", ""))
+        # Always show the same confirmation regardless of whether the
+        # email matched a real account -- this form must never be usable
+        # to discover which emails have accounts.
+        if user is not None and user["status"] != user_store.STATUS_DISABLED:
+            token_ok, _error, raw_token = user_store.create_token(user["id"], "reset")
+            if token_ok:
+                email_service.send_reset_email(user, raw_token)
+        sent = True
+    return render_template("reset_password_request.html", sent=sent)
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password_complete(token):
+    ok, user_id, token_error = user_store.verify_token(token, "reset")
+    if not ok:
+        return render_template("reset_password.html", token_error=token_error), 400
+
+    form_error = None
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        if password != confirm:
+            form_error = "Passwords do not match."
+        else:
+            set_ok, set_error = user_store.set_password(user_id, password)
+            if not set_ok:
+                form_error = set_error
+            else:
+                user_store.consume_token(token)
+                return redirect(url_for("login"))
+
+    return render_template("reset_password.html", token=token, form_error=form_error)
+
+
+@app.errorhandler(403)
+def forbidden(_error):
+    return render_template("unauthorized.html"), 403
+
+
+# ================================================================
+# ADMIN PORTAL
+# ================================================================
+
+@app.route("/admin")
+@auth.admin_required
+def admin_home():
+    return redirect(url_for("admin_users"))
+
+
+def _needs_review_status(user, stats):
+    """Spec default 'Needs Review' signal: a Sales Rep/Customer Success
+    user with open Needs Attention accounts and no meaningful activity
+    for 3+ days. Deliberately isolated in this one small function --
+    change ONLY this to retune the rule, never duplicate the threshold
+    elsewhere. Admin/Other aren't judged by this at all (None -> no
+    badge shown)."""
+    if user["role"] not in (permissions.ROLE_SALES_REP, permissions.ROLE_CUSTOMER_SUCCESS):
+        return None
+    if stats["count"] == 0:
+        return None
+    last_activity = user.get("last_needs_attention_activity_at")
+    if last_activity is None:
+        return "Needs Review"
+    idle_days = (datetime.now(EASTERN_TZ) - last_activity.astimezone(EASTERN_TZ)).total_seconds() / 86400.0
+    return "Needs Review" if idle_days >= 3 else "Active"
+
+
+@app.route("/admin/users")
+@auth.admin_required
+def admin_users():
+    ensure_data_loaded()
+    normalized = build_sales_dataset(
+        data_store["main_sales"],
+        data_store["vision_packages"],
+        data_store["service_cancellations"],
+    )
+
+    users = user_store.list_users()
+    activity_counts = needs_attention_service.get_activity_counts([u["id"] for u in users])
+
+    rep_sale_ids = {}
+    if normalized is not None and not normalized.empty:
+        needs_attention_df = normalized[normalized["status"] == "Needs Attention"]
+        for rep, group in needs_attention_df.groupby("sales_rep"):
+            rep_sale_ids[rep] = group["sale_id"].tolist()
+    rep_stats = needs_attention_service.get_rep_needs_attention_stats(rep_sale_ids)
+
+    rows = []
+    for user in users:
+        stats = rep_stats.get(user.get("sales_rep_name"), {"count": 0, "aged_15_plus": 0, "oldest_days": 0})
+        counts = activity_counts.get(user["id"], {"last_7_days": 0, "last_30_days": 0})
+        rows.append({
+            "user": user,
+            "needs_attention_count": stats["count"],
+            "needs_attention_aged": stats["aged_15_plus"],
+            "needs_attention_oldest_days": stats["oldest_days"],
+            "actions_7d": counts["last_7_days"],
+            "actions_30d": counts["last_30_days"],
+            "review_status": _needs_review_status(user, stats),
+        })
+
+    return render_template(
+        "admin/users.html",
+        active_page="admin",
+        rows=rows,
+        roles=user_store.ROLES,
+        sales_reps=user_store.list_sales_reps(),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/admin/users/<int:user_id>", methods=["POST"])
+@auth.admin_required
+def admin_update_user(user_id):
+    email = request.form.get("email") or None
+    role = request.form.get("role") or None
+    sales_rep_id_raw = request.form.get("sales_rep_id", "")
+    sales_rep_id = int(sales_rep_id_raw) if sales_rep_id_raw else None
+    ok, error = user_store.update_user(user_id, email=email, role=role, sales_rep_id=sales_rep_id)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/users/<int:user_id>/disable", methods=["POST"])
+@auth.admin_required
+def admin_disable_user(user_id):
+    ok, error = user_store.set_user_status(user_id, user_store.STATUS_DISABLED)
+    return (jsonify({"ok": True}) if ok else (jsonify({"ok": False, "error": error}), 400))
+
+
+@app.route("/admin/users/<int:user_id>/enable", methods=["POST"])
+@auth.admin_required
+def admin_enable_user(user_id):
+    ok, error = user_store.set_user_status(user_id, user_store.STATUS_ACTIVE)
+    return (jsonify({"ok": True}) if ok else (jsonify({"ok": False, "error": error}), 400))
+
+
+@app.route("/admin/users/<int:user_id>/send-setup", methods=["POST"])
+@auth.admin_required
+def admin_send_setup(user_id):
+    user = user_store.get_user_by_id(user_id)
+    if user is None:
+        return jsonify({"ok": False, "error": "User not found."}), 404
+    ok, error, raw_token = user_store.create_token(user_id, "setup")
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    sent_ok, sent_error = email_service.send_setup_email(user, raw_token)
+    if not sent_ok:
+        return jsonify({"ok": False, "error": sent_error}), 502
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/users/<int:user_id>/send-reset", methods=["POST"])
+@auth.admin_required
+def admin_send_reset(user_id):
+    user = user_store.get_user_by_id(user_id)
+    if user is None:
+        return jsonify({"ok": False, "error": "User not found."}), 404
+    ok, error, raw_token = user_store.create_token(user_id, "reset")
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    sent_ok, sent_error = email_service.send_reset_email(user, raw_token)
+    if not sent_ok:
+        return jsonify({"ok": False, "error": sent_error}), 502
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/users/import")
+@auth.admin_required
+def admin_import_page():
+    return render_template("admin/import.html", active_page="admin", last_refreshed=data_store["last_refreshed"])
+
+
+@app.route("/admin/users/import/validate", methods=["POST"])
+@auth.admin_required
+def admin_import_validate():
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        return jsonify({"ok": False, "error": "No file was selected."}), 400
+    ok, error, rows, summary = import_service.parse_and_validate(file)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True, "rows": rows, "summary": summary})
+
+
+@app.route("/admin/users/import/commit", methods=["POST"])
+@auth.admin_required
+def admin_import_commit():
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows") or []
+    if not rows:
+        return jsonify({"ok": False, "error": "Nothing to import."}), 400
+    results = import_service.commit_import(rows)
+    return jsonify({"ok": True, **results})
+
+
+@app.route("/admin/audit")
+@auth.admin_required
+def admin_audit():
+    entries = attention_store.get_recent_activity(limit=300)
+    for entry in entries:
+        entry["created_at_display"] = _format_note_timestamp(entry["created_at"])
+    return render_template(
+        "admin/audit.html", active_page="admin", entries=entries, last_refreshed=data_store["last_refreshed"],
+    )
 
 
 @app.route("/health")

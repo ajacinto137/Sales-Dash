@@ -19,24 +19,7 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
     }
 
-    var AUTHOR_STORAGE_KEY = "td-attention-author";
     var root = document.querySelector("[data-bulk-view]") || document;
-
-    // ---- Author name, shared across every card via localStorage ----
-    var authorInput = document.querySelector("[data-attention-author]");
-    if (authorInput) {
-        var savedAuthor = window.localStorage.getItem(AUTHOR_STORAGE_KEY);
-        if (savedAuthor) {
-            authorInput.value = savedAuthor;
-        }
-        authorInput.addEventListener("input", function () {
-            window.localStorage.setItem(AUTHOR_STORAGE_KEY, authorInput.value);
-        });
-    }
-
-    function getAuthor() {
-        return authorInput ? authorInput.value.trim() : "";
-    }
 
     function statusToClass(status) {
         return status ? status.toLowerCase().replace(/ /g, "-") : "unclassified";
@@ -233,10 +216,10 @@ document.addEventListener("DOMContentLoaded", function () {
                         return;
                     }
                     url = "/dashboard/attention/" + saleId + "/status";
-                    body = { status: status, note: note, author: getAuthor() };
+                    body = { status: status, note: note };
                 } else {
                     url = "/dashboard/attention/" + saleId + "/notes";
-                    body = { note: note, author: getAuthor() };
+                    body = { note: note };
                 }
 
                 btn.disabled = true;

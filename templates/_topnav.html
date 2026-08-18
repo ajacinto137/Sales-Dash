@@ -1,17 +1,28 @@
 <!-- ================= Top Nav =================
      Shared across every team_dashboard.css page (dashboard.html,
-     rep_profile.html, bulk_account_view.html) -- factored out
-     2026-08-17 when the global search bar was added, so the 3 templates
-     that used to each hand-copy this block can't drift out of sync.
-     Expects `last_refreshed` in context (already passed by every route
-     that renders one of the 3 pages above). -->
+     rep_profile.html, bulk_account_view.html, admin/*.html) -- factored
+     out 2026-08-17 when the global search bar was added, so the
+     templates that used to each hand-copy this block can't drift out of
+     sync. Expects `last_refreshed` in context (already passed by every
+     route that renders one of the pages above); `current_user` comes
+     from app.py's inject_auth_context() context processor, available on
+     every template automatically.
+     Overview/Main Sales/Service Cancellations/Vision Packages/Admin are
+     Admin-only as of 2026-08-18 (spec #20/#21) -- hidden here for
+     non-admins, but that's a convenience, not the real protection: every
+     one of those routes also has its own @auth.admin_required, since
+     hiding a nav link is never a substitute for server-side
+     authorization (see README.md "Authorization"). -->
 <div class="td-topnav">
     <div class="td-topnav-brand">Planet Networks</div>
     <nav class="td-topnav-links">
+        {% if current_user and current_user.role == 'Admin' %}
         <a href="{{ url_for('overview') }}">Overview</a>
         <a href="{{ url_for('main_sales_page') }}">Main Sales</a>
         <a href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
         <a href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
+        <a href="{{ url_for('admin_users') }}">Admin</a>
+        {% endif %}
         <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>
     </nav>
 
@@ -30,5 +41,11 @@
         <form action="{{ url_for('refresh') }}?dataset=all" method="post">
             <button type="submit" class="td-btn td-btn-ghost">Refresh Data</button>
         </form>
+        {% if current_user %}
+        <span class="td-last-refreshed">{{ current_user.display_name }}</span>
+        <form action="{{ url_for('logout') }}" method="post">
+            <button type="submit" class="td-btn td-btn-ghost">Log Out</button>
+        </form>
+        {% endif %}
     </div>
 </div>

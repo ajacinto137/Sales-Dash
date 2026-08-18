@@ -23,21 +23,25 @@ database.
 - [Flask](https://flask.palletsprojects.com/) (Python) — web app and routes (`app.py`)
 - [pandas](https://pandas.pydata.org/) — data wrangling and metrics calculations (`sales_metrics.py`)
 - [pyodbc](https://github.com/mkleehammer/pyodbc) + Microsoft ODBC Driver 18 — connects to the PlanetWeb **SQL Server** database (read-only)
-- [psycopg2](https://www.psycopg.org/) — connects to the KPI **PostgreSQL** database (read-only) and the app-owned **appdb** PostgreSQL database (read/write, see "Needs Attention Workflow")
+- [psycopg2](https://www.psycopg.org/) — connects to the KPI **PostgreSQL** database (read-only) and the app-owned **appdb** PostgreSQL database (read/write, see "Needs Attention Workflow" and "Authentication, Roles & Admin Portal")
 - [python-dotenv](https://github.com/theskumar/python-dotenv) — loads credentials from `.env`
+- [openpyxl](https://openpyxl.readthedocs.io/) — reads `.xlsx` for the Admin Portal's user import (`import_service.py`); pandas needs it as an engine, it's not used directly
+- [pytest](https://pytest.org/) — this app's first test suite (`tests/`), added 2026-08-18 alongside authentication
 - Raw SQL queries defined in `queries.py`, DB connection/health-check helpers in `db.py`
-- `attention_store.py` — the Needs Attention workflow's persistence layer (Attention Status + notes), the only module in this app that writes to a database
+- No ORM anywhere in this codebase — every appdb-backed module (`attention_store.py`, `user_store.py`, `needs_attention_service.py`) talks to Postgres with raw parameterized `psycopg2` SQL. `db_migrations.py` is a small hand-rolled, versioned migration runner (see "Authentication, Roles & Admin Portal" → Database Models) rather than Alembic/SQLAlchemy, to stay consistent with that
+- `attention_store.py` — the Needs Attention workflow's persistence layer (Attention Status + notes, now also the audit log — see below)
+- `auth.py` / `user_store.py` / `permissions.py` / `email_service.py` / `import_service.py` / `needs_attention_service.py` — authentication, user/role/Sales-Rep-mapping persistence, the one authoritative Needs Attention permission rule, transactional email, Excel import, and `needs_attention_since` tracking, respectively (added 2026-08-18, see "Authentication, Roles & Admin Portal")
 
 **Frontend**
-- Server-rendered [Jinja2](https://jinja.palletsprojects.com/) templates (`templates/`)
-- Vanilla JavaScript (`static/js/dashboard.js`, `static/js/team_dashboard.js`, `static/js/attention.js`, `static/js/search.js`) — no frontend framework or build step
+- Server-rendered [Jinja2](https://jinja.palletsprojects.com/) templates (`templates/`, `templates/admin/`)
+- Vanilla JavaScript (`static/js/dashboard.js`, `static/js/team_dashboard.js`, `static/js/attention.js`, `static/js/search.js`, `static/js/admin_users.js`, `static/js/admin_import.js`) — no frontend framework or build step
 - [Chart.js](https://www.chartjs.org/) (v4, via CDN) — sales-over-time chart
 - Plain CSS (`static/css/dashboard.css`, `static/css/team_dashboard.css`)
 - `static/images/` — badge icons for the Individual Sales Profile's Achievements (see its own section below)
 
 **Infrastructure**
 - Docker / Docker Compose — the entire app, including the SQL Server ODBC driver, runs in a container (`Dockerfile`, `docker-compose.yml`)
-- A second container, `appdb` (`postgres:16-alpine`, its own named volume) — the app-owned database backing the Needs Attention workflow, entirely separate from the two read-only source databases
+- A second container, `appdb` (`postgres:16-alpine`, its own named volume) — the app-owned database backing the Needs Attention workflow **and** authentication/users/roles, entirely separate from the two read-only source databases
 - Base image: `python:3.12-slim-bookworm`
 - App served on port `3005`
 
@@ -68,6 +72,8 @@ KPI_USERNAME=
 KPI_PASSWORD=
 
 APPDB_PASSWORD=
+
+SECRET_KEY=
 ```
 
 The first four are the source-database credentials your team already
@@ -77,9 +83,22 @@ name, SSL settings, and the queries themselves) is already filled in.
 `APPDB_PASSWORD` is different in kind: it's not an existing credential to
 look up anywhere — it sets the password for a brand-new, empty Postgres
 database (`appdb` in `docker-compose.yml`) that this app creates for
-itself on first `docker compose up`, used only by the Needs Attention
-workflow (see "Needs Attention Workflow" below). Any value works; there's
-nothing to "get right" beyond picking one.
+itself on first `docker compose up`, used by the Needs Attention workflow
+and by authentication/user management (see "Needs Attention Workflow"
+and "Authentication, Roles & Admin Portal" below). Any value works;
+there's nothing to "get right" beyond picking one.
+
+`SECRET_KEY` signs the login session cookie — **required**, the app
+refuses to start without it (see "Authentication, Roles & Admin Portal").
+Generate one with:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+`SMTP_*` (see `.env.example`) are optional — leave `SMTP_HOST` blank for
+local dev and setup/reset links print to the container logs instead of
+emailing (see "Authentication, Roles & Admin Portal" → Email
+Configuration).
 
 `.env` is excluded from Git via `.gitignore` — never commit it once it
 contains real credentials. `.env.example` is the tracked template that's
@@ -265,6 +284,395 @@ docker compose -f docker-compose.prod.yml logs -f
 # Stop
 docker compose -f docker-compose.prod.yml down
 ```
+
+## Authentication, Roles & Admin Portal
+
+> Real login, four roles, an Admin Portal, Excel-based user import, and
+> a 15-day ownership-protection rule for who can work someone else's
+> Needs Attention accounts — added 2026-08-18. Before this, the entire
+> dashboard was open to anyone with the URL; every route except
+> `/health` now requires being logged in, and four existing pages
+> (`/overview`, `/main-sales`, `/cancellations`, `/vision-packages`) plus
+> everything under `/admin` require the **Admin** role specifically.
+
+### Roles
+
+Exactly four, stored on `users.role`: **Admin**, **Sales Rep**,
+**Customer Success**, **Other**. These are *authentication/authorization*
+roles — not to be confused with any future organizational grouping;
+`user_store.ROLES` is the single source of truth for the list, and
+`permissions.py` is the only place role names are ever compared against
+in a permission decision.
+
+| Role | Can do |
+|------|--------|
+| **Admin** | Everything — every dashboard page, the 4 legacy Admin-only pages, the whole Admin Portal (user management, role/rep mapping, Excel import, sending setup/reset emails, the audit log), and works any Needs Attention account regardless of owner or age. |
+| **Customer Success** | Normal dashboard access; can work *any* Needs Attention account immediately, regardless of who owns it or how long it's been in Needs Attention. No Admin Portal access. |
+| **Sales Rep** | Normal dashboard access; can immediately work their own accounts and any account with no owning Sales Rep (i.e. Customer-Success/Other-attributed); can only work *another* Sales Rep's account once it's been in Needs Attention 15+ full days. No Admin Portal access. |
+| **Other** | Normal dashboard *read* access; conservative default — cannot work any Needs Attention account at all, regardless of ownership or age (spec was explicit: never let Other quietly inherit Sales Rep permissions). No Admin Portal access. |
+
+### User Records vs. Sales Rep Records — deliberately separate
+
+A **Sales Rep** (`sales_reps` table) is not, and has never been, the same
+thing as a **User** (`users` table) — this was true even before
+authentication existed: `sales_rep` in the normalized dataset
+(`sales_metrics.py`) has always been a name string derived from
+`SourceToken`, not tied to any login. A rep can rack up sales and show up
+on the Individual Rep Leaderboard having never logged in or received an
+invitation; `sales_reps` rows are auto-synced from live source data
+(`user_store.sync_sales_reps()`, called every `load_all_data()` refresh)
+with zero manual entry. A `users` row's `sales_rep_id` is an *optional*
+mapping onto an already-existing `sales_reps` row — never an identity.
+Concretely: creating a user never creates a rep, disabling/deleting a
+user never touches that rep's sales attribution, and a rep can exist
+indefinitely with zero mapped users. Ownership used for reporting
+(Sales/Outbound/Installs/Needs Attention/Install Rate — everything in
+`sales_metrics.py`) is always read from the source data directly, never
+from `users`/`sales_reps`.
+
+### Authentication Flow
+
+Session-based, not JWT/OAuth — Flask's own signed-cookie `session`
+(needs `SECRET_KEY`, see "Configure credentials") holds only a
+`user_id`; every request re-fetches that user's current row from appdb
+(`auth.current_user()`, cached on `flask.g` for that one request only),
+so a role change or a disable takes effect on the user's *very next
+request*, not next login. No Flask-Login or other auth package — this
+stays consistent with the rest of the app's zero-framework-dependencies
+philosophy (no ORM, no frontend framework either). Passwords are hashed
+with `werkzeug.security` (already bundled with Flask, no new dependency)
+— `generate_password_hash()`/`check_password_hash()` — and a plaintext
+password is never stored, logged, or emailed anywhere.
+
+- `POST /login` — email + password. A successful login updates
+  `users.last_login_at` (`user_store.record_login()`) and redirects to
+  `?next=` if present (validated to be a same-site relative path only —
+  an open-redirect guard on a query-string value).
+- `POST /logout` — clears the session.
+- Disabled users can never log in (`status != 'active'` is checked both
+  at login and on every `current_user()` lookup — a session that was
+  valid when created is invalidated the moment an Admin disables that
+  account, without waiting for the cookie to expire).
+
+### First-Time Admin Setup
+
+`avelino@planet.net` becomes the initial Admin with **no manual database
+work and no routine `.env` editing** — see `app._bootstrap_initial_admin()`
+in `app.py`, called from `load_all_data()` (the same lazy-init pattern
+`ensure_data_loaded()` already used for source data):
+
+1. The first time this process ever finds no user matching
+   `INITIAL_ADMIN_EMAIL` (env var, defaults to `avelino@planet.net`), it
+   creates one with `role=Admin`, `status=pending`, no password.
+2. Generates a secure random single-use setup token
+   (`user_store.create_token()` — `secrets.token_urlsafe(32)`, only its
+   sha256 hash stored, expires in 72 hours) and emails a setup link via
+   `email_service.send_setup_email()`.
+3. **If SMTP isn't configured yet** (a fresh deployment, before anyone's
+   filled in the `SMTP_*` vars) — the normal state right after first
+   deploy — the email "send" fails gracefully and **the setup link is
+   printed to the container's stdout logs** (`docker compose logs`)
+   instead. This is the actual mechanism that means you're never
+   blocked getting into your own dashboard waiting on email to be live.
+4. Click the link (`GET /setup/<token>`), set a password, and you're
+   logged in immediately with the Admin role already assigned.
+
+Runs at most once per process; a still-pending admin gets the *current*
+valid link re-logged (never re-emailed) on every later restart before
+setup is finished, so a restart mid-setup doesn't spam a real inbox but
+also never leaves you stuck. Every *other* user's setup email is
+Admin-triggered only, from the Admin Portal — this one bootstrap
+exception is what makes the very first login possible at all.
+
+### First-Time Account Setup (everyone else) & Password Reset
+
+Both flows share one mechanism — `account_setup_tokens`
+(`purpose='setup'` or `'reset'`), a random token whose sha256 hash is
+stored (raw token exists only in the emailed URL, never persisted),
+single-use (`used_at` set only after the password is *actually* changed
+— a failed submit doesn't burn a valid link), and expiring (72h for
+setup, 24h for reset).
+
+- **Setup**: an Admin clicks "Send Setup Email" / "Resend Setup Email"
+  for a `pending` user in `/admin/users` → `email_service.send_setup_email()`
+  → `GET/POST /setup/<token>` → set password → auto-logged-in,
+  `status` flips to `active`. **Never automatic** — importing users via
+  Excel (below) never sends an email by itself; an Admin has to
+  explicitly trigger it per user, per the spec.
+- **Reset**: `GET/POST /reset-password` (request by email) →
+  `email_service.send_reset_email()` → `GET/POST /reset-password/<token>`
+  (set new password). The request step always shows the same
+  confirmation regardless of whether the email matched a real account —
+  this form must never be usable to enumerate which emails have
+  accounts. An Admin can also trigger this directly from `/admin/users`
+  ("Send Reset") without the user having to ask.
+
+### Needs Attention Ownership & the 15-Day Rule
+
+**The account owner never changes.** Working, classifying, or resolving
+a Needs Attention account never moves it to the acting user's book of
+business and never rewrites the original Sales Rep's attribution —
+`sales_metrics.py`'s `sale_rep` column (and everything computed from it:
+Sales/Outbound/Installs/Needs Attention count/Install Rate) is untouched
+by anything in this section. Three concepts stay separate, tracked
+independently:
+
+- **Account owner** — whoever `sales_metrics.py` already attributes the
+  sale to. Read fresh from source data on every check, never stored by
+  this feature.
+- **Acting user** — whoever actually performed a write (set/changed
+  Attention Status, added a note). `account_attention_notes.acting_user_id`.
+- **Resolved by** — implicit in the notes history: whichever note last
+  set/changed the Attention Status is, by definition, who most recently
+  acted on it. No separate "resolved by" column was needed — the
+  append-only note history already answers that.
+
+**`needs_attention_since`** (spec's exact suggested name) didn't exist
+before this — Needs Attention status is recomputed fresh from source
+data on every single request, so there was previously no durable answer
+to "how long has this account actually been in Needs Attention."
+`needs_attention_tracking` (one row per currently-Needs-Attention
+`sale_id`, `first_seen_at` set once and never overwritten) is that
+answer, synced every `load_all_data()` refresh
+(`needs_attention_service.sync_tracking()`): a `sale_id` newly seen in
+Needs Attention gets a fresh `first_seen_at`; one that's left (installed,
+reclassified) has its row deleted, so a *later* re-entry starts a
+genuinely fresh 15-day clock rather than inheriting a stale timestamp.
+The 15-day threshold (`needs_attention_service.AGE_THRESHOLD_DAYS`) is
+compared as **exact elapsed time, not calendar-date rounding** — "15
+full days" per the spec.
+
+**The one authoritative permission function** —
+`permissions.can_work_account(user, owner_rep_name, needs_attention_since)`
+→ `(allowed: bool, reason: str | None)` — is called from exactly one
+place server-side, `app._authorize_account_action()`, itself called by
+both `POST /dashboard/attention/<sale_id>/status` and
+`.../notes` *before either ever touches `attention_store`*. The same
+function also computes `can_work`/`cannot_work_reason` per account in
+`app.attach_attention_metadata()`, which the Needs Attention Bulk
+Account View uses to proactively grey out Classify/Add Note with the
+exact reason (spec's own example wording: *"This account belongs to
+another Sales Rep and has only been in Needs Attention for 8 days. It
+becomes available to other Sales Reps after 15 days."*) — but that's a
+courtesy, never the real protection. A rejected write returns a real
+`403` with that same message as JSON, not a silently-hidden button; there
+is no second copy of the 15-day rule anywhere in the codebase to drift
+out of sync with this one.
+
+Rules, in order (see `permissions.py` for the exact implementation):
+1. No user, or a disabled/non-active user → never.
+2. Admin → always, any account, any age.
+3. Customer Success → always, any account, any age.
+4. Sales Rep:
+   - Account has no owning Sales Rep (Customer-Success/Other-attributed)
+     → always.
+   - Account's owner IS this user's own mapped rep → always.
+   - A *different* Sales Rep owns it → only once
+     `needs_attention_since` is 15+ full days old.
+5. Other → never (conservative default — never inherits Sales Rep
+   permissions by accident).
+
+### Admin Portal
+
+`/admin` (redirects to `/admin/users`) and everything under it —
+`templates/admin/`, reusing `team_dashboard.css`'s tokens/cards/table
+styling and the shared `_topnav.html` throughout, no separate visual
+language. Admin-only (`@auth.admin_required` on every route in this
+section) — a non-admin hitting any of these URLs directly gets a real
+`403` (`templates/unauthorized.html`), not just a hidden nav link.
+
+**User Management** (`/admin/users`, `templates/admin/users.html`) — one
+table, columns per the spec: Name/Rep, Email, Role, Sales Rep mapping,
+Account Status (Pending / Never Logged In · Active · Disabled), Last
+Login, Last Needs Attention Activity, current Needs Attention count,
+Needs Attention accounts 15+ days old, actions in the last 7/30 days,
+and a **Needs Review** flag. Inline edit (email/role/rep mapping, no
+page reload — `static/js/admin_users.js`, same fetch-and-update-in-place
+idiom as `attention.js`/`search.js`) plus row actions: disable/enable,
+send setup email, send password reset. **Never automatic** — creating or
+importing a user never emails them; an Admin has to explicitly click
+"Send Setup Email"/"Send Reset" per the spec.
+
+The **Needs Review** flag (`app._needs_review_status()`) is deliberately
+isolated in one small function so its threshold is trivial to retune
+later without touching the template: a Sales Rep/Customer Success user
+with open Needs Attention accounts and no meaningful activity in 3+ days
+shows "Needs Review"; otherwise "Active". Admin/Other are never judged
+by this. "Meaningful activity" (`users.last_needs_attention_activity_at`,
+updated by `user_store.record_needs_attention_activity()`) is set only
+after a Needs Attention write actually **succeeds** — setting/changing
+Attention Status or adding a note — never for simply opening/viewing an
+account.
+
+**Excel Import** (`/admin/users/import`, `templates/admin/import.html` +
+`static/js/admin_import.js`, backend in `import_service.py`) — a 5-step
+flow (Select → Validate → Preview → Import → Results, each its own
+visible stepper state):
+- Required columns, exactly: **Rep Name**, **Email**, **Group**.
+  `.xlsx` only (`.xls` intentionally out of scope — `.xlsx` was the
+  hard requirement, `.xls` needs a different library/dependency for
+  marginal benefit).
+- The Upload/Import button stays disabled until
+  `POST /admin/users/import/validate` (multipart) comes back
+  structurally valid — right columns, non-empty, readable — showing
+  either `File Valid — N rows ready to import.` or the specific
+  structural reason it can't be (missing column, empty workbook,
+  unsupported file type, unreadable/corrupt file).
+- **Preview** table, one row per spreadsheet row: Rep Name, Email,
+  Group, Matching Dashboard Rep, and a **Proposed Action** — `Create
+  User` / `Update Existing User` / `Needs Review` / `Cannot Import`.
+  Per-row validation: required fields non-blank, valid email format,
+  Group is one of Sales Rep/Customer Success/Other, no duplicate email
+  *within the file*. Rep-name matching (`user_store.find_sales_rep_by_name()`,
+  exact case-insensitive) only ever applies to **Sales Rep** rows — a
+  Customer Success/Other row's Rep Name is just their name, not a claim
+  to a dashboard rep identity, so it's never flagged "Needs Review" for
+  not matching one. An unmatched Sales Rep name is flagged `Needs
+  Review` and imported *without* a rep mapping — **never** silently
+  guessed at.
+- **Commit** (`POST /admin/users/import/commit`) re-validates every row
+  from scratch server-side — it never trusts the client-held preview,
+  only the raw Rep Name/Email/Group triples — and writes row-by-row in
+  independent operations, so one bad row is reported and skipped, never
+  blocking the good rows around it. Results: `{added, updated,
+  needs_review, failed: [...]}`, each failure with its row number, Rep
+  Name, Email, and the *exact* reason (never a bare "failed") — plus a
+  client-side "Download Failed Rows (CSV)" button so they're easy to
+  fix and re-upload.
+- Admin is never an importable Group value — "Admin should be managed
+  separately," per the spec; `user_store.IMPORTABLE_ROLES` is the
+  3-value subset of `ROLES` the importer will ever assign.
+
+**Audit Log** (`/admin/audit`, `templates/admin/audit.html`) — reads
+straight from `account_attention_notes`, which **is** the Needs
+Attention audit log (see next section) rather than a second, largely
+duplicate table. Newest first: when, acting user, account owner at the
+time, account (`sale_id`), action type (Changed Attention Status / Added
+Note), previous → new value, and the note text.
+
+### Database Models
+
+No ORM anywhere in this app (see "Stack") — `db_migrations.py` is a
+small, hand-rolled, **versioned** migration runner: a numbered,
+forward-only list of SQL blocks (`MIGRATIONS` in that file), each
+applied exactly once inside its own transaction, tracked in a
+`schema_migrations(version, description, applied_at)` table. Every
+appdb-backed module calls `db_migrations.ensure_schema(conn)` before its
+first query in a process (passing the *same* connection it's about to
+query with, never a second one). Migration 1 is the original
+`attention_store.py` schema (relocated, unchanged) so there's one
+migration history for the whole app, not two competing systems. Add a
+new migration by appending a new `(version, description, sql)` tuple —
+never edit an already-shipped migration's SQL after a real database has
+recorded that version.
+
+```sql
+sales_reps                     -- auto-synced, never hand-created
+  id, name UNIQUE, first_seen_at, last_seen_at
+
+users
+  id, email UNIQUE, password_hash NULL, role,
+  sales_rep_id NULL -> sales_reps.id,     -- optional mapping, not identity
+  status ('pending'|'active'|'disabled'),
+  last_login_at, last_needs_attention_activity_at,
+  created_at, updated_at
+
+account_setup_tokens           -- covers BOTH first-time setup and password reset
+  id, user_id -> users.id, token_hash (sha256, raw token never stored),
+  purpose ('setup'|'reset'), expires_at, used_at, created_at
+
+needs_attention_tracking       -- the missing needs_attention_since
+  sale_id PK, first_seen_at
+
+account_attention_notes        -- EXTENDED (not replaced) to double as the audit log
+  ...existing note/status columns (see "Needs Attention Workflow")...
+  + acting_user_id NULL -> users.id
+  + owner_sales_rep TEXT          -- snapshot, for audit display only
+  + action TEXT DEFAULT 'note'    -- 'status_change' | 'note'
+```
+
+`account_attention_notes.sale_id` is deliberately **not** a foreign key
+into `account_attention` (it was, briefly, when the Needs Attention
+Workflow first shipped — see that section's own note on this) — a
+migration in `db_migrations.py` drops that constraint on any database
+that still has it, since reclassifying an account to Unclassified
+deletes its `account_attention` row, and notes must survive that.
+`NeedsAttentionAudit`, as named in the original spec, is this same
+extended `account_attention_notes` table, not a separate one — it
+already had previous/new status, note text, and a timestamp; these three
+new columns were what it was missing to also serve as the audit log.
+
+### Email Configuration
+
+`email_service.py` — plain `smtplib` (zero new dependency), config via
+`SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM_ADDRESS`/
+`SMTP_USE_TLS` in `.env` (same pattern as every other credential in this
+app), plus `APP_BASE_URL` for building absolute links
+(`https://sales.planet.net/setup/<token>` in production). Isolated
+behind exactly three functions (`send_setup_email()`, `send_reset_email()`,
+and the shared `_send()`) so swapping the transport later (a provider
+API, a queue) never touches `auth.py`, `user_store.py`, or any route —
+they only ever call these three names. **`SMTP_HOST` left blank is a
+supported, working state** (the default for local dev) — every send
+gracefully fails and logs the actual link to stdout instead of raising,
+which is what makes the initial Admin bootstrap work before email is
+configured. Never sends a password, ever — only a single-use link.
+
+### Authorization (server-side, not just hidden nav items)
+
+Every protected route checks the *server-side* session on every
+request — nothing here ever trusts a client-supplied user ID, role, or
+rep ID:
+- `@auth.login_required` — any active, logged-in user. On every
+  `/dashboard*` route, `/refresh`, `/search`.
+- `@auth.admin_required` — Admin role specifically. On `/overview`,
+  `/main-sales`, `/cancellations`, `/vision-packages`, and everything
+  under `/admin`.
+- `_topnav.html` hides Overview/Main Sales/Service Cancellations/Vision
+  Packages/Admin for non-admins — **a convenience, not the protection**;
+  every one of those routes has its own `@auth.admin_required`
+  regardless, so typing the URL directly gets a real `403`, never the
+  real page.
+- The Needs Attention 15-day rule is enforced exactly the same way —
+  see "Needs Attention Ownership & the 15-Day Rule" above.
+
+### Development / Testing
+
+First test suite in this repo (`tests/`, `pytest`) — the permission rule
+and Excel-validation logic are pure functions with no database/Flask
+dependency, so they run instantly:
+
+```bash
+docker compose exec dashboard pytest tests/ -v
+# or, from inside the container:
+docker compose exec dashboard sh -c "pytest tests/ -v"
+```
+
+`tests/test_permissions.py` covers every rule in
+`permissions.can_work_account()` directly — Day 0/14/15 boundaries for a
+Sales Rep working another rep's account, Customer-Success-owned
+accounts, Admin bypass, the Other role's conservative default, and
+disabled/logged-out users. `tests/test_import_validation.py` covers
+`import_service.py`'s validation — a fully valid file, a missing
+required column, an invalid Group value, a blank/malformed email, a
+duplicate email within the file, an unmatched Sales Rep name (flagged
+`Needs Review`, not `Cannot Import`), an empty workbook, an unsupported
+file type, and a partial import where some rows succeed while others
+fail with independent reasons.
+
+**Testing the Admin login locally:**
+1. `docker compose up -d --build`, then hit any page once (or
+   `docker compose logs -f dashboard`) to trigger the first data load —
+   this is what runs the initial-Admin bootstrap.
+2. Find the setup link in the logs: `docker compose logs dashboard | grep setup`.
+3. Open it, set a password, you're logged in as Admin.
+
+**Testing the Excel import:** build a `.xlsx` with columns `Rep Name`,
+`Email`, `Group` — include at least one row matching a real
+`sales_reps` name (any rep currently on the Individual Rep Leaderboard),
+one with an invalid Group value, one with a blank email, and one with a
+Rep Name that doesn't match anyone, to see all four `Proposed Action`
+outcomes in the preview before committing.
 
 ## Team Leaderboard Page — Section Names
 
@@ -528,12 +936,15 @@ the `<select>` in the browser already restricted it to.
 
 **A status can never exist without a note.** The only function that ever
 writes `attention_status` is `attention_store.set_attention_status(sale_id,
-status, note, author)`, and it rejects a blank/whitespace-only note before
-writing anything — so "a status requires a note" is enforced by there
-being exactly one write path, not a rule duplicated across two code
-paths that could drift apart. Changing an already-set status back to a
-*different* value also requires a new note (same function, same
-validation) — the previous status/notes are never deleted, only added to.
+status, note, user, owner_rep)`, and it rejects a blank/whitespace-only
+note before writing anything — so "a status requires a note" is enforced
+by there being exactly one write path, not a rule duplicated across two
+code paths that could drift apart. Changing an already-set status back
+to a *different* value also requires a new note (same function, same
+validation) — the previous status/notes are never deleted, only added
+to. `user` (added 2026-08-18) is the authenticated acting user — see
+"Authentication, Roles & Admin Portal" → Needs Attention Ownership; this
+function no longer takes a free-text "author" string.
 
 **Addressed** = has a non-null `attention_status` (which, by the rule
 above, always means at least one note exists too — the two conditions
@@ -678,26 +1089,33 @@ and the source-data numbers unchanged.
 
 - `POST /dashboard/attention/<int:sale_id>/status` — set or change
   Attention Status (`attention_set_status()` in `app.py` →
-  `attention_store.set_attention_status()`). JSON body:
-  `{status, note, author}`. Returns the account's full updated note list.
+  `attention_store.set_attention_status()`). JSON body: `{status, note}`.
+  Returns the account's full updated note list. Requires login
+  (`@auth.login_required`) and the one authoritative permission check
+  (`permissions.can_work_account()`, via `_authorize_account_action()`)
+  before anything is written — see "Authentication, Roles & Admin
+  Portal" → Needs Attention Ownership & the 15-Day Rule.
 - `POST /dashboard/attention/<int:sale_id>/notes` — add a note without
   changing status (`attention_add_note()` → `attention_store.add_note()`).
-  JSON body: `{note, author}`.
+  JSON body: `{note}`. Same permission check as above.
 - Both validate `sale_id` against the currently loaded normalized dataset
-  (`_known_sale_id()`) before touching `attention_store` at all — a
-  `sale_id` is a value the browser sends back to us, so it's never
+  (`_lookup_account_owner()`) before touching `attention_store` at all —
+  a `sale_id` is a value the browser sends back to us, so it's never
   trusted to correspond to a real account without checking first (404 if
   not). Both validate/trim/length-cap the note and validate the status
   against the approved list **server-side**, independent of whatever the
   browser already checked — the task was explicit not to rely on
-  JS-only validation.
+  JS-only validation. `author` (a free-text "Your name" field) was
+  removed 2026-08-18 once real authentication existed — who acted is now
+  the logged-in user, recorded server-side.
 - `attach_attention_metadata(accounts)` (`app.py`) — the one function
-  that joins Attention Status/notes onto an already-built list of
-  `build_bulk_account_rows()` dicts, and computes the Addressed/Remaining
-  progress numbers. Called from `rep_profile()` (the inline Needs
-  Attention tab), `bulk_account_view()`, and `all_sales_view()`
-  (the standalone/team-wide Bulk Account View pages), every time
-  **only** for `view == "needs_attention"`.
+  that joins Attention Status/notes/the current user's `can_work`
+  permission onto an already-built list of `build_bulk_account_rows()`
+  dicts, and computes the Addressed/Remaining progress numbers. Called
+  from `rep_profile()` (the inline Needs Attention tab),
+  `bulk_account_view()`, and `all_sales_view()` (the standalone/team-wide
+  Bulk Account View pages), every time **only** for
+  `view == "needs_attention"`.
 
 ### How this extends Bulk Account View
 
@@ -922,20 +1340,32 @@ a small vanilla-JS factory function, the same pattern
 
 ## What's intentionally not built yet
 
-User authentication, sales rep login, admin portal, scheduled ETL,
-email/SMS reports, and CRM integration are all out of scope for this
-phase. See code comments in `app.py` and `queries.py` for notes on the
-future data model (linking `main_sales`, `vision_packages`, and
-`service_cancellations` via subscriber UUID) once that relationship is
-confirmed.
+Scheduled ETL, email/SMS reports, and CRM integration are all out of
+scope for this phase. See code comments in `app.py` and `queries.py` for
+notes on the future data model (linking `main_sales`, `vision_packages`,
+and `service_cancellations` via subscriber UUID) once that relationship
+is confirmed.
+
+**User authentication, roles, and an Admin Portal are no longer out of
+scope** — see "Authentication, Roles & Admin Portal" above (added
+2026-08-18). Every route except `/health` now requires login;
+`/overview`/`/main-sales`/`/cancellations`/`/vision-packages` and
+everything under `/admin` require the Admin role specifically.
+`account_attention_notes.created_by`/`updated_by` (freeform text,
+originally a browser-side "Your name" field before real auth existed)
+are kept as a display fallback for pre-auth historical rows, but every
+write since 2026-08-18 also records a real `acting_user_id` — see that
+section's "Database Models".
 
 **Database writes** are no longer entirely out of scope — the Needs
-Attention Workflow (added 2026-08-17, see its own section above) writes
-to `appdb`, an app-owned Postgres database created specifically for it.
-**PlanetWeb SQL Server and KPI PostgreSQL remain strictly read-only** —
-nothing in this codebase executes anything but `SELECT` against either of
-those two. `created_by`/`updated_by` on that feature's tables are
-freeform text today (a "Your name" field, cached in the browser's
-`localStorage`) rather than tied to a real user account, specifically so
-real authenticated users can be wired in later without a schema change —
-see "Needs Attention Workflow" → Persistence.
+Attention Workflow (added 2026-08-17) and authentication/user management
+(added 2026-08-18) both write to `appdb`, an app-owned Postgres database
+created specifically for this app's own data. **PlanetWeb SQL Server and
+KPI PostgreSQL remain strictly read-only** — nothing in this codebase
+executes anything but `SELECT` against either of those two.
+
+Not built: 2FA, OAuth/SSO, JWT-based auth (session cookies were the
+simpler fit given this app's zero-framework-dependency style — see
+"Authentication, Roles & Admin Portal"), `.xls` import (`.xlsx` was the
+hard requirement), and note-editing (notes are deliberately append-only
+— see "Needs Attention Workflow" → Notes).

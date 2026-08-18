@@ -35,9 +35,19 @@ never silently pretend zero accounts are classified) and write functions
 return a clear ok=False/error tuple. A down appdb must never crash the
 Rep Profile or affect Needs Attention/Install Rate, which are computed
 entirely from the source data and don't touch this module at all.
-"""
+
+Auth-aware since 2026-08-18: set_attention_status()/add_note() now take
+a `user` dict (see auth.py's current_user()) identifying who actually
+performed the action, instead of a free-text "author" name typed into
+the browser. `acting_user_id` is who acted; `owner_sales_rep` (passed in
+separately by the caller, since this module never touches
+sales_metrics.py) is a snapshot of who owned the account at write time.
+The two are never the same column -- see README.md "Needs Attention
+Ownership" for why that distinction matters (working an account never
+moves it to the acting user's book of business)."""
 
 import db
+import db_migrations
 
 ATTENTION_STATUSES = [
     "Duplicate",
@@ -52,80 +62,16 @@ ATTENTION_STATUSES = [
 ATTENTION_STATUS_SET = set(ATTENTION_STATUSES)
 
 MAX_NOTE_LENGTH = 2000
-MAX_AUTHOR_LENGTH = 120
-
-# account_attention: one row per account that HAS a current classification.
-# sale_id is the primary key -- an INSERT ... ON CONFLICT (sale_id) DO
-# UPDATE upsert (see set_attention_status()) means a second classification
-# of the same account always updates this one row rather than creating a
-# duplicate, satisfying "no duplicate attention record ... for the same
-# account" structurally, not just by convention. Unclassified is the
-# ABSENCE of a row here, never a stored value -- reclassify_removed_statuses()
-# below deletes this row entirely to move an account back to Unclassified.
-#
-# account_attention_notes: append-only activity history, one row per note,
-# never updated or deleted -- notes must survive even after their
-# account's account_attention row is deleted (see above), which is why
-# sale_id here is a plain column, NOT a foreign key into account_attention
-# (an FK would block that delete while any note still referenced the row,
-# defeating "notes are never deleted"). `attention_status` is the status
-# in effect when the note was written (every note requires a status to
-# already exist, so this is always set); `previous_status` is set only
-# when this note accompanied an actual status change, which is what lets
-# the UI render a "changed from X to Y" audit line without a separate
-# table.
-_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS account_attention (
-    sale_id BIGINT PRIMARY KEY,
-    attention_status TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS account_attention_notes (
-    id SERIAL PRIMARY KEY,
-    sale_id BIGINT NOT NULL,
-    note TEXT NOT NULL,
-    attention_status TEXT NOT NULL,
-    previous_status TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_by TEXT
-);
-
--- Migration for databases created before 2026-08-17 (this session's
--- earlier deploy), when account_attention_notes.sale_id WAS a foreign
--- key into account_attention(sale_id). Dropping it is what makes
--- reclassify_removed_statuses() below possible -- IF EXISTS makes this
--- safe to run against a fresh database that never had the constraint.
-ALTER TABLE account_attention_notes
-    DROP CONSTRAINT IF EXISTS account_attention_notes_sale_id_fkey;
-
-CREATE INDEX IF NOT EXISTS idx_account_attention_notes_sale_id
-    ON account_attention_notes (sale_id, created_at DESC);
-"""
-
-# Idempotent (CREATE TABLE/INDEX IF NOT EXISTS, DROP CONSTRAINT IF
-# EXISTS), so re-running it is always safe -- this flag is purely an
-# optimization to skip it on every request once we know it has succeeded
-# at least once in this process. Reset to False on failure so the next
-# request retries rather than permanently assuming the schema exists
-# after a transient connection error during startup.
-_schema_ready = False
 
 
 def _reclassify_removed_statuses(conn):
     """Safety net for whenever ATTENTION_STATUSES drops a value that some
     account_attention row still holds -- e.g. a category is removed or
-    renamed (2026-08-17: "Called"/"Re-Sold" added; any account that had
-    somehow ended up on a since-removed value should not be left pointing
-    at an invalid status). Deletes the account_attention row for any such
-    account, moving it back to Unclassified -- account_attention_notes is
-    never touched, so its full history/audit trail survives untouched.
-    Runs once per process alongside the schema check; a no-op if nothing
-    is orphaned (the normal case, since ATTENTION_STATUS_SET is validated
-    server-side on every write already -- this only matters if the
-    approved list itself changes after data already exists)."""
+    renamed. Deletes the account_attention row for any such account,
+    moving it back to Unclassified -- account_attention_notes is never
+    touched, so its full history/audit trail survives untouched. A no-op
+    in the common case (every write already validates against the
+    approved list, so nothing becomes orphaned by normal use)."""
     with conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -134,15 +80,18 @@ def _reclassify_removed_statuses(conn):
             )
 
 
-def _ensure_schema(conn):
-    global _schema_ready
-    if _schema_ready:
-        return
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(_SCHEMA_SQL)
-    _reclassify_removed_statuses(conn)
-    _schema_ready = True
+# Guards _reclassify_removed_statuses() so it runs at most once per
+# process (like db_migrations' own _schema_ready) rather than on every
+# single request.
+_reclassify_done = False
+
+
+def _ensure_ready(conn):
+    global _reclassify_done
+    db_migrations.ensure_schema(conn)
+    if not _reclassify_done:
+        _reclassify_removed_statuses(conn)
+        _reclassify_done = True
 
 
 def _clean_sale_ids(sale_ids):
@@ -157,6 +106,12 @@ def _clean_sale_ids(sale_ids):
     return sorted(cleaned)
 
 
+def _display_name(user):
+    if not user:
+        return None
+    return user.get("sales_rep_name") or user.get("email")
+
+
 def get_attention_overview(sale_ids):
     """Everything the Needs Attention Bulk Account View needs to render,
     in one connection (two queries): (available, status_map, notes_map,
@@ -166,7 +121,8 @@ def get_attention_overview(sale_ids):
       Unclassified -- callers should use .get(sale_id) and treat a
       missing key / None the same way.
     - notes_map: {sale_id: [note dicts, newest first]}. A note dict has
-      note/attention_status/previous_status/created_at/created_by.
+      note/attention_status/previous_status/created_at/created_by/
+      action/owner_sales_rep.
     - progress: {"total", "addressed", "remaining", "by_status"} -- pure
       workflow metrics derived from status_map. NEVER feed these back
       into Needs Attention/Install Rate; they exist only to answer "how
@@ -183,7 +139,7 @@ def get_attention_overview(sale_ids):
     conn = None
     try:
         conn = db.get_appdb_connection()
-        _ensure_schema(conn)
+        _ensure_ready(conn)
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT sale_id, attention_status FROM account_attention WHERE sale_id = ANY(%s)",
@@ -193,7 +149,8 @@ def get_attention_overview(sale_ids):
 
             cur.execute(
                 """
-                SELECT sale_id, note, attention_status, previous_status, created_at, created_by
+                SELECT sale_id, note, attention_status, previous_status, created_at,
+                       created_by, action, owner_sales_rep
                 FROM account_attention_notes
                 WHERE sale_id = ANY(%s)
                 ORDER BY created_at DESC, id DESC
@@ -201,13 +158,15 @@ def get_attention_overview(sale_ids):
                 (sale_ids,),
             )
             notes_map = {}
-            for sale_id, note, status, previous_status, created_at, created_by in cur.fetchall():
+            for sale_id, note, status, previous_status, created_at, created_by, action, owner_sales_rep in cur.fetchall():
                 notes_map.setdefault(sale_id, []).append({
                     "note": note,
                     "attention_status": status,
                     "previous_status": previous_status,
                     "created_at": created_at,
                     "created_by": created_by,
+                    "action": action,
+                    "owner_sales_rep": owner_sales_rep,
                 })
 
         addressed = sum(1 for sid in sale_ids if status_map.get(sid))
@@ -225,8 +184,6 @@ def get_attention_overview(sale_ids):
         }
         return True, status_map, notes_map, progress
     except Exception:
-        global _schema_ready
-        _schema_ready = False
         return False, {}, {}, None
     finally:
         if conn is not None:
@@ -242,15 +199,72 @@ def get_notes(sale_id):
     return True, notes_map.get(int(sale_id), [])
 
 
-def set_attention_status(sale_id, status, note, author=None):
+def get_recent_activity(limit=300):
+    """The Needs Attention audit log (spec: NeedsAttentionAudit) -- reads
+    straight from account_attention_notes rather than a second, largely
+    duplicate table (see this module's docstring). One row per note/
+    status-change, newest first, joined against `users` for the acting
+    user's email (a pre-auth historical row has acting_user_id NULL and
+    falls back to its own `created_by` text). Empty list (never raises)
+    if appdb is unreachable -- /admin/audit shows an "unavailable"
+    notice rather than crashing."""
+    conn = None
+    try:
+        conn = db.get_appdb_connection()
+        _ensure_ready(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT n.sale_id, n.note, n.attention_status, n.previous_status,
+                       n.created_at, n.created_by, n.action, n.owner_sales_rep,
+                       u.email AS acting_user_email
+                FROM account_attention_notes n
+                LEFT JOIN users u ON u.id = n.acting_user_id
+                ORDER BY n.created_at DESC, n.id DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [
+                {
+                    "sale_id": row[0],
+                    "note": row[1],
+                    "attention_status": row[2],
+                    "previous_status": row[3],
+                    "created_at": row[4],
+                    "created_by": row[5],
+                    "action": row[6],
+                    "owner_sales_rep": row[7],
+                    "acting_user_email": row[8],
+                }
+                for row in cur.fetchall()
+            ]
+    except Exception:
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def set_attention_status(sale_id, status, note, user, owner_rep=None):
     """Set (or change) an account's Attention Status. A note is always
     required -- this is the ONLY way attention_status is ever written, so
     "a status can't exist without a note" is enforced structurally by
     this being the sole write path, not by a separate check elsewhere.
     Validates status server-side against ATTENTION_STATUS_SET regardless
-    of what the frontend already checked. Returns (ok, error, notes) --
-    `notes` (newest first) is populated on success so the caller can
-    update the UI without a second round trip."""
+    of what the frontend already checked.
+
+    `user` is the acting user's dict (auth.current_user()) -- permission
+    checks (can this user touch this account) are the CALLER's
+    responsibility (see permissions.can_work_account()); this function
+    only records who acted, it does not enforce who is allowed to.
+    `owner_rep` is a point-in-time snapshot of the account's owning rep
+    (from sales_metrics.py) for audit display -- never used for
+    permission decisions here, and never fed back into that rep's own
+    attribution.
+
+    Returns (ok, error, notes) -- `notes` (newest first) is populated on
+    success so the caller can update the UI without a second round trip."""
     try:
         sale_id = int(sale_id)
     except (TypeError, ValueError):
@@ -265,12 +279,13 @@ def set_attention_status(sale_id, status, note, author=None):
     if len(note) > MAX_NOTE_LENGTH:
         return False, f"Note is too long (max {MAX_NOTE_LENGTH} characters).", []
 
-    author = (author or "").strip()[:MAX_AUTHOR_LENGTH] or None
+    acting_user_id = user.get("id") if user else None
+    display_name = _display_name(user)
 
     conn = None
     try:
         conn = db.get_appdb_connection()
-        _ensure_schema(conn)
+        _ensure_ready(conn)
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -290,33 +305,34 @@ def set_attention_status(sale_id, status, note, author=None):
                             updated_at = now(),
                             updated_by = EXCLUDED.updated_by
                     """,
-                    (sale_id, status, author),
+                    (sale_id, status, display_name),
                 )
                 cur.execute(
                     """
                     INSERT INTO account_attention_notes
-                        (sale_id, note, attention_status, previous_status, created_by)
-                    VALUES (%s, %s, %s, %s, %s)
+                        (sale_id, note, attention_status, previous_status, created_by,
+                         acting_user_id, owner_sales_rep, action)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'status_change')
                     """,
-                    (sale_id, note, status, previous_status if changed else None, author),
+                    (sale_id, note, status, previous_status if changed else None, display_name,
+                     acting_user_id, owner_rep),
                 )
 
         _, notes = get_notes(sale_id)
         return True, None, notes
     except Exception as exc:
-        global _schema_ready
-        _schema_ready = False
         return False, db.sanitize_error(exc), []
     finally:
         if conn is not None:
             conn.close()
 
 
-def add_note(sale_id, note, author=None):
+def add_note(sale_id, note, user, owner_rep=None):
     """Append a note without changing Attention Status. Requires the
     account to already be classified -- an account with no status yet has
     nothing to "add another note" to; set_attention_status() is the only
-    entry point for an account's first note. Returns (ok, error, notes)."""
+    entry point for an account's first note. See set_attention_status()
+    for `user`/`owner_rep`. Returns (ok, error, notes)."""
     try:
         sale_id = int(sale_id)
     except (TypeError, ValueError):
@@ -328,12 +344,13 @@ def add_note(sale_id, note, author=None):
     if len(note) > MAX_NOTE_LENGTH:
         return False, f"Note is too long (max {MAX_NOTE_LENGTH} characters).", []
 
-    author = (author or "").strip()[:MAX_AUTHOR_LENGTH] or None
+    acting_user_id = user.get("id") if user else None
+    display_name = _display_name(user)
 
     conn = None
     try:
         conn = db.get_appdb_connection()
-        _ensure_schema(conn)
+        _ensure_ready(conn)
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -347,17 +364,16 @@ def add_note(sale_id, note, author=None):
 
                 cur.execute(
                     """
-                    INSERT INTO account_attention_notes (sale_id, note, attention_status, created_by)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO account_attention_notes
+                        (sale_id, note, attention_status, created_by, acting_user_id, owner_sales_rep, action)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'note')
                     """,
-                    (sale_id, note, current_status, author),
+                    (sale_id, note, current_status, display_name, acting_user_id, owner_rep),
                 )
 
         _, notes = get_notes(sale_id)
         return True, None, notes
     except Exception as exc:
-        global _schema_ready
-        _schema_ready = False
         return False, db.sanitize_error(exc), []
     finally:
         if conn is not None:

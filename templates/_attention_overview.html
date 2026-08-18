@@ -15,7 +15,10 @@
      No standalone "Addressed" filter chip (removed 2026-08-17, by
      request) -- "Addressed" stays a progress stat/derived summary
      (below), just not one of the clickable filter buttons; filtering by
-     a specific status, or by "Unclassified", covers the same ground. -->
+     a specific status, or by "Unclassified", covers the same ground.
+     No "Your name" field either (removed 2026-08-18, once real auth
+     shipped) -- who acted is now the authenticated user, recorded
+     server-side, never typed into the browser. -->
 {% if attention_available %}
 <div class="td-attention-overview" data-attention-overview data-attention-statuses='{{ attention_statuses|tojson }}'>
     <div class="td-attention-progress">
@@ -47,10 +50,6 @@
             {% for status in attention_statuses %}
             <button type="button" class="td-attention-filter-btn" data-attention-filter="{{ status }}">{{ status }} <span data-attention-count="{{ status }}">{{ attention_progress.by_status.get(status, 0) }}</span></button>
             {% endfor %}
-        </div>
-        <div class="td-attention-author-field">
-            <label for="attention-author">Your name</label>
-            <input type="text" id="attention-author" class="td-search-input" data-attention-author placeholder="Your name" maxlength="120">
         </div>
     </div>
 </div>

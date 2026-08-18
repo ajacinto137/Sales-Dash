@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audit Log — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    <nav class="td-admin-tabs">
+        <a class="td-admin-tab" href="{{ url_for('admin_users') }}">User Management</a>
+        <a class="td-admin-tab" href="{{ url_for('admin_import_page') }}">Import Users</a>
+        <a class="td-admin-tab td-admin-tab-active" href="{{ url_for('admin_audit') }}">Audit Log</a>
+    </nav>
+
+    <span class="td-muted-inline">Most recent {{ entries|length }} Needs Attention actions, newest first.</span>
+
+    <section class="td-table-card">
+        <div class="td-table-scroll">
+            <table class="td-table td-admin-table">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Acting User</th>
+                        <th>Account Owner</th>
+                        <th>Account</th>
+                        <th>Action</th>
+                        <th>Change</th>
+                        <th>Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr>
+                        <td>{{ entry.created_at_display }}</td>
+                        <td>{{ entry.acting_user_email or entry.created_by or '—' }}</td>
+                        <td>{{ entry.owner_sales_rep or '—' }}</td>
+                        <td>#{{ entry.sale_id }}</td>
+                        <td>{{ 'Changed Attention Status' if entry.action == 'status_change' else 'Added Note' }}</td>
+                        <td>
+                            {% if entry.previous_status %}
+                            {{ entry.previous_status }} &rarr; {{ entry.attention_status }}
+                            {% else %}
+                            {{ entry.attention_status }}
+                            {% endif %}
+                        </td>
+                        <td style="white-space: normal; max-width: 320px;">{{ entry.note }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="td-empty-row">No Needs Attention activity recorded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+</body>
+</html>
