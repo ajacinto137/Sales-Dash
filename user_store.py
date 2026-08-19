@@ -205,44 +205,6 @@ def update_sales_rep_team(rep_id, team):
             conn.close()
 
 
-def list_sales_rep_role_names():
-    """Distinct sales_reps.name values currently mapped (via
-    users.sales_rep_id) to a user whose role is literally "Sales Rep" --
-    i.e. reps an Admin has explicitly set up as Sales Rep in the Admin
-    Portal, not merely any name that happens to appear in the raw sales
-    data (a rep can rack up sales having never been given a user account
-    at all, or an Admin/Customer Success staffer can appear in the raw
-    data under their own name from a manual entry -- see README.md "User
-    Records vs Sales Rep Records"). Used only by the Team Leaderboard's
-    Sales Volume tab (app.py's dashboard_page()) to keep that one chart
-    to genuine Sales Reps; every other reporting number in this app
-    intentionally keeps reading straight from the source data, unfiltered
-    by role.
-
-    Returns None (never raises) if appdb is unreachable -- deliberately
-    distinct from a real empty set (zero users currently hold the Sales
-    Rep role), so a caller can fail OPEN (show every rep unfiltered)
-    rather than fail closed (silently blank the whole chart) on a
-    transient appdb outage. Follow this module's usual
-    read-returns-an-availability-flag-or-safe-default convention: check
-    for None before treating the result as the source of truth."""
-    conn = None
-    try:
-        conn = db.get_appdb_connection()
-        db_migrations.ensure_schema(conn)
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT sr.name FROM users u JOIN sales_reps sr ON sr.id = u.sales_rep_id WHERE u.role = %s",
-                ("Sales Rep",),
-            )
-            return {r[0] for r in cur.fetchall()}
-    except Exception:
-        return None
-    finally:
-        if conn is not None:
-            conn.close()
-
-
 def find_sales_rep_by_name(name):
     """Exact, case-insensitive match. Returns {id, name} or None -- used
     by the Excel importer to decide Create/Update vs "Needs Review" (an

@@ -567,14 +567,15 @@ def calculate_sales_volume_trend(df):
     exactly one Sales Rep TEAM (app.py's dashboard_page() filters
     `normalized` down to one team's reps -- Junior/NJ - Sales Reps/
     NY - Sales Reps/VA - Sales Reps, sales_reps.team, see
-    user_store.SALES_REP_TEAMS -- before calling this once per team) and,
-    unlike every other function in this module, already limited to reps
-    holding the Sales Rep role too (app.py filters by
-    user_store.list_sales_rep_role_names() first -- this function has no
-    users/sales_reps knowledge of its own and stays a pure function of
-    whatever rows it's handed) -- this function only adds the
-    outbound-channel and current-month filtering on top. Not to be
-    confused with the unrelated Team/NJ/NY/VA split
+    user_store.SALES_REP_TEAMS -- before calling this once per team; this
+    function has no users/sales_reps knowledge of its own and stays a
+    pure function of whatever rows it's handed) -- this function only
+    adds the outbound-channel and current-month filtering on top. Team
+    assignment alone decides who's included (changed 2026-08-19,
+    reversing an earlier "also requires a Sales Rep-role login" filter --
+    see README.md "Sales Rep Roles / Teams" for why that extra
+    requirement was removed). Not to be confused with the unrelated
+    Team/NJ/NY/VA split
     calculate_calendar_sales()/calculate_monthly_sales_trend() use for
     the Sales Calendar & Monthly Sales Trend section -- that one groups
     by the sale's `state` column, this one by the rep's own assigned

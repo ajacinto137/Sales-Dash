@@ -768,24 +768,22 @@ def dashboard_page():
     # assigned team) -- they intentionally don't share
     # state_filtered_normalized/dashboard_view_options.
     #
-    # Two filters stack here, both deliberate exceptions to "ownership is
-    # always read from source data, never users/sales_reps" (see
-    # README.md "User Records vs Sales Rep Records"): (1) only names an
-    # Admin has actually set up as Sales Rep in the Admin Portal (not
-    # every name that happens to appear in the raw sales data, e.g. an
-    # Admin/Customer Success staffer's own manual entry), and (2) within
-    # that, only reps assigned to the currently-viewed team. Role names
-    # is None only on an appdb outage -- fail OPEN (skip that filter,
-    # show every rep) rather than fail closed (silently blank the whole
-    # chart); a rep with no team assigned is correctly excluded from
-    # every team panel (never guessed at -- see db_migrations.py
-    # migration 3), which is what makes an unassigned rep "safe" rather
-    # than misreported.
-    sales_rep_role_names = user_store.list_sales_rep_role_names()
-    role_filtered_normalized = normalized
-    if sales_rep_role_names is not None and normalized is not None and not normalized.empty:
-        role_filtered_normalized = normalized[normalized["sales_rep"].isin(sales_rep_role_names)]
-
+    # Filtered by team assignment ALONE (changed 2026-08-19, by request,
+    # reversing the 2026-08-18 "only users with the Sales Rep role"
+    # filter) -- deliberate exception to "ownership is always read from
+    # source data, never users/sales_reps" (see README.md "User Records
+    # vs Sales Rep Records"), but only via sales_reps.team, not users.
+    # The Admin Portal's Sales Reps tab already requires an explicit
+    # per-rep Admin action to assign a team, and that assignment needs no
+    # `users` row at all (see "User Records vs Sales Rep Records") -- an
+    # additional "also has a Sales Rep-role login" requirement turned out
+    # to make the chart show nobody at all in a real deployment (found
+    # 2026-08-19: assigning a rep's team from the Sales Reps tab is not
+    # the same action as creating them a login, so almost no rep ever
+    # satisfied both at once). A rep with no team assigned is still
+    # correctly excluded from every team panel (never guessed at -- see
+    # db_migrations.py migration 3); that's the only filter this chart
+    # applies now.
     def _team_slug(team_name):
         return team_name.lower().replace(" ", "-")
 
@@ -797,10 +795,10 @@ def dashboard_page():
     for opt, team in zip(team_view_options, user_store.SALES_REP_TEAMS):
         rep_names = sales_reps_by_team.get(team, [])
         team_has_reps[opt["key"]] = bool(rep_names)
-        if role_filtered_normalized is not None and not role_filtered_normalized.empty and rep_names:
-            team_df = role_filtered_normalized[role_filtered_normalized["sales_rep"].isin(rep_names)]
+        if normalized is not None and not normalized.empty and rep_names:
+            team_df = normalized[normalized["sales_rep"].isin(rep_names)]
         else:
-            team_df = role_filtered_normalized.iloc[0:0] if role_filtered_normalized is not None else None
+            team_df = normalized.iloc[0:0] if normalized is not None else None
         sales_volume_views[opt["key"]] = calculate_sales_volume_trend(team_df)
 
     valid_volume_keys = {opt["key"] for opt in team_view_options}
