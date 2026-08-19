@@ -1684,6 +1684,18 @@ a.td-record-rep:hover {
     text-decoration: line-through;
 }
 
+/* Legend-hover focus (added 2026-08-19) -- mirrors the chart's own line
+   fade (see setSalesVolumeFocus() in charts.js) onto the legend itself,
+   using the same .td-volume-legend-item transition already declared
+   above for a smooth, matching fade rather than an abrupt cutover. */
+.td-volume-legend-item-faded {
+    opacity: 0.4;
+}
+
+.td-volume-legend-item-focused {
+    color: var(--td-text-primary);
+}
+
 .td-volume-legend-swatch {
     width: 9px;
     height: 9px;
@@ -1715,14 +1727,35 @@ a.td-record-rep:hover {
     flex: none;
 }
 
+/* The daily sales COUNT is the clickable drill-down (added 2026-08-19),
+   not the whole cell -- .td-calendar-cell here is a plain, non-
+   interactive <div> (see _rep_sales_calendar.html); only
+   .td-calendar-count-link is an <a>. A subtle cell-level glow on hover
+   still gives the day some ambient hover feedback without implying the
+   whole cell is a link (no cursor/pointer change at the cell level). */
 .td-activity-calendar .td-calendar-cell {
-    cursor: pointer;
-    text-decoration: none;
     transition: box-shadow 0.15s ease;
 }
 
 .td-activity-calendar .td-calendar-cell:hover {
     box-shadow: 0 0 12px var(--td-accent-blue-bg);
+}
+
+.td-calendar-count-link {
+    cursor: pointer;
+    text-decoration: none;
+    border-radius: var(--td-radius-sm);
+    padding: 1px 5px;
+    margin: -1px -5px;
+    transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.td-calendar-count-link:hover,
+.td-calendar-count-link:focus-visible {
+    color: var(--td-accent-blue);
+    background: var(--td-accent-blue-bg);
+    box-shadow: 0 0 10px var(--td-accent-blue-bg);
+    outline: none;
 }
 
 /* ---------------- Responsive ---------------- */

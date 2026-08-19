@@ -290,17 +290,82 @@ function createHourlyChart(canvasEl, tokens) {
     return chart;
 }
 
+// Opacity a faded (non-focused) Sales Volume line fades down to on
+// legend hover -- low enough to read as "de-emphasized" against the
+// focused line + Team Average, high enough that its shape is still
+// faintly traceable (never fully invisible -- no data disappears, only
+// visual weight changes). See setSalesVolumeFocus() below.
+const VOLUME_FADE_ALPHA = 0.12;
+
+// Converts a dataset's base color (hex, e.g. "#3987e5", or an already-
+// rgba() token like tokens.teamAverage) to an rgba() string at the given
+// alpha -- used to fade/restore Sales Volume lines on legend hover
+// without touching the underlying data, scales, or tooltip config.
+function withAlpha(color, alpha) {
+    if (color.charAt(0) === "#") {
+        const hex = color.length === 4
+            ? color.slice(1).split("").map((c) => c + c).join("")
+            : color.slice(1);
+        const value = parseInt(hex, 16);
+        const r = (value >> 16) & 255;
+        const g = (value >> 8) & 255;
+        const b = value & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    const match = color.match(/rgba?\(([^)]+)\)/);
+    if (match) {
+        const [r, g, b] = match[1].split(",").map((part) => part.trim());
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return color;
+}
+
+// Legend-hover focus for createSalesVolumeChart() -- fades every rep
+// line except `focusedIndex` down to VOLUME_FADE_ALPHA, keeps Team
+// Average (always) and the focused rep (if any) at full opacity, and
+// mirrors the same emphasis onto the HTML legend items. focusedIndex
+// null restores every line to normal (mouseleave). Only ever touches
+// borderColor/backgroundColor -- never data, scales, or the click-to-
+// toggle-visibility `hidden` state those are orthogonal to -- so no
+// sales data, axis range, or tooltip behavior is affected, and a rep
+// already hidden via legend click simply stays hidden. Relies on the
+// chart's `animation.colors` option (set in createSalesVolumeChart()) so
+// Chart.js itself tweens the color/alpha change smoothly instead of
+// snapping, matching the rest of this dashboard's transition feel.
+function setSalesVolumeFocus(chart, legendItems, focusedIndex) {
+    chart.data.datasets.forEach((ds, i) => {
+        const isTeamAverage = ds.label === "Team Average";
+        const emphasized = focusedIndex === null || i === focusedIndex || isTeamAverage;
+        const color = withAlpha(ds._baseColor, emphasized ? 1 : VOLUME_FADE_ALPHA);
+        ds.borderColor = color;
+        ds.backgroundColor = color;
+
+        const item = legendItems[i];
+        if (!item) return;
+        item.classList.toggle("td-volume-legend-item-faded", focusedIndex !== null && i !== focusedIndex && !isTeamAverage);
+        item.classList.toggle("td-volume-legend-item-focused", focusedIndex !== null && i === focusedIndex);
+    });
+    chart.update();
+}
+
 // Lightweight HTML legend for createSalesVolumeChart() below -- Chart.js's
 // built-in canvas legend has no way to scroll, so a group with many reps
 // would just keep growing the card taller. This renders into a plain DOM
 // list instead (CSS gives it a max-height + scroll, see
 // .td-volume-legend in team_dashboard.css) and reimplements the same
-// click-to-toggle-a-dataset behavior Chart.js's own legend provides.
+// click-to-toggle-a-dataset behavior Chart.js's own legend provides, plus
+// a hover-to-focus interaction (desktop-only by design -- see
+// setSalesVolumeFocus() above; touch devices keep only the existing
+// tap-to-toggle-visibility behavior, since overloading the same tap for
+// both would be the "complicated mobile interaction" the spec asked to
+// avoid).
 function renderVolumeLegend(container, chart) {
     if (!container) return;
     container.innerHTML = "";
+    const items = [];
     chart.data.datasets.forEach((ds, i) => {
         const meta = chart.getDatasetMeta(i);
+        ds._baseColor = ds.borderColor;
         const item = document.createElement("button");
         item.type = "button";
         item.className = "td-volume-legend-item" + (meta.hidden ? " td-volume-legend-item-hidden" : "");
@@ -314,7 +379,10 @@ function renderVolumeLegend(container, chart) {
             chart.update();
             item.classList.toggle("td-volume-legend-item-hidden", !!meta.hidden);
         });
+        item.addEventListener("mouseenter", () => setSalesVolumeFocus(chart, items, i));
+        item.addEventListener("mouseleave", () => setSalesVolumeFocus(chart, items, null));
         container.appendChild(item);
+        items.push(item);
     });
 }
 
@@ -379,6 +447,15 @@ function createSalesVolumeChart(canvasEl, tokens) {
             responsive: true,
             maintainAspectRatio: false,
             animation: baseAnimation(),
+            // Chart.js v4 already ships a default named "colors"
+            // animation collection covering borderColor/backgroundColor
+            // -- restated explicitly here (matching baseAnimation()'s
+            // duration/easing) so it's obvious this is what makes
+            // setSalesVolumeFocus()'s color/alpha changes tween smoothly
+            // on chart.update() (a "premium" opacity fade) rather than
+            // snapping instantly, instead of relying silently on an
+            // unstated library default.
+            animations: { colors: { type: "color", duration: 400, easing: "easeOutQuart", properties: ["borderColor", "backgroundColor"] } },
             interaction: { mode: "index", intersect: false },
             scales: {
                 x: { ...baseScaleOptions(tokens), grid: { display: false } },

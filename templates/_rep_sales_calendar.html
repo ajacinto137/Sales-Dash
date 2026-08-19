@@ -1,9 +1,23 @@
 <!-- Rep-scoped Sales Calendar, for the Sales Activity section of the
      Individual Sales Profile. Adapted from dashboard.html's team-wide
-     .td-calendar-card; day cells link into a date-scoped Bulk Account
-     View instead of being static. Always all-time / independent of the
-     page's period filter, with its own cal_year/cal_month nav -- same
-     convention as the Team Leaderboard's Sales Calendar. -->
+     .td-calendar-card. Always all-time / independent of the page's
+     period filter, with its own cal_year/cal_month nav -- same
+     convention as the Team Leaderboard's Sales Calendar.
+
+     The daily sales COUNT itself is the clickable drill-down (added
+     2026-08-19, by request -- "make the sales quantity clickable", not
+     the whole cell) -- it links into the exact same date-scoped Bulk
+     Account View (view=date&year&month&day -> get_calendar_day_account_view()
+     in sales_metrics.py) this used to render the whole cell as an <a>
+     for; the day number is now just static text, and the cell itself a
+     plain <div>. A 0-count day renders a plain "--" span, not a link --
+     it must never navigate to an empty Bulk Account View (see that
+     function's own "0 sales" handling). get_calendar_day_account_view()
+     and calculate_rep_monthly_activity() (which produces cell.count)
+     share the exact same rep+sale_date filtering (both scope to
+     df["sales_rep"] == rep and compare sale_date's year/month/day), so
+     the number shown here and the row count on the other end of this
+     link can never drift apart. -->
 <div class="td-calendar-card td-activity-calendar">
     <div class="td-calendar-nav">
         <a class="td-btn td-btn-ghost"
@@ -22,11 +36,17 @@
             <div class="td-calendar-grid">
                 {% for cell in week %}
                     {% if cell %}
-                    <a class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}"
-                       href="{{ url_for('bulk_account_view', rep_name=rep_name, view='date', year=rep_monthly_activity.year, month=rep_monthly_activity.month, day=cell.day) }}">
+                    <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
                         <span class="td-calendar-day">{{ cell.day }}</span>
-                        <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
-                    </a>
+                        {% if cell.count %}
+                        <a class="td-calendar-count td-calendar-count-link"
+                           href="{{ url_for('bulk_account_view', rep_name=rep_name, view='date', year=rep_monthly_activity.year, month=rep_monthly_activity.month, day=cell.day) }}"
+                           title="{{ cell.count }} sale{{ '' if cell.count == 1 else 's' }} — view accounts"
+                           aria-label="View {{ cell.count }} sale{{ '' if cell.count == 1 else 's' }} for {{ rep_monthly_activity.month_label.split(' ')[0] }} {{ cell.day }}, {{ rep_monthly_activity.month_label.split(' ')[1] }}">{{ cell.count }}</a>
+                        {% else %}
+                        <span class="td-calendar-count">—</span>
+                        {% endif %}
+                    </div>
                     {% else %}
                     <div class="td-calendar-cell td-calendar-cell-pad"></div>
                     {% endif %}

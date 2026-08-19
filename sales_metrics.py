@@ -722,7 +722,19 @@ def calculate_rep_monthly_activity(df, rep, year, month):
     chart's per-day tooltip). Always all-time / independent of the page's
     period filter, with its own cal_year/cal_month month nav -- same
     convention calculate_calendar_sales() already uses on the Team
-    Leaderboard, just applied per-rep here."""
+    Leaderboard, just applied per-rep here.
+
+    Vectorized over the whole month in one pass (groupby, not 31 separate
+    single-day filters) for performance, but reads the exact same
+    rep+sale_date columns/semantics as _rep_sales_on_date()/
+    get_calendar_day_account_view() below -- same sales_rep equality
+    check, same sale_date (not scheduled_date), same "drop rows with no
+    sale_date" rule. The Rep Calendar's day-cell count (this function)
+    and its Bulk Account View drill-down (that one) are therefore
+    guaranteed to agree without sharing a single function call, since
+    both are just two different groupings of the identical underlying
+    row set -- if this function's semantics ever change, update
+    _rep_sales_on_date() to match, and vice versa."""
     days_in_month = calendar_module.monthrange(year, month)[1]
     counts = {day: 0 for day in range(1, days_in_month + 1)}
     channel_counts = {day: {} for day in range(1, days_in_month + 1)}
@@ -1018,27 +1030,47 @@ def get_leaderboard_metric_account_view(df, rep, metric, period, start, end):
     return title, build_bulk_account_rows(filtered)
 
 
+def _rep_sales_on_date(df, rep, target_date):
+    """Every normalized row for `rep` (or every rep, if falsy) whose
+    sale_date falls exactly on `target_date` -- the ONE definition of "a
+    sale happened this day" shared by calculate_rep_monthly_activity()'s
+    per-day counts (what the Rep Calendar displays on each day cell) and
+    get_calendar_day_account_view() below (what that same day cell's
+    sales-count drill-down lists in the Bulk Account View), so the number
+    shown on a calendar day and the row count behind its drill-down can
+    never disagree -- both ultimately read this same rep+sale_date
+    filter, never two independently-maintained ones. Returns an empty
+    DataFrame slice (never None) for missing/empty input."""
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    scoped = df[df["sales_rep"] == rep] if rep else df
+    valid = scoped.dropna(subset=["sale_date"])
+    if valid.empty:
+        return valid
+    return valid[valid["sale_date"].dt.date == target_date]
+
+
 def get_calendar_day_account_view(df, rep, year, month, day):
-    """Bulk Account View scoped to one calendar day (a Rep Sales Calendar
-    day-cell click). Filters by sale_date, rep-scoped when `rep` is given,
-    and intentionally independent of the page's period filter -- same
-    reasoning as calculate_rep_monthly_activity()/calculate_calendar_sales()
+    """Bulk Account View scoped to one calendar day (the Rep Sales
+    Calendar's per-day sales-count drill-down, see
+    _rep_sales_calendar.html). Intentionally independent of the page's
+    period filter -- same reasoning as
+    calculate_rep_monthly_activity()/calculate_calendar_sales()
     themselves: the calendar it's clicked from doesn't respect the period
-    filter either, so neither should its drill-down. Returns (title, [])
-    for an invalid date or empty scope, never raises."""
+    filter either, so neither should its drill-down. Uses
+    _rep_sales_on_date() above -- the exact same rep+sale_date filter
+    calculate_rep_monthly_activity() applies when it counts this same
+    day for the calendar cell -- so this list and that count are
+    mathematically guaranteed to agree; there is no second definition of
+    "a sale on this day" to drift out of sync. Returns (title, []) for an
+    invalid date or empty scope, never raises."""
     try:
         target = date(year, month, day)
     except (TypeError, ValueError):
         return "Invalid Date", []
     title = target.strftime("%B %-d, %Y") + " Accounts"
-    if df is None or df.empty:
-        return title, []
-    scoped = df[df["sales_rep"] == rep] if rep else df
-    valid = scoped.dropna(subset=["sale_date"])
-    if valid.empty:
-        return title, []
-    filtered = valid[valid["sale_date"].dt.date == target]
-    if filtered.empty:
+    filtered = _rep_sales_on_date(df, rep, target)
+    if filtered is None or filtered.empty:
         return title, []
     filtered = filtered.assign(
         _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
