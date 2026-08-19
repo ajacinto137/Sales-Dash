@@ -794,6 +794,7 @@ def rep_profile(rep_name):
         "sales": 0,
         "inbound": 0,
         "outbound": 0,
+        "outbound_installs": 0,
         "installs": 0,
         "pending": 0,
         "cancels": 0,

@@ -296,6 +296,7 @@ def calculate_rep_metrics(df):
         needs_attention = int((group["status"] == "Needs Attention").sum())
         inbound = int(group["sales_channel"].isin(INBOUND_CHANNELS).sum())
         outbound = int(group["sales_channel"].isin(OUTBOUND_CHANNELS).sum())
+        outbound_installs = int((group["sales_channel"].isin(OUTBOUND_CHANNELS) & (group["status"] == "Installed")).sum())
         denom = installs + cancels
         # Install Rate redefined 2026-08-17, by request: 1.0 - (Needs
         # Attention / Total Sales) -- not the installs/(installs+cancels)
@@ -310,6 +311,7 @@ def calculate_rep_metrics(df):
             "sales": sales_count,
             "inbound": inbound,
             "outbound": outbound,
+            "outbound_installs": outbound_installs,
             "installs": installs,
             "pending": pending,
             "cancels": cancels,
@@ -334,6 +336,7 @@ REP_TABLE_COLUMNS = [
     ("sales_rep", "Sales Rep", "asc"),
     ("sales", "Sales", "desc"),
     ("outbound", "Outbound", "desc"),
+    ("outbound_installs", "Outbound Installs", "desc"),
     ("inbound", "Inbound", "desc"),
     ("installs", "Installs", "desc"),
     ("pending", "Pending", "desc"),
@@ -871,18 +874,20 @@ def get_channel_account_view(df, rep, channel, period, start, end):
 
 
 # Metric drill-downs for the Individual Rep Leaderboard's ranked table --
-# clicking a rep's Sales/Outbound/Inbound/Installs/Pending/Needs Attention
-# cell opens a Bulk Account View of exactly the rows that make up that
-# number. These mirror calculate_rep_metrics()'s own per-column logic
-# (same status strings / same INBOUND_CHANNELS/OUTBOUND_CHANNELS sets) so
-# the accounts shown always match the count that was clicked. This can't
-# reuse the "needs_attention"/"pending" BULK_ACCOUNT_VIEWS entries as-is --
-# "needs_attention" there is deliberately all-time (for the Rep Profile's
-# Needs Attention tab), but every Leaderboard column is period-scoped, so
-# all six of these stay period-scoped for consistency with each other.
+# clicking a rep's Sales/Outbound/Outbound Installs/Inbound/Installs/
+# Pending/Needs Attention cell opens a Bulk Account View of exactly the
+# rows that make up that number. These mirror calculate_rep_metrics()'s
+# own per-column logic (same status strings / same INBOUND_CHANNELS/
+# OUTBOUND_CHANNELS sets) so the accounts shown always match the count
+# that was clicked. This can't reuse the "needs_attention"/"pending"
+# BULK_ACCOUNT_VIEWS entries as-is -- "needs_attention" there is
+# deliberately all-time (for the Rep Profile's Needs Attention tab), but
+# every Leaderboard column is period-scoped, so all of these stay
+# period-scoped for consistency with each other.
 LEADERBOARD_METRIC_FILTERS = {
     "sales": lambda df: df,
     "outbound": lambda df: df[df["sales_channel"].isin(OUTBOUND_CHANNELS)],
+    "outbound_installs": lambda df: df[df["sales_channel"].isin(OUTBOUND_CHANNELS) & (df["status"] == "Installed")],
     "inbound": lambda df: df[df["sales_channel"].isin(INBOUND_CHANNELS)],
     "installs": _bulk_status_filter("Installed"),
     "pending": _bulk_status_filter("Pending"),
@@ -892,6 +897,7 @@ LEADERBOARD_METRIC_FILTERS = {
 LEADERBOARD_METRIC_TITLES = {
     "sales": "Sales",
     "outbound": "Outbound",
+    "outbound_installs": "Outbound Installs",
     "inbound": "Inbound",
     "installs": "Installs",
     "pending": "Pending",

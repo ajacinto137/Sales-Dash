@@ -470,8 +470,12 @@
          "Rep Leaderboard", "Leaderboard Table" / "Rep
          Performance Section"). Covers both the rep search
          field below and the ranked table further down (Rank,
-         Sales Rep, Sales, Outbound, Inbound, Installs, Pending,
-         Cancels, Install Rate, Cancel Rate). See README.md
+         Sales Rep, Sales, Outbound, Outbound Installs, Inbound,
+         Installs, Pending, Needs Attention, Install Rate).
+         Outbound Installs (added 2026-08-18) is Outbound-channel
+         sales that also installed -- outbound ∩ installed, not a
+         subset shown elsewhere, computed alongside outbound/
+         installs in calculate_rep_metrics(). See README.md
          "Team Leaderboard Page — Section Names". -->
     <div class="td-section-heading" id="rep-leaderboard">
         <h2>Individual Rep Leaderboard</h2>
@@ -490,15 +494,16 @@
     <section class="td-table-card">
         <div class="td-table-scroll">
             <table class="td-table">
-                <!-- 9 equal-width columns (#, Sales Rep, Sales, Outbound,
-                     Inbound, Installs, Pending, Needs Attention, Install
-                     Rate) -- matches table-layout: fixed in
-                     team_dashboard.css, which is what keeps "Needs
-                     Attention" (the longest header label) from stretching
-                     wider than the rest under auto layout. -->
+                <!-- 10 equal-width columns (#, Sales Rep, Sales, Outbound,
+                     Outbound Installs, Inbound, Installs, Pending, Needs
+                     Attention, Install Rate) -- matches table-layout:
+                     fixed in team_dashboard.css, which is what keeps
+                     "Outbound Installs"/"Needs Attention" (the longest
+                     header labels) from stretching wider than the rest
+                     under auto layout. -->
                 <colgroup>
                     {% for _ in rep_table_columns %}
-                    <col style="width: 11.1111%">
+                    <col style="width: 10%">
                     {% endfor %}
                 </colgroup>
                 <thead>
@@ -523,7 +528,7 @@
                             <a class="td-rep-link"
                                href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ row.sales_rep }}</a>
                         </td>
-                        {% for metric_key, metric_class in [('sales', 'td-text-primary'), ('outbound', 'td-cyan'), ('inbound', 'td-purple'), ('installs', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta')] %}
+                        {% for metric_key, metric_class in [('sales', 'td-text-primary'), ('outbound', 'td-cyan'), ('outbound_installs', 'td-orange'), ('inbound', 'td-purple'), ('installs', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta')] %}
                         <td class="{{ metric_class }}">
                             {% if metric_key == 'needs_attention' %}
                             <a class="td-metric-link"
@@ -537,7 +542,7 @@
                         <td class="td-green">{% if row.install_rate is not none %}{{ "%.1f"|format(row.install_rate) }}%{% else %}—{% endif %}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="9" class="td-empty-row">No reps match the current filters.</td></tr>
+                    <tr><td colspan="10" class="td-empty-row">No reps match the current filters.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
