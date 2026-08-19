@@ -18,6 +18,7 @@ function getChartTokens() {
         barRadius: parseFloat(read("--td-chart-bar-radius")) || 4,
         lineWidth: parseFloat(read("--td-chart-line-width")) || 1.5,
         lineCumulative: read("--td-chart-line-cumulative"),
+        teamAverage: read("--td-chart-team-average"),
         accentBlue: read("--td-accent-blue"),
         accentBlueBg: read("--td-accent-blue-bg"),
         accentLime: read("--td-accent-lime"),
@@ -289,6 +290,124 @@ function createHourlyChart(canvasEl, tokens) {
     return chart;
 }
 
+// Lightweight HTML legend for createSalesVolumeChart() below -- Chart.js's
+// built-in canvas legend has no way to scroll, so a group with many reps
+// would just keep growing the card taller. This renders into a plain DOM
+// list instead (CSS gives it a max-height + scroll, see
+// .td-volume-legend in team_dashboard.css) and reimplements the same
+// click-to-toggle-a-dataset behavior Chart.js's own legend provides.
+function renderVolumeLegend(container, chart) {
+    if (!container) return;
+    container.innerHTML = "";
+    chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "td-volume-legend-item" + (meta.hidden ? " td-volume-legend-item-hidden" : "");
+        const swatch = document.createElement("span");
+        swatch.className = "td-volume-legend-swatch";
+        swatch.style.background = ds.borderColor;
+        item.appendChild(swatch);
+        item.appendChild(document.createTextNode(ds.label));
+        item.addEventListener("click", () => {
+            meta.hidden = meta.hidden === null ? !ds.hidden : null;
+            chart.update();
+            item.classList.toggle("td-volume-legend-item-hidden", !!meta.hidden);
+        });
+        container.appendChild(item);
+    });
+}
+
+function formatVolumeValue(value) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+// Multi-line cumulative-outbound-sales-per-rep chart for the Channel &
+// Time-of-Day Performance section's Sales Volume tab (the section's
+// default tab, added 2026-08-18). Data is pre-aggregated server-side by
+// calculate_sales_volume_trend() -- reps sorted by total descending,
+// each already a dense day-1..today cumulative series (no per-day
+// recomputation needed here) -- plus a parallel Team Average series.
+// Team Average is pushed in as its own dataset with order:0 so it draws
+// (and legends/tooltips) on top of the rep lines, same "lower order
+// number wins" convention createMonthlySalesChart() uses for its own
+// cumulative overlay line.
+function createSalesVolumeChart(canvasEl, tokens) {
+    const dayLabels = JSON.parse(canvasEl.dataset.dayLabels || "[]");
+    const reps = JSON.parse(canvasEl.dataset.reps || "[]");
+    const teamAverage = JSON.parse(canvasEl.dataset.teamAverage || "[]");
+
+    const repDatasets = reps.map((r, i) => {
+        const color = tokens.channelPalette[i % tokens.channelPalette.length];
+        return {
+            label: r.rep,
+            data: r.series,
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: tokens.lineWidth,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            pointHoverBackgroundColor: color,
+            pointHoverBorderWidth: 0,
+            tension: 0.25,
+            order: 1,
+        };
+    });
+
+    const teamAverageDataset = {
+        label: "Team Average",
+        data: teamAverage,
+        borderColor: tokens.teamAverage,
+        backgroundColor: tokens.teamAverage,
+        borderWidth: tokens.lineWidth + 1.5,
+        borderDash: [7, 4],
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: tokens.teamAverage,
+        pointHoverBorderWidth: 0,
+        tension: 0.25,
+        order: 0,
+    };
+
+    const chart = new Chart(canvasEl, {
+        type: "line",
+        data: {
+            labels: dayLabels,
+            datasets: [teamAverageDataset, ...repDatasets],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ...baseScaleOptions(tokens), grid: { display: false } },
+                y: { ...baseScaleOptions(tokens), beginAtZero: true, ticks: { ...baseScaleOptions(tokens).ticks, precision: 0 } },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    ...buildTooltipConfig(tokens, {
+                        title: (items) => dayLabels[items[0].dataIndex],
+                        label: (item) => `${item.dataset.label} — ${formatVolumeValue(item.parsed.y)}`,
+                    }),
+                    displayColors: true,
+                    boxWidth: 8,
+                    boxHeight: 8,
+                    itemSort: (a, b) => {
+                        if (a.dataset.label === "Team Average") return 1;
+                        if (b.dataset.label === "Team Average") return -1;
+                        return b.parsed.y - a.parsed.y;
+                    },
+                },
+            },
+        },
+    });
+
+    renderVolumeLegend(document.getElementById(canvasEl.dataset.legendTarget), chart);
+    return chart;
+}
+
 // Factory lookup for wireChartToggle() below, keyed by each canvas's
 // data-chart-type attribute -- lets one generic toggle handler drive any
 // pair of charts without hardcoding canvas ids. "monthlyTrend" backs the
@@ -299,6 +418,7 @@ const CHART_TOGGLE_FACTORIES = {
     channel: createChannelChart,
     hourly: createHourlyChart,
     monthlyTrend: createMonthlySalesTrendChart,
+    salesVolume: createSalesVolumeChart,
 };
 
 // Shared button-wiring for a .td-chart-toggle segmented control: one
@@ -329,17 +449,31 @@ function wireToggleButtons(root, onActivate) {
     activate(initialBtn.dataset.chartToggle);
 }
 
-// Wires a chart-backed toggle (Sales by Channel / Sales by Hour, or the
-// Sales Calendar & Monthly Sales Trend's Team/NJ/NY/VA trend toggle):
-// one [data-chart-panel="<key>"] wrapper per chart. Only one panel is
-// shown at a time; each chart is created lazily the first time its tab
-// is activated (a Chart.js canvas created while display:none sizes to 0
-// and won't self-correct later, so the default-active tab's chart is
-// created immediately and the rest are deferred until their first click).
-function wireChartToggle(root) {
+// Wires a chart-backed toggle (Sales Volume / Channel Performance / Time
+// of Day, the Sales Calendar & Monthly Sales Trend's Team/NJ/NY/VA trend
+// toggle, or the Sales Volume tab's own nested Team/NJ/NY/VA group
+// toggle): one [data-chart-panel="<key>"] wrapper per chart. Only one
+// panel is shown at a time; each chart is created lazily the first time
+// its tab is activated (a Chart.js canvas created while display:none
+// sizes to 0 and won't self-correct later, so the default-active tab's
+// chart is created immediately and the rest are deferred until their
+// first click).
+//
+// scopeSelector defaults to ".td-chart-card" (the outer Sales Volume /
+// Channel Performance / Time of Day card). The Sales Volume tab nests a
+// second toggle+panel set (Team/NJ/NY/VA) inside that same card, so it
+// passes ".td-volume-group" instead -- root.closest() finds the nearer
+// ancestor either way, keeping the two toggles' [data-chart-panel]
+// elements from colliding. The lazy-create lookup below only ever looks
+// for a canvas that's a *direct* child of its panel (":scope > canvas"),
+// so the outer toggle's "volume" panel -- which contains the nested
+// toggle's own canvases, not one of its own -- is correctly left for
+// that nested wireChartToggle() call to create instead of double-firing
+// a factory on the first canvas it happens to find nested inside.
+function wireChartToggle(root, scopeSelector) {
     if (!root) return;
-    const card = root.closest(".td-chart-card") || root.parentElement;
-    const panels = card.querySelectorAll("[data-chart-panel]");
+    const card = root.closest(scopeSelector || ".td-chart-card") || root.parentElement;
+    const panels = card.querySelectorAll(":scope > [data-chart-panel]");
     const created = new Set();
     const tokens = getChartTokens();
 
@@ -349,8 +483,8 @@ function wireChartToggle(root) {
         });
         if (!created.has(key)) {
             created.add(key);
-            const panel = card.querySelector(`[data-chart-panel="${key}"]`);
-            const canvas = panel ? panel.querySelector("canvas") : null;
+            const panel = card.querySelector(`:scope > [data-chart-panel="${key}"]`);
+            const canvas = panel ? panel.querySelector(":scope > canvas") : null;
             const factory = canvas ? CHART_TOGGLE_FACTORIES[canvas.dataset.chartType] : null;
             if (factory) factory(canvas, tokens);
         }
@@ -384,4 +518,11 @@ document.addEventListener("DOMContentLoaded", () => {
     wireChartToggle(document.getElementById("team-channel-hourly-toggle"));
     wireCalendarToggle(document.getElementById("team-calendar-toggle"));
     wireChartToggle(document.getElementById("team-monthly-trend-toggle"));
+    // Sales Volume tab's own nested Team/NJ/NY/VA toggle -- wired
+    // unconditionally like team-monthly-trend-toggle above, not lazily
+    // via the outer toggle, since Sales Volume is the outer toggle's
+    // default-active tab (so its default "team" panel is already visible
+    // -- not display:none -- by the time this runs, same precondition
+    // team-monthly-trend-toggle already relies on).
+    wireChartToggle(document.getElementById("team-sales-volume-group-toggle"), ".td-volume-group");
 });

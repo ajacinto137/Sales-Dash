@@ -1,24 +1,45 @@
-<!-- Toggleable Sales by Channel / Sales by Hour chart card -- one row,
-     one card, a segmented control switches which chart is shown. Sales
-     by Hour is the default-shown chart (changed 2026-08-16, by request
-     -- "Sales by hour should display as default"); button/panel order
-     below is the single source of truth for the default, since
-     wireChartToggle() in charts.js activates whichever tab is listed
-     first. Expects toggle_id, channel_canvas_id, hourly_canvas_id,
+<!-- Toggleable Sales Volume / Channel Performance / Time of Day chart
+     card -- one row, one card, a segmented control switches which chart
+     is shown. Expects toggle_id, channel_canvas_id, hourly_canvas_id,
      channel_breakdown, hourly_breakdown, channel_drilldown_url set via
-     Jinja "set" statements before including. Both canvases are always
-     rendered (or their own empty-state message); wireChartToggle() shows
-     one panel at a time and lazily creates each chart the first time its
-     tab is activated. -->
+     Jinja "set" statements before including; every canvas is always
+     rendered (or its own empty-state message); wireChartToggle() in
+     charts.js shows one panel at a time and lazily creates each chart
+     the first time its tab is activated.
+
+     Sales Volume tab (added 2026-08-18): team-only -- rendered only when
+     the including page also sets volume_group_toggle_id and passes
+     sales_volume_views/dashboard_view_options/volume_view (the Team
+     Leaderboard's dashboard.html does; the Individual Sales Profile's
+     rep_profile.html does not, since a single rep has no group to pace
+     against). When present it's listed FIRST and marked
+     td-chart-toggle-active, making it this section's default tab --
+     button/panel order is the single source of truth for the default,
+     since wireChartToggle() activates whichever tab is listed first (or
+     whichever already carries td-chart-toggle-active). When absent, Time
+     of Day remains the default tab, same as before 2026-08-18. -->
+{% set has_volume = volume_group_toggle_id is defined and sales_volume_views is defined %}
 <div class="td-chart-card">
     <div class="td-chart-card-head">
         <div class="td-chart-toggle" id="{{ toggle_id }}">
-            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-toggle="hourly">Sales by Hour</button>
-            <button type="button" class="td-chart-toggle-btn" data-chart-toggle="channel">Sales by Channel</button>
+            {% if has_volume %}
+            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-toggle="volume">Sales Volume</button>
+            <button type="button" class="td-chart-toggle-btn" data-chart-toggle="hourly">Time of Day</button>
+            <button type="button" class="td-chart-toggle-btn" data-chart-toggle="channel">Channel Performance</button>
+            {% else %}
+            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-toggle="hourly">Time of Day</button>
+            <button type="button" class="td-chart-toggle-btn" data-chart-toggle="channel">Channel Performance</button>
+            {% endif %}
         </div>
     </div>
 
-    <div class="td-chart-canvas-wrap" data-chart-panel="hourly">
+    {% if has_volume %}
+    <div class="td-volume-panel" data-chart-panel="volume">
+        {% include "_sales_volume_panel.html" %}
+    </div>
+    {% endif %}
+
+    <div class="td-chart-canvas-wrap" data-chart-panel="hourly" style="{{ 'display: none;' if has_volume else '' }}">
         {% if hourly_breakdown|sum(attribute='count') == 0 %}
         <p class="td-empty">No sales recorded for this period.</p>
         {% else %}

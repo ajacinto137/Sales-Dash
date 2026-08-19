@@ -34,6 +34,7 @@ from sales_metrics import (
     calculate_records,
     calculate_rep_metrics,
     calculate_rep_monthly_activity,
+    calculate_sales_volume_trend,
     calculate_total_daily_sales,
     filter_by_period,
     get_bulk_account_view,
@@ -733,6 +734,40 @@ def dashboard_page():
     channel_breakdown = calculate_channel_breakdown(period_df)
     hourly_breakdown = calculate_hourly_breakdown(period_df)
 
+    # Sales Volume tab (default tab of Channel & Time-of-Day Performance,
+    # added 2026-08-18) -- one cumulative-outbound-sales-per-rep line per
+    # Sales Rep Group, always the current month, independent of the page's
+    # period filter (same reasoning as Records/Calendar above). Reuses the
+    # exact same Team/NJ/NY/VA state_filtered_normalized split the Sales
+    # Calendar & Monthly Sales Trend section already computes -- "Sales
+    # Rep Group" is that same grouping, just applied to a new chart, not a
+    # new filtering concept. One call per view (4 total), each a single
+    # groupby internally -- no per-rep queries.
+    #
+    # Sales Volume-only exception to "ownership is always read from source
+    # data, never users/sales_reps" (see README.md "User Records vs Sales
+    # Rep Records"): this chart should only plot names an Admin has
+    # actually set up as Sales Rep in the Admin Portal, not every name
+    # that happens to appear in the raw sales data (e.g. an Admin/
+    # Customer Success staffer's own manual entry). sales_rep_role_names
+    # is None only on an appdb outage -- fail OPEN (skip the filter, show
+    # every rep) rather than fail closed (silently blank the chart) in
+    # that case; a real empty set (nobody currently holds the Sales Rep
+    # role) is filtered normally and simply yields the tab's own empty
+    # state per Sales Rep Group.
+    sales_rep_role_names = user_store.list_sales_rep_role_names()
+    if sales_rep_role_names is not None:
+        volume_source_views = {
+            key: (view_df[view_df["sales_rep"].isin(sales_rep_role_names)] if view_df is not None and not view_df.empty else view_df)
+            for key, view_df in state_filtered_normalized.items()
+        }
+    else:
+        volume_source_views = state_filtered_normalized
+    sales_volume_views = {key: calculate_sales_volume_trend(view_df) for key, view_df in volume_source_views.items()}
+    volume_view = request.args.get("volume_view", "team")
+    if volume_view not in valid_view_keys:
+        volume_view = "team"
+
     return render_template(
         "dashboard.html",
         active_page="dashboard",
@@ -757,6 +792,8 @@ def dashboard_page():
         dashboard_view_options=dashboard_view_options,
         channel_breakdown=channel_breakdown,
         hourly_breakdown=hourly_breakdown,
+        sales_volume_views=sales_volume_views,
+        volume_view=volume_view,
         last_refreshed=data_store["last_refreshed"],
     )
 

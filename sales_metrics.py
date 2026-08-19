@@ -555,6 +555,85 @@ def calculate_monthly_sales_trend(df, months=12):
     ]
 
 
+def calculate_sales_volume_trend(df):
+    """Cumulative OUTBOUND sales volume per rep for the current calendar
+    month to date, for the Channel & Time-of-Day Performance section's
+    Sales Volume tab (the section's default tab) -- lets sales leadership
+    see who's pacing above/below the team as the month progresses. Always
+    the current month / independent of the page's period filter, same
+    reasoning as calculate_calendar_sales()/calculate_monthly_forecast()
+    (a mid-month pacing chart isn't meaningful squeezed into an arbitrary
+    period-filter window). `df` is expected to already be scoped to one
+    Sales Rep Group (app.py's state_filtered_normalized, the same
+    Team/NJ/NY/VA split calculate_calendar_sales()/
+    calculate_monthly_sales_trend() use) and, unlike every other function
+    in this module, already limited to reps holding the Sales Rep role
+    (app.py filters by user_store.list_sales_rep_role_names() before
+    calling this -- this function has no users/sales_reps knowledge of
+    its own and stays a pure function of whatever rows it's handed) --
+    this function only adds the outbound-channel and current-month
+    filtering on top.
+
+    Only days 1..today are emitted (not the full month) so future dates
+    never plot a false drop to zero -- see "Future Dates" in the feature
+    spec. Reps are limited to those with at least one outbound sale this
+    month in this group (a rep with nothing to pace isn't useful on a
+    pacing chart); each rep's day series is reindexed across every day
+    1..today before the cumsum so a no-sale day holds its running total
+    instead of creating a gap. One groupby computes every rep's daily
+    counts at once -- no per-rep queries, so this stays cheap regardless
+    of how many reps/sales exist."""
+    today = _today()
+    year, month = today.year, today.month
+    days = list(range(1, today.day + 1))
+    day_labels = [datetime(year, month, d).strftime("%b %-d") for d in days]
+    month_label = datetime(year, month, 1).strftime("%B %Y")
+
+    empty = {"month_label": month_label, "day_labels": day_labels, "reps": [], "team_average": []}
+
+    if df is None or df.empty:
+        return empty
+
+    valid = df.dropna(subset=["sale_date"])
+    outbound = valid[valid["sales_channel"].isin(OUTBOUND_CHANNELS)]
+    # dt.day <= today.day, not just year/month -- a sale mis-dated later
+    # this month (or any future-dated row) must not surface a rep with an
+    # otherwise-empty, all-zero series (their real days 1..today all
+    # reindex to 0, but the groupby would still emit a row for them).
+    month_mask = (
+        (outbound["sale_date"].dt.year == year)
+        & (outbound["sale_date"].dt.month == month)
+        & (outbound["sale_date"].dt.day <= today.day)
+    )
+    month_df = outbound.loc[month_mask]
+
+    if month_df.empty:
+        return empty
+
+    daily_counts = (
+        month_df.groupby(["sales_rep", month_df["sale_date"].dt.day])
+        .size()
+        .unstack(fill_value=0)
+        .reindex(columns=days, fill_value=0)
+    )
+    cumulative = daily_counts.cumsum(axis=1)
+
+    reps = [
+        {"rep": rep, "series": [int(v) for v in cumulative.loc[rep]], "total": int(cumulative.loc[rep].iloc[-1])}
+        for rep in cumulative.index
+    ]
+    reps.sort(key=lambda r: -r["total"])
+
+    team_average = [round(sum(r["series"][i] for r in reps) / len(reps), 1) for i in range(len(days))]
+
+    return {
+        "month_label": month_label,
+        "day_labels": day_labels,
+        "reps": reps,
+        "team_average": team_average,
+    }
+
+
 def calculate_monthly_forecast(df):
     """Run-rate projection for the CURRENT real calendar month: month-to-date
     sales divided by days elapsed, scaled to the full month. Like

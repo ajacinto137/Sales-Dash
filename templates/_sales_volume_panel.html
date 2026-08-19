@@ -1,0 +1,50 @@
+<!-- Sales Volume tab content -- cumulative outbound sales per rep for the
+     current month vs. a Team Average line, scoped by a Team/NJ/NY/VA
+     Sales Rep Group toggle (dashboard_view_options, same as the Sales
+     Calendar & Monthly Sales Trend section above). Included only from
+     _channel_hourly_toggle.html when has_volume is true; expects
+     volume_group_toggle_id, dashboard_view_options, sales_volume_views,
+     volume_view from the calling context (all set by app.py's
+     dashboard_page()/dashboard.html -- see that section's header
+     comment).
+
+     This toggle is wired independently of the outer Sales Volume /
+     Channel Performance / Time of Day toggle, via its own
+     wireChartToggle(..., ".td-volume-group") call in charts.js (see that
+     function's header comment for why the two nested toggles don't fight
+     over each other's [data-chart-panel] elements). Each state's canvas
+     and its legend are separate direct children of .td-volume-group,
+     both tagged data-chart-panel="<key>" so the shared show/hide loop
+     toggles them together; the canvas is always the first of the pair in
+     DOM order, so the lazy chart-creation lookup (which takes the first
+     match) finds it correctly. -->
+<div class="td-volume-group">
+    <div class="td-volume-head">
+        <div class="td-chart-toggle" id="{{ volume_group_toggle_id }}">
+            {% for opt in dashboard_view_options %}
+            <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == volume_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
+            {% endfor %}
+        </div>
+        <span class="td-muted-inline">{{ sales_volume_views[volume_view].month_label }} to date &middot; cumulative outbound sales</span>
+    </div>
+
+    {% for opt in dashboard_view_options %}
+    {% set volume = sales_volume_views[opt.key] %}
+    {% set is_active = opt.key == volume_view %}
+    <div class="td-chart-canvas-wrap" data-chart-panel="{{ opt.key }}" style="{{ '' if is_active else 'display: none;' }}">
+        {% if not volume.reps %}
+        <p class="td-empty">No outbound sales recorded for this group this month.</p>
+        {% else %}
+        <canvas id="team-sales-volume-chart-{{ opt.key }}"
+                data-chart-type="salesVolume"
+                data-day-labels='{{ volume.day_labels|tojson }}'
+                data-reps='{{ volume.reps|tojson }}'
+                data-team-average='{{ volume.team_average|tojson }}'
+                data-legend-target="team-sales-volume-legend-{{ opt.key }}"></canvas>
+        {% endif %}
+    </div>
+    {% if volume.reps %}
+    <div class="td-volume-legend" data-chart-panel="{{ opt.key }}" id="team-sales-volume-legend-{{ opt.key }}" style="{{ '' if is_active else 'display: none;' }}"></div>
+    {% endif %}
+    {% endfor %}
+</div>

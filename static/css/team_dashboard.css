@@ -34,6 +34,10 @@
     --td-chart-line-width: 1.5px;
     --td-chart-line-cumulative: rgba(244, 244, 245, 0.35);
     --td-chart-glow-blur: 18px;
+    /* Sales Volume tab's Team Average line -- bright + neutral (not one
+       of the saturated per-rep colors below) so it reads as "the
+       benchmark", not just another rep, against any rep-color mix. */
+    --td-chart-team-average: rgba(244, 244, 245, 0.92);
 
     /* Fixed-order palette matching SALES_CHANNELS in sales_metrics.py --
        validated for lightness/chroma/contrast/CVD-safety against this
@@ -1593,7 +1597,7 @@ a.td-record-rep:hover {
     height: 260px;
 }
 
-/* ---------------- Chart toggle (Sales by Channel / Sales by Hour) ---------------- */
+/* ---------------- Chart toggle (Sales Volume / Channel Performance / Time of Day) ---------------- */
 
 .td-chart-toggle {
     display: inline-flex;
@@ -1624,6 +1628,66 @@ a.td-record-rep:hover {
     background: var(--td-panel);
     color: var(--td-text-primary);
     box-shadow: 0 0 10px var(--td-accent-blue-bg);
+}
+
+/* ---------------- Sales Volume tab ---------------- */
+
+.td-volume-panel, .td-volume-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.td-volume-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.td-volume-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 6px 14px;
+    max-height: 68px;
+    overflow-y: auto;
+    padding: 6px 2px 2px;
+    border-top: 1px solid var(--td-border-soft);
+}
+
+.td-volume-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--td-text-secondary);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 4px;
+    border-radius: var(--td-radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.td-volume-legend-item:hover {
+    color: var(--td-text-primary);
+}
+
+.td-volume-legend-item-hidden {
+    opacity: 0.4;
+    text-decoration: line-through;
+}
+
+.td-volume-legend-swatch {
+    width: 9px;
+    height: 9px;
+    flex: none;
+    border-radius: 2px;
 }
 
 .td-activity-calendar .td-calendar-cell {

@@ -204,6 +204,19 @@
          breakdown table used to sit on this page and was removed by
          request 2026-08-14 -- this is a different aggregate chart (not a
          per-rep table) reintroduced 2026-08-16 at explicit user request.
+
+         Gained a third tab, "Sales Volume", 2026-08-18 -- cumulative
+         outbound sales per rep for the current month vs. a Team Average
+         line, scoped by the same Team/NJ/NY/VA Sales Rep Group toggle as
+         Sales Calendar & Monthly Sales Trend above (dashboard_view_options/
+         sales_volume_views, computed in app.py by
+         calculate_sales_volume_trend() -- current month, independent of
+         the period filter, same reasoning as Records/Calendar). Sales
+         Volume is now this section's DEFAULT tab -- see
+         _channel_hourly_toggle.html's own header comment for how the
+         button/panel order drives the default. Team-only feature (not
+         passed on the Individual Sales Profile's own include of this
+         partial, since a single rep has no group to compare against).
          See README.md "Team Leaderboard Page — Section Names". -->
     <section class="td-section">
         <div class="td-section-heading">
@@ -215,6 +228,7 @@
         {% set channel_canvas_id = "team-channel-chart" %}
         {% set hourly_canvas_id = "team-hourly-chart" %}
         {% set channel_drilldown_url = url_for('all_sales_view', view='channel', period=period, start=custom_start, end=custom_end) %}
+        {% set volume_group_toggle_id = "team-sales-volume-group-toggle" %}
         {% include "_channel_hourly_toggle.html" %}
     </section>
 
