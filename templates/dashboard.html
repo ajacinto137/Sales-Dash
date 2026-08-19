@@ -149,7 +149,14 @@
                                     {% if cell %}
                                     <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
                                         <span class="td-calendar-day">{{ cell.day }}</span>
-                                        <span class="td-calendar-count">{{ cell.count if cell.count else '—' }}</span>
+                                        {% if cell.count %}
+                                        <a class="td-calendar-count td-calendar-count-link"
+                                           href="{{ url_for('all_sales_view', view='date', year=cal.year, month=cal.month, day=cell.day, cal_view=opt.key) }}"
+                                           title="{{ cell.count }} sale{{ '' if cell.count == 1 else 's' }} — view accounts"
+                                           aria-label="View {{ cell.count }} sale{{ '' if cell.count == 1 else 's' }} for {{ cal.month_label.split(' ')[0] }} {{ cell.day }}, {{ cal.month_label.split(' ')[1] }}">{{ cell.count }}</a>
+                                        {% else %}
+                                        <span class="td-calendar-count">—</span>
+                                        {% endif %}
                                     </div>
                                     {% else %}
                                     <div class="td-calendar-cell td-calendar-cell-pad"></div>

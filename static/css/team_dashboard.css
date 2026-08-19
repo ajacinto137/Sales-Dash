@@ -1727,17 +1727,21 @@ a.td-record-rep:hover {
     flex: none;
 }
 
-/* The daily sales COUNT is the clickable drill-down (added 2026-08-19),
+/* The daily sales COUNT is the clickable drill-down (added 2026-08-19,
+   extended to the Team Leaderboard's own Sales Calendar 2026-08-19),
    not the whole cell -- .td-calendar-cell here is a plain, non-
-   interactive <div> (see _rep_sales_calendar.html); only
-   .td-calendar-count-link is an <a>. A subtle cell-level glow on hover
-   still gives the day some ambient hover feedback without implying the
-   whole cell is a link (no cursor/pointer change at the cell level). */
-.td-activity-calendar .td-calendar-cell {
+   interactive <div> (see _rep_sales_calendar.html and dashboard.html's
+   Sales Calendar & Monthly Sales Trend section); only
+   .td-calendar-count-link is an <a>. .td-calendar-card is the shared
+   wrapper class both of those calendars use, so this cell-level glow
+   (ambient hover feedback, without implying the whole cell is a link --
+   no cursor/pointer change at the cell level) applies to both rather
+   than being duplicated per calendar. */
+.td-calendar-card .td-calendar-cell {
     transition: box-shadow 0.15s ease;
 }
 
-.td-activity-calendar .td-calendar-cell:hover {
+.td-calendar-card .td-calendar-cell:hover {
     box-shadow: 0 0 12px var(--td-accent-blue-bg);
 }
 

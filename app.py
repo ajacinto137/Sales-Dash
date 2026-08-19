@@ -539,6 +539,38 @@ def attach_attention_metadata(accounts):
     return available, progress
 
 
+# Team/NJ/NY/VA "Sales Rep Group" split, by the sale's `state` column --
+# shared by dashboard_page() (Sales Calendar & Monthly Sales Trend's own
+# toggle) and all_sales_view() (that same calendar's day-cell drill-down,
+# added 2026-08-19, so a day's Bulk Account View is scoped to whichever
+# state view was showing when it was clicked, same reasoning as
+# get_calendar_day_account_view()'s rep-scoping). Module-level (not a
+# per-route local) specifically so both routes read the one definition
+# rather than risking two independently-maintained state filters
+# drifting apart -- "state" is the normalized dataset's passthrough of
+# PlanetWeb's State column (build_sales_dataset() in sales_metrics.py),
+# upper-cased/stripped for the same reason build_vision_url()'s
+# VISION_BASE_URLS comparison already does, since the raw column isn't
+# guaranteed clean.
+DASHBOARD_STATE_VIEWS = [("team", "Team", None), ("nj", "NJ", "NJ"), ("ny", "NY", "NY"), ("va", "VA", "VA")]
+DASHBOARD_STATE_VIEW_KEYS = {key for key, _, _ in DASHBOARD_STATE_VIEWS}
+
+
+def _state_filtered(df, state_code):
+    if state_code is None:
+        return df
+    if df is None or df.empty or "state" not in df.columns:
+        return df
+    return df[df["state"].astype(str).str.strip().str.upper() == state_code]
+
+
+def _state_code_for_view(view_key):
+    for key, _, state_code in DASHBOARD_STATE_VIEWS:
+        if key == view_key:
+            return state_code
+    return None
+
+
 # ================================================================
 # ROUTES
 # ================================================================
@@ -694,14 +726,11 @@ def dashboard_page():
     # Trend can each show 4 independently-selectable views without adding
     # another row to the page (a segmented toggle switches between them
     # client-side -- see wireCalendarToggle()/wireChartToggle() in
-    # charts.js). "state" is the normalized dataset's passthrough of
-    # PlanetWeb's State column (build_sales_dataset() in sales_metrics.py),
-    # same 2-letter values build_vision_url()'s VISION_BASE_URLS already
-    # keys off of -- upper-cased/stripped here for the same reason that
-    # comparison does, since the raw column isn't guaranteed clean.
-    DASHBOARD_VIEWS = [("team", "Team", None), ("nj", "NJ", "NJ"), ("ny", "NY", "NY"), ("va", "VA", "VA")]
-    dashboard_view_options = [{"key": key, "label": label} for key, label, _ in DASHBOARD_VIEWS]
-    valid_view_keys = {key for key, _, _ in DASHBOARD_VIEWS}
+    # charts.js). DASHBOARD_STATE_VIEWS/_state_filtered() are module-level
+    # (see above ROUTES) so all_sales_view()'s day-cell drill-down reads
+    # the exact same state split, not a second copy of it.
+    dashboard_view_options = [{"key": key, "label": label} for key, label, _ in DASHBOARD_STATE_VIEWS]
+    valid_view_keys = DASHBOARD_STATE_VIEW_KEYS
 
     cal_view = request.args.get("cal_view", "team")
     if cal_view not in valid_view_keys:
@@ -710,14 +739,7 @@ def dashboard_page():
     if trend_view not in valid_view_keys:
         trend_view = "team"
 
-    def _state_filtered(df, state_code):
-        if state_code is None:
-            return df
-        if df is None or df.empty or "state" not in df.columns:
-            return df
-        return df[df["state"].astype(str).str.strip().str.upper() == state_code]
-
-    state_filtered_normalized = {key: _state_filtered(normalized, state_code) for key, _, state_code in DASHBOARD_VIEWS}
+    state_filtered_normalized = {key: _state_filtered(normalized, state_code) for key, _, state_code in DASHBOARD_STATE_VIEWS}
 
     calendar_views = {key: calculate_calendar_sales(view_df, cal_year, cal_month) for key, view_df in state_filtered_normalized.items()}
     monthly_forecast = calculate_monthly_forecast(normalized)
@@ -1134,15 +1156,38 @@ def all_sales_view():
     custom_start = request.args.get("start", "")
     custom_end = request.args.get("end", "")
 
-    # "channel" is a runtime-parameterized drill-down from the Team
-    # Leaderboard's Channel Performance chart -- same reasoning as its
-    # rep-scoped counterpart in bulk_account_view() above: it deliberately
-    # bypasses BULK_ACCOUNT_VIEWS since the channel is a click value, not
-    # a filter fixed at import time. rep=None here scopes team-wide.
+    # "channel" and "date" are runtime-parameterized drill-downs -- same
+    # reasoning as their rep-scoped counterparts in bulk_account_view()
+    # above: they deliberately bypass BULK_ACCOUNT_VIEWS since the
+    # channel/date is a click value, not a filter fixed at import time.
+    # rep=None in both scopes team-wide.
     if view == "channel":
         channel = request.args.get("channel", "")
         view_title, accounts = get_channel_account_view(normalized, None, channel, period, custom_start, custom_end)
         all_time = False
+    elif view == "date":
+        # Sales Calendar & Monthly Sales Trend's day-cell drill-down
+        # (added 2026-08-19). cal_view carries forward which of the
+        # calendar's own Team/NJ/NY/VA panels was showing when the count
+        # was clicked (see dashboard.html), so the accounts listed here
+        # match the exact same state scope as the number that was
+        # clicked -- same DASHBOARD_STATE_VIEWS/_state_filtered() the
+        # calendar itself uses, never a second definition of "NJ".
+        cal_view = request.args.get("cal_view", "team")
+        if cal_view not in DASHBOARD_STATE_VIEW_KEYS:
+            cal_view = "team"
+        scoped = _state_filtered(normalized, _state_code_for_view(cal_view))
+        try:
+            view_title, accounts = get_calendar_day_account_view(
+                scoped, None,
+                int(request.args.get("year", 0)), int(request.args.get("month", 0)), int(request.args.get("day", 0)),
+            )
+        except (TypeError, ValueError):
+            abort(404)
+        if cal_view != "team":
+            state_label = next(label for key, label, _ in DASHBOARD_STATE_VIEWS if key == cal_view)
+            view_title = f"{view_title} — {state_label}"
+        all_time = True
     elif view in BULK_ACCOUNT_VIEWS:
         view_title, accounts = get_bulk_account_view(normalized, None, view, period, custom_start, custom_end)
         all_time = BULK_ACCOUNT_VIEWS[view]["all_time"]
