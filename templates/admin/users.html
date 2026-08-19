@@ -15,14 +15,10 @@
 <div class="td-page">
     <div class="td-section-heading">
         <h2>Admin Portal</h2>
+        <button type="button" class="td-btn td-btn-primary td-admin-new-user-toggle" data-action="new-user-open">+ New User</button>
     </div>
 
-    <nav class="td-admin-tabs">
-        <a class="td-admin-tab td-admin-tab-active" href="{{ url_for('admin_users') }}">User Management</a>
-        <a class="td-admin-tab" href="{{ url_for('admin_import_page') }}">Import Users</a>
-        <a class="td-admin-tab" href="{{ url_for('admin_audit') }}">Audit Log</a>
-        <button type="button" class="td-btn td-btn-primary td-admin-new-user-toggle" data-action="new-user-open">+ New User</button>
-    </nav>
+    {% include "_admin_nav.html" %}
 
     <!-- Manual single-user creation, alongside the Excel import flow
          (Import Users tab) -- goes through the same /admin/users/create

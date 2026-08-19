@@ -1,39 +1,44 @@
 <!-- Sales Volume tab content -- cumulative outbound sales per rep for the
-     current month vs. a Team Average line, scoped by a Team/NJ/NY/VA
-     Sales Rep Group toggle (dashboard_view_options, same as the Sales
-     Calendar & Monthly Sales Trend section above). Included only from
+     current month vs. a Team Average line. Scoped by a Sales Rep TEAM
+     selector (Junior / NJ - Sales Reps / NY - Sales Reps / VA - Sales
+     Reps -- sales_reps.team, see user_store.SALES_REP_TEAMS), a
+     segmented pill control at the BOTTOM of the graph per spec (added
+     2026-08-19, replacing the earlier state-based Team/NJ/NY/VA toggle
+     that used to sit above the chart -- that grouping still exists, just
+     for the unrelated Sales Calendar & Monthly Sales Trend section
+     above, via a different `state` column). Included only from
      _channel_hourly_toggle.html when has_volume is true; expects
-     volume_group_toggle_id, dashboard_view_options, sales_volume_views,
-     volume_view from the calling context (all set by app.py's
-     dashboard_page()/dashboard.html -- see that section's header
-     comment).
+     volume_group_toggle_id, team_view_options, team_has_reps,
+     sales_volume_views, volume_view from the calling context (all set by
+     app.py's dashboard_page()/dashboard.html -- see that section's
+     header comment).
 
      This toggle is wired independently of the outer Sales Volume /
      Channel Performance / Time of Day toggle, via its own
      wireChartToggle(..., ".td-volume-group") call in charts.js (see that
      function's header comment for why the two nested toggles don't fight
-     over each other's [data-chart-panel] elements). Each state's canvas
+     over each other's [data-chart-panel] elements). Each team's canvas
      and its legend are separate direct children of .td-volume-group,
      both tagged data-chart-panel="<key>" so the shared show/hide loop
      toggles them together; the canvas is always the first of the pair in
      DOM order, so the lazy chart-creation lookup (which takes the first
-     match) finds it correctly. -->
+     match) finds it correctly. Switching teams never reloads the page,
+     and staying on this tab (or bouncing to Channel Performance/Time of
+     Day and back) never resets the selection -- the inner toggle keeps
+     its own active-button state independently of the outer one. -->
 <div class="td-volume-group">
     <div class="td-volume-head">
-        <div class="td-chart-toggle" id="{{ volume_group_toggle_id }}">
-            {% for opt in dashboard_view_options %}
-            <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == volume_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
-            {% endfor %}
-        </div>
         <span class="td-muted-inline">{{ sales_volume_views[volume_view].month_label }} to date &middot; cumulative outbound sales</span>
     </div>
 
-    {% for opt in dashboard_view_options %}
+    {% for opt in team_view_options %}
     {% set volume = sales_volume_views[opt.key] %}
     {% set is_active = opt.key == volume_view %}
     <div class="td-chart-canvas-wrap" data-chart-panel="{{ opt.key }}" style="{{ '' if is_active else 'display: none;' }}">
-        {% if not volume.reps %}
-        <p class="td-empty">No outbound sales recorded for this group this month.</p>
+        {% if not team_has_reps[opt.key] %}
+        <p class="td-empty">No reps currently assigned to {{ opt.label }}.</p>
+        {% elif not volume.reps %}
+        <p class="td-empty">No outbound sales recorded for {{ opt.label }} this month.</p>
         {% else %}
         <canvas id="team-sales-volume-chart-{{ opt.key }}"
                 data-chart-type="salesVolume"
@@ -43,8 +48,21 @@
                 data-legend-target="team-sales-volume-legend-{{ opt.key }}"></canvas>
         {% endif %}
     </div>
-    {% if volume.reps %}
+    {% if team_has_reps[opt.key] and volume.reps %}
     <div class="td-volume-legend" data-chart-panel="{{ opt.key }}" id="team-sales-volume-legend-{{ opt.key }}" style="{{ '' if is_active else 'display: none;' }}"></div>
     {% endif %}
     {% endfor %}
+
+    <!-- Team View selector -- premium segmented pill control, same
+         .td-chart-toggle/.td-chart-toggle-btn component the rest of the
+         dashboard's chart toggles already use, deliberately placed below
+         the chart+legend per spec ("at the bottom of the graph"). -->
+    <div class="td-volume-team-select">
+        <span class="td-volume-team-select-label">Team View</span>
+        <div class="td-chart-toggle" id="{{ volume_group_toggle_id }}">
+            {% for opt in team_view_options %}
+            <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == volume_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
+            {% endfor %}
+        </div>
+    </div>
 </div>

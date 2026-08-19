@@ -1601,6 +1601,7 @@ a.td-record-rep:hover {
 
 .td-chart-toggle {
     display: inline-flex;
+    flex-wrap: wrap;
     gap: 4px;
     background: var(--td-panel-alt);
     border: 1px solid var(--td-border);
@@ -1688,6 +1689,30 @@ a.td-record-rep:hover {
     height: 9px;
     flex: none;
     border-radius: 2px;
+}
+
+/* Team View selector -- premium segmented pill control at the bottom of
+   the Sales Volume graph (added 2026-08-19), reusing .td-chart-toggle/
+   .td-chart-toggle-btn as-is so it inherits the same pill styling,
+   hover, and active-glow treatment as every other chart toggle rather
+   than introducing a second control style. */
+.td-volume-team-select {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid var(--td-border-soft);
+}
+
+.td-volume-team-select-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+    flex: none;
 }
 
 .td-activity-calendar .td-calendar-cell {
@@ -1863,8 +1888,35 @@ a.td-record-rep:hover {
    visual language.
    ================================================================ */
 
+/* Admin Portal navigation -- two labelled groups (Admin Tools / Data
+   Tools) sharing the .td-admin-tabs/.td-admin-tab pill styling below.
+   See templates/_admin_nav.html. */
+.td-admin-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--td-border-soft);
+}
+
+.td-admin-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.td-admin-nav-group-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--td-text-muted);
+}
+
 .td-admin-tabs {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     margin-bottom: 4px;
@@ -1917,6 +1969,17 @@ a.td-record-rep:hover {
 
 .td-pill-review-needed { color: var(--td-orange); background: var(--td-orange-bg); }
 .td-pill-review-active { color: var(--td-green); background: var(--td-green-bg); }
+
+/* Sales Rep team pills (Admin Portal's Sales Reps tab + anywhere a
+   rep's team is shown) -- class built as td-pill-team-<slug>, slug =
+   team name lowercased with spaces -> hyphens (matches the role pill
+   convention above and the Sales Volume tab's own chart-panel key slug
+   in app.py's _team_slug()). One color per team, reusing existing accent
+   tokens -- no new palette introduced. */
+.td-pill-team-junior { color: var(--td-yellow); background: var(--td-yellow-bg); }
+.td-pill-team-nj---sales-reps { color: var(--td-cyan); background: var(--td-cyan-bg); }
+.td-pill-team-ny---sales-reps { color: var(--td-purple); background: var(--td-purple-bg); }
+.td-pill-team-va---sales-reps { color: var(--td-green); background: var(--td-green-bg); }
 
 .td-admin-table td {
     white-space: nowrap;
@@ -2001,6 +2064,25 @@ a.td-record-rep:hover {
     color: var(--td-text-muted);
     font-size: 12px;
 }
+
+/* Admin Portal's Sales Reps tab -- team pill + auto-saving select shown
+   together (no separate edit-mode toggle needed for a single-field row,
+   unlike User Management's multi-field rows above). */
+.td-admin-team-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.td-admin-save-status {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.td-admin-save-status[data-save-state="ok"] { color: var(--td-green); }
+.td-admin-save-status[data-save-state="error"] { color: var(--td-accent-magenta); }
+.td-admin-save-status[data-save-state="saving"] { color: var(--td-text-muted); }
 
 /* ---------------- Excel import stepper ---------------- */
 

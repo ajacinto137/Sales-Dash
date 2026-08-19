@@ -16,11 +16,7 @@
         <h2>Admin Portal</h2>
     </div>
 
-    <nav class="td-admin-tabs">
-        <a class="td-admin-tab" href="{{ url_for('admin_users') }}">User Management</a>
-        <a class="td-admin-tab" href="{{ url_for('admin_import_page') }}">Import Users</a>
-        <a class="td-admin-tab td-admin-tab-active" href="{{ url_for('admin_audit') }}">Audit Log</a>
-    </nav>
+    {% include "_admin_nav.html" %}
 
     <span class="td-muted-inline">Most recent {{ entries|length }} Needs Attention actions, newest first.</span>
 

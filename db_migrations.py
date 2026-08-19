@@ -141,6 +141,31 @@ MIGRATIONS = [
         ALTER TABLE account_attention_notes ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'note';
         """,
     ),
+    (
+        3,
+        "sales_reps.team (Sales Rep Roles/Teams -- Junior/NJ/NY/VA, 2026-08-19)",
+        """
+        -- A rep's Sales Rep Group for org/permissions/dashboard filtering
+        -- (Sales Volume Over Time's team selector -- see
+        -- calculate_sales_volume_trend() in sales_metrics.py). Lives on
+        -- sales_reps, NOT users -- a rep can (and often does) have zero
+        -- linked users (see README.md "User Records vs Sales Rep
+        -- Records"), so a users-table column could never cover every
+        -- rep that needs a team. Nullable and no default on purpose: an
+        -- existing rep with no team assigned yet must stay unassigned
+        -- (excluded from every team-filtered view) rather than being
+        -- silently defaulted into a team that could misrepresent their
+        -- reporting -- an Admin must assign it explicitly (Admin
+        -- Portal's Sales Reps tab). Validated against
+        -- user_store.SALES_REP_TEAMS in application code only, same
+        -- convention as users.role/ROLE_SET -- no DB-level CHECK.
+        -- Changing this value never touches sale rows, account_attention,
+        -- or needs_attention_tracking -- Needs Attention/Install Rate/etc.
+        -- are computed straight from source data, unaware this column
+        -- exists.
+        ALTER TABLE sales_reps ADD COLUMN IF NOT EXISTS team TEXT;
+        """,
+    ),
 ]
 
 _schema_ready = False

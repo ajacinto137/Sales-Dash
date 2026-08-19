@@ -735,38 +735,56 @@ def dashboard_page():
     hourly_breakdown = calculate_hourly_breakdown(period_df)
 
     # Sales Volume tab (default tab of Channel & Time-of-Day Performance,
-    # added 2026-08-18) -- one cumulative-outbound-sales-per-rep line per
-    # Sales Rep Group, always the current month, independent of the page's
-    # period filter (same reasoning as Records/Calendar above). Reuses the
-    # exact same Team/NJ/NY/VA state_filtered_normalized split the Sales
-    # Calendar & Monthly Sales Trend section already computes -- "Sales
-    # Rep Group" is that same grouping, just applied to a new chart, not a
-    # new filtering concept. One call per view (4 total), each a single
-    # groupby internally -- no per-rep queries.
+    # added 2026-08-18, team selector reworked 2026-08-19) -- one
+    # cumulative-outbound-sales-per-rep line per Sales Rep TEAM (Junior/
+    # NJ - Sales Reps/NY - Sales Reps/VA - Sales Reps -- sales_reps.team,
+    # see user_store.SALES_REP_TEAMS), always the current month,
+    # independent of the page's period filter (same reasoning as
+    # Records/Calendar above). This is a DIFFERENT grouping from the
+    # Sales Calendar & Monthly Sales Trend section's Team/NJ/NY/VA above
+    # (that one is the sale's `state` column; this one is the rep's own
+    # assigned team) -- they intentionally don't share
+    # state_filtered_normalized/dashboard_view_options.
     #
-    # Sales Volume-only exception to "ownership is always read from source
-    # data, never users/sales_reps" (see README.md "User Records vs Sales
-    # Rep Records"): this chart should only plot names an Admin has
-    # actually set up as Sales Rep in the Admin Portal, not every name
-    # that happens to appear in the raw sales data (e.g. an Admin/
-    # Customer Success staffer's own manual entry). sales_rep_role_names
-    # is None only on an appdb outage -- fail OPEN (skip the filter, show
-    # every rep) rather than fail closed (silently blank the chart) in
-    # that case; a real empty set (nobody currently holds the Sales Rep
-    # role) is filtered normally and simply yields the tab's own empty
-    # state per Sales Rep Group.
+    # Two filters stack here, both deliberate exceptions to "ownership is
+    # always read from source data, never users/sales_reps" (see
+    # README.md "User Records vs Sales Rep Records"): (1) only names an
+    # Admin has actually set up as Sales Rep in the Admin Portal (not
+    # every name that happens to appear in the raw sales data, e.g. an
+    # Admin/Customer Success staffer's own manual entry), and (2) within
+    # that, only reps assigned to the currently-viewed team. Role names
+    # is None only on an appdb outage -- fail OPEN (skip that filter,
+    # show every rep) rather than fail closed (silently blank the whole
+    # chart); a rep with no team assigned is correctly excluded from
+    # every team panel (never guessed at -- see db_migrations.py
+    # migration 3), which is what makes an unassigned rep "safe" rather
+    # than misreported.
     sales_rep_role_names = user_store.list_sales_rep_role_names()
-    if sales_rep_role_names is not None:
-        volume_source_views = {
-            key: (view_df[view_df["sales_rep"].isin(sales_rep_role_names)] if view_df is not None and not view_df.empty else view_df)
-            for key, view_df in state_filtered_normalized.items()
-        }
-    else:
-        volume_source_views = state_filtered_normalized
-    sales_volume_views = {key: calculate_sales_volume_trend(view_df) for key, view_df in volume_source_views.items()}
-    volume_view = request.args.get("volume_view", "team")
-    if volume_view not in valid_view_keys:
-        volume_view = "team"
+    role_filtered_normalized = normalized
+    if sales_rep_role_names is not None and normalized is not None and not normalized.empty:
+        role_filtered_normalized = normalized[normalized["sales_rep"].isin(sales_rep_role_names)]
+
+    def _team_slug(team_name):
+        return team_name.lower().replace(" ", "-")
+
+    team_view_options = [{"key": _team_slug(team), "label": team} for team in user_store.SALES_REP_TEAMS]
+    sales_reps_by_team = user_store.list_sales_reps_by_team()
+
+    sales_volume_views = {}
+    team_has_reps = {}
+    for opt, team in zip(team_view_options, user_store.SALES_REP_TEAMS):
+        rep_names = sales_reps_by_team.get(team, [])
+        team_has_reps[opt["key"]] = bool(rep_names)
+        if role_filtered_normalized is not None and not role_filtered_normalized.empty and rep_names:
+            team_df = role_filtered_normalized[role_filtered_normalized["sales_rep"].isin(rep_names)]
+        else:
+            team_df = role_filtered_normalized.iloc[0:0] if role_filtered_normalized is not None else None
+        sales_volume_views[opt["key"]] = calculate_sales_volume_trend(team_df)
+
+    valid_volume_keys = {opt["key"] for opt in team_view_options}
+    volume_view = request.args.get("volume_view", team_view_options[0]["key"])
+    if volume_view not in valid_volume_keys:
+        volume_view = team_view_options[0]["key"]
 
     return render_template(
         "dashboard.html",
@@ -794,6 +812,8 @@ def dashboard_page():
         hourly_breakdown=hourly_breakdown,
         sales_volume_views=sales_volume_views,
         volume_view=volume_view,
+        team_view_options=team_view_options,
+        team_has_reps=team_has_reps,
         last_refreshed=data_store["last_refreshed"],
     )
 
@@ -1442,7 +1462,7 @@ def admin_users():
 
     return render_template(
         "admin/users.html",
-        active_page="admin",
+        active_page="admin_users",
         rows=rows,
         roles=user_store.ROLES,
         sales_reps=user_store.list_sales_reps(),
@@ -1551,7 +1571,7 @@ def admin_send_reset(user_id):
 @app.route("/admin/users/import")
 @auth.admin_required
 def admin_import_page():
-    return render_template("admin/import.html", active_page="admin", last_refreshed=data_store["last_refreshed"])
+    return render_template("admin/import.html", active_page="admin_import", last_refreshed=data_store["last_refreshed"])
 
 
 @app.route("/admin/users/import/validate", methods=["POST"])
@@ -1584,8 +1604,30 @@ def admin_audit():
     for entry in entries:
         entry["created_at_display"] = _format_note_timestamp(entry["created_at"])
     return render_template(
-        "admin/audit.html", active_page="admin", entries=entries, last_refreshed=data_store["last_refreshed"],
+        "admin/audit.html", active_page="admin_audit", entries=entries, last_refreshed=data_store["last_refreshed"],
     )
+
+
+@app.route("/admin/sales-reps")
+@auth.admin_required
+def admin_sales_reps():
+    return render_template(
+        "admin/sales_reps.html",
+        active_page="admin_sales_reps",
+        sales_reps=user_store.list_sales_reps(),
+        teams=user_store.SALES_REP_TEAMS,
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/admin/sales-reps/<int:rep_id>/team", methods=["POST"])
+@auth.admin_required
+def admin_update_sales_rep_team(rep_id):
+    team = request.form.get("team") or None
+    ok, error = user_store.update_sales_rep_team(rep_id, team)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/health")

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sales Reps — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/admin_sales_reps.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    {% include "_admin_nav.html" %}
+
+    <!-- Sales Rep Roles/Teams (added 2026-08-19) -- a rep-centric table,
+         deliberately separate from User Management above: a Sales Rep
+         (sales_reps table) can exist with zero linked users (see
+         README.md "User Records vs Sales Rep Records"), so team
+         assignment can't live on the per-user table alone -- every rep
+         who has ever sold needs to be assignable here regardless of
+         whether they've ever logged in. Team select auto-saves on change
+         (POST /admin/sales-reps/<id>/team -> user_store.
+         update_sales_rep_team()) rather than using User Management's
+         Edit/Save/Cancel flow, since there's exactly one editable field
+         per row. Changing a rep's team here never touches sale rows,
+         account_attention, or needs_attention_tracking -- see
+         db_migrations.py migration 3 and README.md. -->
+    <div class="td-section-heading">
+        <span class="td-muted-inline">{{ sales_reps|length }} sales rep{{ '' if sales_reps|length == 1 else 's' }} &middot; assign each to a team for Sales Volume Over Time filtering and org/permissions purposes</span>
+    </div>
+
+    <section class="td-table-card">
+        <div class="td-table-scroll">
+            <table class="td-table td-admin-table">
+                <thead>
+                    <tr>
+                        <th>Sales Rep</th>
+                        <th>Team</th>
+                        <th>Last Sale Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rep in sales_reps %}
+                    <tr data-rep-row data-rep-id="{{ rep.id }}">
+                        <td>{{ rep.name }}</td>
+                        <td>
+                            <div class="td-admin-team-cell">
+                                <span data-team-pill>
+                                    {% if rep.team %}
+                                    <span class="td-pill td-pill-team-{{ rep.team|lower|replace(' ', '-') }}">{{ rep.team }}</span>
+                                    {% else %}
+                                    <span class="td-admin-muted">Unassigned</span>
+                                    {% endif %}
+                                </span>
+                                <select class="td-admin-inline-select" data-team-select>
+                                    <option value="" {{ 'selected' if not rep.team else '' }}>— Unassigned —</option>
+                                    {% for team in teams %}
+                                    <option value="{{ team }}" {{ 'selected' if team == rep.team else '' }}>{{ team }}</option>
+                                    {% endfor %}
+                                </select>
+                                <span class="td-admin-save-status" data-save-status style="display:none;"></span>
+                            </div>
+                        </td>
+                        <td>{{ rep.last_seen_at.strftime('%m/%d/%Y') if rep.last_seen_at else '—' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="td-empty-row">No sales reps yet — reps are synced automatically from sales data.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+</body>
+</html>

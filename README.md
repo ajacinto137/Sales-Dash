@@ -507,6 +507,45 @@ language. Admin-only (`@auth.admin_required` on every route in this
 section) — a non-admin hitting any of these URLs directly gets a real
 `403` (`templates/unauthorized.html`), not just a hidden nav link.
 
+**Admin Portal Navigation** (`templates/_admin_nav.html`, added
+2026-08-19) — one reusable nav partial, included at the top of every
+Admin Portal page, replacing three near-identical hand-copied
+`<nav class="td-admin-tabs">` blocks that used to live separately in
+`admin/users.html`/`admin/import.html`/`admin/audit.html`. Two labelled
+pill-tab groups:
+- **Admin Tools** — User Management, Sales Reps, Import Users, Audit Log.
+- **Data Tools** — Overview, Main Sales, Service Cancellations, Vision
+  Packages. **Moved here 2026-08-19** from the main top nav
+  (`_topnav.html`) — by request, since the main nav is meant for daily
+  sales-dashboard navigation, not admin/data tooling. This is a UX
+  reorganization only: every one of these 4 routes already had, and
+  still has, its own `@auth.admin_required` in `app.py` — moving a link
+  never changes what's actually protected (see "Authorization" below).
+  Their own page shell (`templates/base.html` + `static/css/dashboard.css`,
+  a separate, older light-theme layout predating the dark `team_dashboard.css`
+  redesign) is intentionally left as-is rather than reskinned — an
+  unrequested visual overhaul of 4 working data pages — but now carries a
+  "← Admin Portal" link back into the rest of the portal.
+
+Each tab highlights via `active_page`, one distinct value per route
+(`admin_users`/`admin_sales_reps`/`admin_import`/`admin_audit`/
+`overview`/`main_sales`/`cancellations`/`vision_packages`) — add a new
+Admin Portal tool by adding one route with its own `active_page` value
+and one more `<a>` in `_admin_nav.html`, not a new nav system.
+
+**Sales Reps** (`/admin/sales-reps`, `templates/admin/sales_reps.html` +
+`static/js/admin_sales_reps.js`, added 2026-08-19) — one row per
+`sales_reps` record (every rep who has ever sold, regardless of whether
+they have a `users` login), with a **Team** `<select>`
+(Junior/NJ - Sales Reps/NY - Sales Reps/VA - Sales Reps, or
+"— Unassigned —") that auto-saves on change — no Edit/Save/Cancel
+toggle, since there's exactly one editable field per row. Success
+re-renders the team pill and shows a transient "Saved" status in place;
+failure reverts the `<select>` to its last-saved value and shows the
+server's error message, both without a page reload. See "Sales Rep
+Roles / Teams" under "Database Models" above for the full model and what
+changing a team does/doesn't affect.
+
 **User Management** (`/admin/users`, `templates/admin/users.html`) — one
 table, columns per the spec: Name/Rep, Email, Role, Sales Rep mapping,
 Account Status (Pending / Never Logged In · Active · Disabled), Last
@@ -594,7 +633,8 @@ recorded that version.
 
 ```sql
 sales_reps                     -- auto-synced, never hand-created
-  id, name UNIQUE, first_seen_at, last_seen_at
+  id, name UNIQUE, first_seen_at, last_seen_at,
+  team NULL                    -- migration 3, 2026-08-19 -- see below
 
 users
   id, email UNIQUE, password_hash NULL, role,
@@ -628,6 +668,59 @@ extended `account_attention_notes` table, not a separate one — it
 already had previous/new status, note text, and a timestamp; these three
 new columns were what it was missing to also serve as the audit log.
 
+#### Sales Rep Roles / Teams (`sales_reps.team`, added 2026-08-19)
+
+Every Sales Rep now belongs to one of four **teams** (`user_store.SALES_REP_TEAMS`):
+
+- **Junior**
+- **NJ - Sales Reps**
+- **NY - Sales Reps**
+- **VA - Sales Reps**
+
+This is migration 3 in `db_migrations.py`: a single nullable
+`sales_reps.team TEXT` column, validated against `SALES_REP_TEAMS` in
+application code only (no DB `CHECK` constraint — same convention
+`users.role`/`ROLE_SET` already uses). It lives on **`sales_reps`, not
+`users`** — deliberately distinct from `users.role`
+(Admin/Sales Rep/Customer Success/Other) above. A rep can rack up sales
+and need a team assignment having never been given a `users` row at all
+(see "User Records vs Sales Rep Records"), so a `users`-table column
+could never cover every rep that needs one.
+
+**No default, no backfill.** An existing rep with no team assigned
+stays `NULL` ("Unassigned") until an Admin explicitly sets one —
+guessing a team from state/history/anything else was ruled out
+on purpose, since a wrong guess would misreport that rep on every
+team-filtered view. An unassigned rep simply doesn't appear in *any*
+team's Sales Volume Over Time panel until assigned.
+
+**Where it's managed:** Admin Portal → **Sales Reps** tab
+(`/admin/sales-reps`, `templates/admin/sales_reps.html` +
+`static/js/admin_sales_reps.js`) — see "Admin Portal" below. Each row is
+one `sales_reps` record with a team `<select>` that auto-saves on change
+(`POST /admin/sales-reps/<id>/team` → `user_store.update_sales_rep_team()`),
+no page reload, with the pill re-rendered and a "Saved"/error status
+shown in place on success/failure.
+
+**What changing a team does NOT do:** `update_sales_rep_team()` only
+ever writes `sales_reps.team`. It never touches `main_sales`/
+`vision_packages`/`service_cancellations` rows, `account_attention`,
+`account_attention_notes`, or `needs_attention_tracking` — a rep's
+historical sales, Needs Attention accounts/counts, Attention Status,
+notes, and Install Rate are all computed straight from source data
+(`sales_metrics.py`), completely unaware `sales_reps.team` exists.
+Reassigning a rep from one team to another is purely an organizational/
+reporting change.
+
+**Where it's used:** currently the Team Leaderboard's Sales Volume Over
+Time chart (see "Team Leaderboard Page — Section Names" →
+**Sales Volume**) — `user_store.list_sales_reps_by_team()` returns
+`{team: [rep_name, ...]}` for the team selector's filtering. Reusable
+anywhere else a rep-level team/permission grouping is needed later
+(dashboard filtering, reporting, etc.) without inventing a second
+mechanism — that's the point of storing it on the shared `sales_reps`
+row instead of hardcoding team behavior into one chart's code.
+
 ### Email Configuration
 
 `email_service.py` — plain `smtplib` (zero new dependency), config via
@@ -653,12 +746,18 @@ rep ID:
   `/dashboard*` route, `/refresh`, `/search`.
 - `@auth.admin_required` — Admin role specifically. On `/overview`,
   `/main-sales`, `/cancellations`, `/vision-packages`, and everything
-  under `/admin`.
-- `_topnav.html` hides Overview/Main Sales/Service Cancellations/Vision
-  Packages/Admin for non-admins — **a convenience, not the protection**;
-  every one of those routes has its own `@auth.admin_required`
-  regardless, so typing the URL directly gets a real `403`, never the
-  real page.
+  under `/admin` (including `/admin/sales-reps` and
+  `/admin/sales-reps/<id>/team`). These routes/URLs were **not** changed
+  when Overview/Main Sales/Service Cancellations/Vision Packages moved
+  out of the main top nav into the Admin Portal's own nav 2026-08-19
+  (see "Admin Portal" → "Admin Portal Navigation") — only where they're
+  *linked from* changed, not what guards them.
+- `_topnav.html` hides its one remaining Admin link for non-admins, and
+  `_admin_nav.html` is itself only ever reached by way of an
+  `@auth.admin_required` route — **a convenience, not the protection**;
+  every route behind either nav has its own `@auth.admin_required`
+  regardless, so typing the URL directly (Sales Rep or not, logged in or
+  not) gets a real `403` or a redirect to `/login`, never the real page.
 - The Needs Attention 15-day rule is enforced exactly the same way —
   see "Needs Attention Ownership & the 15-Day Rule" above.
 
@@ -719,7 +818,7 @@ described them accurately.
 |------|-----|------------|------------------|
 | **Team Overview** | | Fixed set of 5 KPI cards, always in this order: Monthly Sales, Daily Sales, 7 Day Average, 30 Day Average, Monthly Projection (reconfigured 2026-08-14, by request — replaces the earlier Total Sales/Installed/Pending/Total Daily Sales/Team Install Rate/Monthly Forecast set). All five are always computed from the full all-time dataset and today's real date — they do NOT change with the page's period filter | `<section class="td-kpi-bar">` |
 | **Sales Calendar & Monthly Sales Trend** | | One row (`.td-activity-split`, same 2-col layout the Individual Sales Profile's own Sales Activity section uses — merged 2026-08-16, by request), pairing two sub-sections that each keep their own canonical name: **Sales Calendar** (navigable month-by-month calendar of team total sales per day) and **Monthly Sales Trend** (team-wide total sales per calendar month, trailing 12 months, as a MonthlySalesTrendChart line chart, added 2026-08-16). Both always all-time, independent of the period filter — same convention as Records/Calendar. Monthly Sales Trend is distinct from the Individual Sales Profile's MonthlySalesChart (per-rep, day-granularity within one month) | `<section class="td-section">` containing `<h2>Sales Calendar &amp; Monthly Sales Trend</h2>` + `<div class="td-activity-split">` |
-| **Channel & Time-of-Day Performance** | | One row, one card, a segmented-control toggle across three tabs: **Sales Volume**, **Channel Performance**, **Time of Day**. **Sales Volume is the default-shown tab** (added 2026-08-18, by request, replacing Time of Day as the default). Sales Volume plots cumulative OUTBOUND sales per rep for the current calendar month to date (`OutboundSalesVolumeChart`, a Chart.js multi-line chart) plus a **Team Average** line (thicker, dashed, drawn on top) so leadership can see who's pacing above/below the team — scoped by its own nested Team/NJ/NY/VA **Sales Rep Group** toggle (`_sales_volume_panel.html`, reusing the same `dashboard_view_options`/`state_filtered_normalized` split as Sales Calendar & Monthly Sales Trend above). **Only reps currently mapped to a user with the Sales Rep role appear** (`user_store.list_sales_rep_role_names()`, filtered in `app.py` before `calculate_sales_volume_trend()` runs — see "User Records vs Sales Rep Records" above) — the one place on this page where role, not raw source data alone, decides who shows up. Unlike the other two tabs, Sales Volume is **always the current month, independent of the page's period filter** — same reasoning as Records/Calendar (`calculate_sales_volume_trend()` in `sales_metrics.py`, one groupby per Sales Rep Group view, no per-rep queries). Channel Performance (`SalesByChannelChart`) and Time of Day (`HourlySalesChart`) are unchanged from before except their button labels (`Sales by Channel`/`Sales by Hour` → `Channel Performance`/`Time of Day`, for consistency with the section's own name) and are still period-filtered, reusing `calculate_channel_breakdown()`/`calculate_hourly_breakdown()` unchanged. Channel bars are clickable, opening a channel-scoped team-wide Bulk Account View; Time of Day has no drill-down. Every chart is created lazily the first time its tab is opened (`wireChartToggle()` in `static/js/charts.js`); Sales Volume's own rep legend is a custom scrollable HTML legend (not Chart.js's canvas legend) so a large Sales Rep Group never grows the card unbounded — click a rep to toggle their line, same interaction Chart.js's built-in legend would offer. **Team-only** — the Individual Sales Profile's own copy of this section (see below) does not get a Sales Volume tab, since a single rep has no group to pace against | `<section class="td-section">` containing `<h2>Channel &amp; Time-of-Day Performance</h2>` + `{% include "_channel_hourly_toggle.html" %}` (which itself conditionally includes `_sales_volume_panel.html`) |
+| **Channel & Time-of-Day Performance** | | One row, one card, a segmented-control toggle across three tabs: **Sales Volume**, **Channel Performance**, **Time of Day**. **Sales Volume is the default-shown tab** (added 2026-08-18, by request, replacing Time of Day as the default). Sales Volume plots cumulative OUTBOUND sales per rep for the current calendar month to date (`OutboundSalesVolumeChart`, a Chart.js multi-line chart) plus a **Team Average** line (thicker, dashed, drawn on top) so leadership can see who's pacing above/below the team — scoped by a **Team View** selector (Junior / NJ - Sales Reps / NY - Sales Reps / VA - Sales Reps, a premium segmented pill control reusing `.td-chart-toggle`) placed **below the chart and legend**, per spec (`_sales_volume_panel.html`, reworked 2026-08-19). This selector filters by each rep's own assigned **team** (`sales_reps.team`, see "Sales Rep Roles / Teams" under "Database Models") — a *different* grouping from the Sales Calendar & Monthly Sales Trend section's own Team/NJ/NY/VA toggle above, which groups by the sale's `state` column; the two don't share data or code. Two filters stack in `app.py` before `calculate_sales_volume_trend()` runs, both exceptions to "read straight from source data" (see "User Records vs Sales Rep Records"): (1) only reps mapped to a user with the Sales Rep role (`user_store.list_sales_rep_role_names()`), then (2) only reps assigned to the currently-viewed team (`user_store.list_sales_reps_by_team()`) — a rep with no team assigned appears in **no** team view rather than being guessed into one. Switching teams is instant, client-side only (`wireChartToggle()`, no page reload) and the selection survives switching to Channel Performance/Time of Day and back, since the inner toggle keeps its own state independently of the outer one. An empty team shows one of two distinct messages — "No reps currently assigned to `<team>`." when the team has zero reps, or "No outbound sales recorded for `<team>` this month." when it has reps but no outbound sales yet — never a broken chart. Sales Volume is **always the current month, independent of the page's period filter** — same reasoning as Records/Calendar (`calculate_sales_volume_trend()` in `sales_metrics.py`, one call per team, each a single groupby, no per-rep queries). Channel Performance (`SalesByChannelChart`) and Time of Day (`HourlySalesChart`) are unchanged from before except their button labels (`Sales by Channel`/`Sales by Hour` → `Channel Performance`/`Time of Day`) and are still period-filtered, reusing `calculate_channel_breakdown()`/`calculate_hourly_breakdown()` unchanged. Channel bars are clickable, opening a channel-scoped team-wide Bulk Account View; Time of Day has no drill-down. Every chart is created lazily the first time its tab is opened (`wireChartToggle()` in `static/js/charts.js`); Sales Volume's own rep legend is a custom scrollable HTML legend (not Chart.js's canvas legend) so a team with many reps never grows the card unbounded — click a rep to toggle their line, same interaction Chart.js's built-in legend would offer. **Team-only** — the Individual Sales Profile's own copy of this section (see below) does not get a Sales Volume tab, since a single rep has no team to pace against | `<section class="td-section">` containing `<h2>Channel &amp; Time-of-Day Performance</h2>` + `{% include "_channel_hourly_toggle.html" %}` (which itself conditionally includes `_sales_volume_panel.html`) |
 | **Planet Networks Records** | "Records Section" | Historical all-time individual sales achievements: Best Days Ever, Best Weeks Ever, Best Months Ever. **Collapsed by default** (added 2026-08-16, by request) — a native `<details>`/`<summary>` disclosure, no JS involved; click the heading to expand/collapse | `<section class="td-section">` containing `<details class="td-collapsible"><summary class="td-section-heading td-collapsible-summary"><h2>Planet Networks Records</h2>` |
 | **Current Sales Leaders** | | Current-period individual sales leaderboards — who's leading right now: Weekly Sales, Monthly Sales, Yearly Sales (each card is its own live top-3, independent of the page's period filter). Daily Sales moved to Live Sales Activity 2026-08-16 (by request, for an even 3+3 card split with that section) | `<section class="td-section">` containing `<h2>Current Sales Leaders</h2>` |
 | **Live Sales Activity** | | Today's leaderboard plus recent sales and account activity: Daily Sales (moved here from Current Sales Leaders 2026-08-16 — same `records.daily_leaders` data, unchanged), Latest Sales (the reps behind the most recent sales), and Latest Accounts Sold (the accounts behind those same sales, renamed from "Last 3 Sales"/"Last 3 Accounts Sold" 2026-08-16 since the displayed count is a display detail, not part of the card's identity), which also carries the "View All Sales" button in its top-right corner. Now a 3-column grid (`.td-activity-grid`, widened 2026-08-16 to fit the third card) | `<section class="td-section">` containing `<h2>Live Sales Activity</h2>` |
@@ -816,7 +915,7 @@ page has two tabs:
 
 | Name | What it is |
 |------|------------|
-| **Overview** | Metric cards for Total Sales, Installed, Install Rate (primary) and Inbound, Outbound, Pending (secondary, now 3 cards — Cancelled and Cancel Rate removed 2026-08-17, by request) — all period-filtered — plus two chart sections (added 2026-08-16): **Sales Activity** (a rep-scoped Sales Calendar beside a `MonthlySalesChart` bar chart, day-of-month with a cumulative trend line and per-day channel breakdown in the tooltip; always all-time with its own `cal_year`/`cal_month` nav, independent of the period filter, same convention as the Team Leaderboard's Sales Calendar); **Channel & Time-of-Day Performance** (one row, one card, a segmented-control toggle between a `SalesByChannelChart` horizontal bar chart — replacing the former plain-text Inbound/Outbound columns, reuses `calculate_channel_breakdown()` unchanged, bars clickable into a channel-scoped Bulk Account View — and an `HourlySalesChart` across all 24 real hours built from `sale_datetime` via `calculate_hourly_breakdown()`, merged from two separate sections into one toggle 2026-08-16 by request; **Time of Day** is the default-shown tab here — this page does not get the Team Leaderboard's Sales Volume tab, since a single rep has no Sales Rep Group to pace against; button labels are shared with the Team Leaderboard's copy of this section and read **Channel Performance**/**Time of Day** as of 2026-08-18). Renders via Chart.js v4.4.4 (loaded in `rep_profile.html`'s `<head>`, same version already used on the `/overview` page) and the shared `static/js/charts.js` helper module — see "Chart Card" below. |
+| **Overview** | Metric cards for Total Sales, Installed, Install Rate (primary) and Inbound, Outbound, Pending (secondary, now 3 cards — Cancelled and Cancel Rate removed 2026-08-17, by request) — all period-filtered — plus two chart sections (added 2026-08-16): **Sales Activity** (a rep-scoped Sales Calendar beside a `MonthlySalesChart` bar chart, day-of-month with a cumulative trend line and per-day channel breakdown in the tooltip; always all-time with its own `cal_year`/`cal_month` nav, independent of the period filter, same convention as the Team Leaderboard's Sales Calendar); **Channel & Time-of-Day Performance** (one row, one card, a segmented-control toggle between a `SalesByChannelChart` horizontal bar chart — replacing the former plain-text Inbound/Outbound columns, reuses `calculate_channel_breakdown()` unchanged, bars clickable into a channel-scoped Bulk Account View — and an `HourlySalesChart` across all 24 real hours built from `sale_datetime` via `calculate_hourly_breakdown()`, merged from two separate sections into one toggle 2026-08-16 by request; **Time of Day** is the default-shown tab here — this page does not get the Team Leaderboard's Sales Volume tab, since a single rep has no team to pace against; button labels are shared with the Team Leaderboard's copy of this section and read **Channel Performance**/**Time of Day** as of 2026-08-18). Renders via Chart.js v4.4.4 (loaded in `rep_profile.html`'s `<head>`, same version already used on the `/overview` page) and the shared `static/js/charts.js` helper module — see "Chart Card" below. |
 | **Needs Attention** | Accounts for this rep that are not Installed/Cancelled and have an install date strictly before today — i.e. no install date at all, explicitly "Not Scheduled", or a past install date (redefined 2026-08-17, twice the same day — today itself moved from Needs Attention to Pending in the second pass, see "Pending vs Needs Attention" below). Always uses the full all-time dataset regardless of the page's period filter — same reasoning as Planet Networks Records / Sales Calendar / Team Overview on the Team Leaderboard. Rendered via the shared Bulk Account View component (see below), extended with the **Needs Attention Workflow** (Attention Status + notes — see its own section further down). |
 
 The Overview tab's metric cards reuse `calculate_rep_metrics()` — the
@@ -1340,8 +1439,8 @@ a small vanilla-JS factory function, the same pattern
   `createSalesVolumeChart()` pairs each rep's dataset with a bolder dashed
   Team Average dataset (`order: 0`, drawn on top) and renders its own
   scrollable HTML legend via `renderVolumeLegend()` instead of Chart.js's
-  built-in canvas legend, so a large Sales Rep Group's rep list never
-  grows the chart card unbounded — click a legend entry to toggle that
+  built-in canvas legend, so a team with many reps never grows the chart
+  card unbounded — click a legend entry to toggle that
   rep's line, same interaction Chart.js's own legend would give.
   `createChannelChart()` and `createHourlyChart()` are fully generic —
   the Team Leaderboard's team-wide Channel Performance / Time-of-Day
@@ -1371,9 +1470,11 @@ a small vanilla-JS factory function, the same pattern
   new toggle handler. It also takes an optional `scopeSelector` (default
   `.td-chart-card`) so a toggle can be scoped to a nested ancestor instead
   of the outer chart card — used by the Sales Volume tab's own nested
-  Team/NJ/NY/VA Sales Rep Group toggle (`templates/_sales_volume_panel.html`,
-  scoped to `.td-volume-group`, wired independently in `charts.js`), so
-  the two nested toggles' `[data-chart-panel]` elements don't collide.
+  Team View selector (Junior/NJ - Sales Reps/NY - Sales Reps/VA - Sales
+  Reps, `templates/_sales_volume_panel.html`, scoped to
+  `.td-volume-group`, wired independently in `charts.js`, positioned
+  below the chart+legend per spec), so the two nested toggles'
+  `[data-chart-panel]` elements don't collide.
 - Currently used by the Rep Profile's Sales Activity and Channel &
   Time-of-Day Performance sections, and the Team Leaderboard's Monthly
   Sales Trend and Channel & Time-of-Day Performance sections (see "Rep

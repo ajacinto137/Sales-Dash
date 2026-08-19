@@ -7,20 +7,23 @@
      route that renders one of the pages above); `current_user` comes
      from app.py's inject_auth_context() context processor, available on
      every template automatically.
-     Overview/Main Sales/Service Cancellations/Vision Packages/Admin are
-     Admin-only as of 2026-08-18 (spec #20/#21) -- hidden here for
-     non-admins, but that's a convenience, not the real protection: every
-     one of those routes also has its own @auth.admin_required, since
-     hiding a nav link is never a substitute for server-side
-     authorization (see README.md "Authorization"). -->
+
+     Overview/Main Sales/Service Cancellations/Vision Packages moved OUT
+     of this main nav 2026-08-19 (by request -- "the main/global
+     navigation currently contains admin-oriented pages that should not
+     be there") into the Admin Portal's own nav instead (see
+     _admin_nav.html's "Data Tools" group) -- the "Admin" link below is
+     now the only entry point into all of that from here. This is a UX
+     move only, not a permissions change: those 4 routes (and every
+     /admin/* route) were already, and still are, individually guarded by
+     @auth.admin_required in app.py regardless of what links here -- see
+     README.md "Authorization". The "Admin" link itself stays hidden here
+     for non-admins as a convenience; the real protection is still that
+     same server-side decorator. -->
 <div class="td-topnav">
     <div class="td-topnav-brand">Planet Networks</div>
     <nav class="td-topnav-links">
         {% if current_user and current_user.role == 'Admin' %}
-        <a href="{{ url_for('overview') }}">Overview</a>
-        <a href="{{ url_for('main_sales_page') }}">Main Sales</a>
-        <a href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
-        <a href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
         <a href="{{ url_for('admin_users') }}">Admin</a>
         {% endif %}
         <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>

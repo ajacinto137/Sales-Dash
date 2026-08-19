@@ -563,16 +563,23 @@ def calculate_sales_volume_trend(df):
     the current month / independent of the page's period filter, same
     reasoning as calculate_calendar_sales()/calculate_monthly_forecast()
     (a mid-month pacing chart isn't meaningful squeezed into an arbitrary
-    period-filter window). `df` is expected to already be scoped to one
-    Sales Rep Group (app.py's state_filtered_normalized, the same
-    Team/NJ/NY/VA split calculate_calendar_sales()/
-    calculate_monthly_sales_trend() use) and, unlike every other function
-    in this module, already limited to reps holding the Sales Rep role
-    (app.py filters by user_store.list_sales_rep_role_names() before
-    calling this -- this function has no users/sales_reps knowledge of
-    its own and stays a pure function of whatever rows it's handed) --
-    this function only adds the outbound-channel and current-month
-    filtering on top.
+    period-filter window). `df` is expected to already be scoped to
+    exactly one Sales Rep TEAM (app.py's dashboard_page() filters
+    `normalized` down to one team's reps -- Junior/NJ - Sales Reps/
+    NY - Sales Reps/VA - Sales Reps, sales_reps.team, see
+    user_store.SALES_REP_TEAMS -- before calling this once per team) and,
+    unlike every other function in this module, already limited to reps
+    holding the Sales Rep role too (app.py filters by
+    user_store.list_sales_rep_role_names() first -- this function has no
+    users/sales_reps knowledge of its own and stays a pure function of
+    whatever rows it's handed) -- this function only adds the
+    outbound-channel and current-month filtering on top. Not to be
+    confused with the unrelated Team/NJ/NY/VA split
+    calculate_calendar_sales()/calculate_monthly_sales_trend() use for
+    the Sales Calendar & Monthly Sales Trend section -- that one groups
+    by the sale's `state` column, this one by the rep's own assigned
+    team; they are different groupings that happen to share some label
+    text.
 
     Only days 1..today are emitted (not the full month) so future dates
     never plot a false drop to zero -- see "Future Dates" in the feature

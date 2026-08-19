@@ -1,0 +1,42 @@
+<!-- ================= Admin Portal Navigation =================
+     Shared across every Admin Portal page -- the one reusable nav
+     structure for the whole portal (added 2026-08-19, replacing three
+     copies of a hand-duplicated <nav class="td-admin-tabs"> block that
+     used to live separately in admin/users.html, admin/import.html, and
+     admin/audit.html, each hardcoding its own "which tab is active"
+     markup). Expects `active_page` in context (every route below already
+     sets it) to decide which single tab gets `td-admin-tab-active` --
+     add a new admin tool by adding one entry to ADMIN_NAV_GROUPS (Python
+     side, if ever needed) or, since this list is currently small enough
+     to keep inline, one more <a> below plus a matching active_page value
+     on that route.
+
+     Two labelled groups, not one flat row: **Admin Tools** (user/role
+     management -- the portal's original purpose) and **Data Tools**
+     (Overview/Main Sales/Service Cancellations/Vision Packages, moved
+     here 2026-08-19 from the main top nav -- see _topnav.html's own
+     header comment and README.md "Admin Portal Navigation"). Every link
+     below points at a route already guarded server-side by
+     @auth.admin_required (see auth.py) -- this nav is a convenience, not
+     the real access control; hiding a link never substitutes for that
+     (same principle _topnav.html's own comment states). -->
+<nav class="td-admin-nav">
+    <div class="td-admin-nav-group">
+        <span class="td-admin-nav-group-label">Admin Tools</span>
+        <div class="td-admin-tabs">
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'admin_users' else '' }}" href="{{ url_for('admin_users') }}">User Management</a>
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'admin_sales_reps' else '' }}" href="{{ url_for('admin_sales_reps') }}">Sales Reps</a>
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'admin_import' else '' }}" href="{{ url_for('admin_import_page') }}">Import Users</a>
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'admin_audit' else '' }}" href="{{ url_for('admin_audit') }}">Audit Log</a>
+        </div>
+    </div>
+    <div class="td-admin-nav-group">
+        <span class="td-admin-nav-group-label">Data Tools</span>
+        <div class="td-admin-tabs">
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'overview' else '' }}" href="{{ url_for('overview') }}">Overview</a>
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'main_sales' else '' }}" href="{{ url_for('main_sales_page') }}">Main Sales</a>
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'cancellations' else '' }}" href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'vision_packages' else '' }}" href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
+        </div>
+    </div>
+</nav>

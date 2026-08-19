@@ -20,6 +20,18 @@
             </div>
 
             <nav class="nav">
+                <!-- These 4 pages (this file's only users -- overview.html,
+                     main_sales.html, cancellations.html, vision_packages.html)
+                     are Admin Portal "Data Tools" as of 2026-08-19 (see
+                     _admin_nav.html) -- this link is the way back into the
+                     rest of the portal (User Management, Sales Reps, Import,
+                     Audit Log), since this sidebar's own dark/light layout is
+                     kept as-is here rather than reskinned into the premium
+                     team_dashboard.css theme (an unrequested redesign of 4
+                     working data pages). -->
+                <a class="nav-link" href="{{ url_for('admin_users') }}">
+                    <span class="nav-dot"></span> ← Admin Portal
+                </a>
                 <a class="nav-link {{ 'active' if active_page == 'dashboard' else '' }}" href="{{ url_for('dashboard_page') }}">
                     <span class="nav-dot"></span> Dashboard
                 </a>

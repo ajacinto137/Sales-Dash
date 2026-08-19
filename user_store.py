@@ -34,6 +34,17 @@ import db_migrations
 ROLES = ["Admin", "Sales Rep", "Customer Success", "Other"]
 ROLE_SET = set(ROLES)
 
+# A Sales Rep's team/group, for org, permissions where appropriate, and
+# dashboard filtering (currently: the Sales Volume Over Time chart's team
+# selector -- see calculate_sales_volume_trend() in sales_metrics.py).
+# Lives on sales_reps.team, not users -- deliberately distinct from
+# users.role/ROLES above (a rep can belong to a team with zero users ever
+# logging in). No "unassigned" entry here on purpose -- NULL in the
+# database IS unassigned; see list_sales_reps()/update_sales_rep_team()
+# below and db_migrations.py migration 3.
+SALES_REP_TEAMS = ["Junior", "NJ - Sales Reps", "NY - Sales Reps", "VA - Sales Reps"]
+SALES_REP_TEAM_SET = set(SALES_REP_TEAMS)
+
 # Roles an Excel import row's Group column may resolve to -- Admin is
 # deliberately excluded (spec: "Admin should be managed separately").
 IMPORTABLE_ROLES = ["Sales Rep", "Customer Success", "Other"]
@@ -115,17 +126,80 @@ def sync_sales_reps(rep_names):
 
 
 def list_sales_reps():
-    """[{id, name}, ...] ordered by name. Empty list (never raises) if
-    appdb is unreachable."""
+    """[{id, name, team, last_seen_at}, ...] ordered by name -- team is
+    None for a rep with no Sales Rep Group assigned yet (see
+    SALES_REP_TEAMS above). Empty list (never raises) if appdb is
+    unreachable. Existing callers that only care about id/name (the
+    Admin Portal's user->rep mapping dropdown) are unaffected by the
+    added keys."""
     conn = None
     try:
         conn = db.get_appdb_connection()
         db_migrations.ensure_schema(conn)
         with conn.cursor() as cur:
-            cur.execute("SELECT id, name FROM sales_reps ORDER BY name")
-            return [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+            cur.execute("SELECT id, name, team, last_seen_at FROM sales_reps ORDER BY name")
+            return [{"id": r[0], "name": r[1], "team": r[2], "last_seen_at": r[3]} for r in cur.fetchall()]
     except Exception:
         return []
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def list_sales_reps_by_team():
+    """{team: [rep_name, ...]} for every value in SALES_REP_TEAMS, each
+    list sorted by name -- the exact grouping the Sales Volume Over
+    Time's team selector filters by (app.py's dashboard_page()). Reps
+    with no team assigned (team IS NULL) are omitted entirely, not bucketed
+    under a catch-all -- an unassigned rep should show in no team view
+    rather than an incorrect one (see SALES_REP_TEAMS above / README.md).
+    {} (never raises) if appdb is unreachable, same convention as
+    list_sales_reps()."""
+    conn = None
+    try:
+        conn = db.get_appdb_connection()
+        db_migrations.ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT team, name FROM sales_reps WHERE team = ANY(%s) ORDER BY team, name",
+                (SALES_REP_TEAMS,),
+            )
+            grouped = {team: [] for team in SALES_REP_TEAMS}
+            for team, name in cur.fetchall():
+                grouped[team].append(name)
+            return grouped
+    except Exception:
+        return {}
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def update_sales_rep_team(rep_id, team):
+    """Sets (or clears, if team is None/empty) one rep's Sales Rep Group.
+    Deliberately touches ONLY sales_reps.team -- never sale rows,
+    account_attention, or needs_attention_tracking, so a team change can
+    never alter a rep's Needs Attention data, Install Rate, or historical
+    sales (see db_migrations.py migration 3 and README.md). Returns
+    (ok, error)."""
+    team = (team or "").strip() or None
+    if team is not None and team not in SALES_REP_TEAM_SET:
+        return False, "Invalid team."
+    conn = None
+    try:
+        conn = db.get_appdb_connection()
+        db_migrations.ensure_schema(conn)
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE sales_reps SET team = %s WHERE id = %s",
+                    (team, rep_id),
+                )
+                if cur.rowcount == 0:
+                    return False, "Sales Rep not found."
+        return True, None
+    except Exception as exc:
+        return False, db.sanitize_error(exc)
     finally:
         if conn is not None:
             conn.close()
