@@ -1227,12 +1227,16 @@ def marketing_dashboard_page():
     """Marketing Channel Report -- live version of the same self-contained
     report scripts/generate_marketing_report.py can also write to a
     standalone file (see marketing_cleaning.py's module docstring for why
-    there are two render paths sharing one template/pipeline). Re-runs
-    the FULL pipeline -- fetch PlanetWeb, clean, tag, guardrails -- on
-    EVERY request, by explicit request ("I want the data to be cleaned
-    every time on refresh"), so there is no caching here and no
-    data_store/ensure_data_loaded() involved; a request takes roughly
-    10s against ~15k PlanetWeb rows.
+    there are two render paths sharing one template/pipeline). Runs the
+    FULL pipeline -- fetch PlanetWeb, clean, tag, guardrails -- via
+    marketing_cleaning.run_cleaning_cached(), which only actually
+    re-fetches/re-cleans once an hour (CACHE_TTL_SECONDS in
+    marketing_cleaning.py) rather than on every request -- changed
+    2026-08-20, by request, after "clean on every refresh" (the original
+    behavior, ~10s against ~15k PlanetWeb rows) proved too slow for real
+    usage. Still no data_store/ensure_data_loaded() involved -- this
+    pipeline has its own separate cache, unrelated to the main
+    dashboard's.
 
     Returns the rendered HTML directly (not render_template()) -- the
     report is entirely self-contained (its own <style>/<script>, no

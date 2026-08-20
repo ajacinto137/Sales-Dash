@@ -1653,13 +1653,22 @@ a small vanilla-JS factory function, the same pattern
 ## Marketing Dashboard
 
 `/marketing` (added 2026-08-19, rewritten 2026-08-20) is the Marketing
-Channel Report, served live: it re-runs the full data-cleaning +
+Channel Report, served live: it runs the full data-cleaning +
 channel-attribution pipeline (`marketing_cleaning.py`) against PlanetWeb
-on **every page load**, by explicit request — no caching, so a refresh
-always reflects the current database. A request takes roughly 10 seconds
-against ~15,000 rows. It is a normal dashboard page — gated by
-`@auth.login_required` like `/dashboard`, **not** part of the Admin
-Portal.
+through `run_cleaning_cached()`, which caches the result in-memory for
+**one hour** (`CACHE_TTL_SECONDS`) rather than re-running it on every
+page load. Originally ran the full ~10-second pipeline (against ~15,000
+rows) on every single request, by explicit request ("clean on every
+refresh") — changed to hourly caching 2026-08-20, once that made real
+page loads too slow. A cold/expired cache still costs ~10 seconds; every
+other load within that hour is near-instant (served from memory, no
+PlanetWeb round trip at all). `/marketing/available-now` (below) reads
+the exact same cache, so hitting both routes inside the same hour never
+triggers more than one real pipeline run. A failed pull (PlanetWeb
+unreachable, etc.) is never cached — the next request retries
+immediately rather than the whole page being stuck erroring for an hour.
+It is a normal dashboard page — gated by `@auth.login_required` like
+`/dashboard`, **not** part of the Admin Portal.
 
 **For the SQL query, the cleaning rules, and the 5-tier channel
 attribution model in full detail, see `MARKETING_DASHBOARD.md`** — that

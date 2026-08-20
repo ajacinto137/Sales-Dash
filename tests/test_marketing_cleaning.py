@@ -318,3 +318,76 @@ def test_build_dashboard_payload_shape_and_no_dedup():
     assert payload["raw_rows"] == 3
     assert len(payload["d"]) == 3  # not deduplicated -- dedup is a client-side, date-range-scoped concern
     assert payload["d"] == [0, 0, 2]
+
+
+# ---------------- run_cleaning_cached() -- hourly cache (added 2026-08-20) ----------------
+# mc.run_cleaning and mc.time.monotonic are monkeypatched directly (not via
+# the pytest fixture) and always restored in a finally block, since these
+# are module-level globals shared with every other test in this file/
+# session -- a leaked patch here would silently break unrelated tests.
+
+def _reset_cache():
+    mc._cache = {"output_rows": None, "guardrail_report": None, "computed_at": None}
+
+
+def test_run_cleaning_cached_reuses_result_within_ttl():
+    _reset_cache()
+    calls = {"n": 0}
+    real_run_cleaning = mc.run_cleaning
+    real_monotonic = mc.time.monotonic
+    clock = [1000.0]
+    try:
+        mc.run_cleaning = lambda: (calls.__setitem__("n", calls["n"] + 1), ([{"row": calls["n"]}], {"warnings": [], "info": []}))[1]
+        mc.time.monotonic = lambda: clock[0]
+
+        rows1, _ = mc.run_cleaning_cached()
+        assert calls["n"] == 1
+        assert rows1 == [{"row": 1}]
+
+        clock[0] += 1800  # 30 minutes later, still within the 1-hour TTL
+        rows2, _ = mc.run_cleaning_cached()
+        assert calls["n"] == 1, "should have served the cached result, not re-run the pipeline"
+        assert rows2 == [{"row": 1}]
+    finally:
+        mc.run_cleaning = real_run_cleaning
+        mc.time.monotonic = real_monotonic
+        _reset_cache()
+
+
+def test_run_cleaning_cached_refreshes_after_ttl_expires():
+    _reset_cache()
+    calls = {"n": 0}
+    real_run_cleaning = mc.run_cleaning
+    real_monotonic = mc.time.monotonic
+    clock = [1000.0]
+    try:
+        mc.run_cleaning = lambda: (calls.__setitem__("n", calls["n"] + 1), ([{"row": calls["n"]}], {"warnings": [], "info": []}))[1]
+        mc.time.monotonic = lambda: clock[0]
+
+        mc.run_cleaning_cached()
+        clock[0] += mc.CACHE_TTL_SECONDS + 1
+        rows, _ = mc.run_cleaning_cached()
+        assert calls["n"] == 2, "cache should have expired and triggered a real re-run"
+        assert rows == [{"row": 2}]
+    finally:
+        mc.run_cleaning = real_run_cleaning
+        mc.time.monotonic = real_monotonic
+        _reset_cache()
+
+
+def test_run_cleaning_cached_does_not_cache_a_failed_pull():
+    _reset_cache()
+    calls = {"n": 0}
+    real_run_cleaning = mc.run_cleaning
+    try:
+        mc.run_cleaning = lambda: (calls.__setitem__("n", calls["n"] + 1), ([], {"warnings": ["down"], "info": []}))[1]
+
+        rows1, guardrail1 = mc.run_cleaning_cached()
+        assert rows1 == []
+        assert calls["n"] == 1
+
+        rows2, _ = mc.run_cleaning_cached()
+        assert calls["n"] == 2, "a failed pull must not be cached -- the next call should retry immediately"
+    finally:
+        mc.run_cleaning = real_run_cleaning
+        _reset_cache()

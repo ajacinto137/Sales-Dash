@@ -250,13 +250,21 @@ running.
 
 ## 4. Where this runs, and when
 
-- **Live, every page load** — `app.py`'s `/marketing` route calls
-  `marketing_cleaning.generate_report()`, which re-runs the entire pipeline
-  above (SQL fetch → clean → tag → guardrails) fresh, every single time the
-  page is requested. No caching, by design — refreshing the page gets you
-  current data. This takes roughly 10 seconds against ~15,000 rows; that's
-  the query + Python attribution cost, not something to optimize away unless
-  it becomes a real problem.
+- **Live, cached for one hour** — `app.py`'s `/marketing` route calls
+  `marketing_cleaning.generate_report()`, which runs the entire pipeline
+  above (SQL fetch → clean → tag → guardrails) through
+  `run_cleaning_cached()`. That function only actually re-runs the pipeline
+  once every `CACHE_TTL_SECONDS` (1 hour); every other page load in between
+  is served from an in-memory cache instead, with no PlanetWeb round trip.
+  Originally re-ran the full pipeline on every single request ("clean on
+  every refresh," ~10 seconds against ~15,000 rows) — switched to hourly
+  caching 2026-08-20 once that turned out to be too slow for real usage. A
+  failed pull is never cached, so a transient PlanetWeb outage doesn't lock
+  the page into an error state for the rest of the hour — the next request
+  just retries. `/marketing/available-now` (the "Available Now" KPI card's
+  drill-down) reads this exact same cache rather than pulling independently,
+  so visiting both pages inside the same hour still costs at most one real
+  pipeline run.
 - **On demand, as a standalone file** —
   `python3 scripts/generate_marketing_report.py` runs the exact same
   pipeline once and writes a single self-contained HTML file (no server

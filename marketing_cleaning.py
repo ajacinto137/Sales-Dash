@@ -3,11 +3,14 @@ Report -- rendered TWO ways from the exact same template
 (templates/marketing_report_template.html) and the exact same pipeline
 below, via render_report_html():
 
-  1. Live, at app.py's /marketing route -- re-runs the FULL pipeline
-     (fetch + clean + tag + guardrails) on every request, so the page is
-     always current as of that request (no caching -- by request, since
-     the whole point is "clean on every refresh"; a request typically
-     takes ~10s against ~15k PlanetWeb rows).
+  1. Live, at app.py's /marketing route -- runs the FULL pipeline
+     (fetch + clean + tag + guardrails) via run_cleaning_cached(), which
+     only actually re-fetches/re-cleans once an hour (CACHE_TTL_SECONDS)
+     and serves the cached result the rest of the time. Originally ran on
+     every single request ("clean on every refresh"), but a ~10s pipeline
+     run against ~15k PlanetWeb rows on every page view proved too slow
+     in practice -- changed to hourly caching 2026-08-20, by request. See
+     run_cleaning_cached()'s own docstring for the caching mechanics.
   2. As a standalone, self-contained HTML file via
      scripts/generate_marketing_report.py -- same output, generated once
      on demand, meant for sharing outside the app (e.g. with an agency
@@ -58,6 +61,8 @@ import base64
 import json
 import os
 import re
+import threading
+import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -798,6 +803,58 @@ def run_cleaning():
 
 
 # ============================================================
+# Hourly cache (added 2026-08-20, replacing "clean on every refresh")
+# ============================================================
+# run_cleaning() takes ~10s against ~15k PlanetWeb rows; re-running it on
+# every single page view (the original, explicitly-requested behavior --
+# see this module's own header comment history) made /marketing too slow
+# in practice, so this now caches its result for CACHE_TTL_SECONDS and
+# only actually re-fetches/re-cleans when that expires. Both live callers
+# below -- generate_report() (the /marketing route) and
+# get_available_now_accounts() (/marketing/available-now) -- read from
+# this SAME cache via run_cleaning_cached(), so hitting both routes in
+# the same hour triggers at most one real pipeline run, not two, and both
+# always agree on what "the current data" is.
+
+CACHE_TTL_SECONDS = 3600  # 1 hour, by request
+
+_cache_lock = threading.Lock()
+_cache = {"output_rows": None, "guardrail_report": None, "computed_at": None}
+
+
+def run_cleaning_cached():
+    """Same (output_rows, guardrail_report) shape as run_cleaning(), but
+    only actually re-runs the full fetch+clean+tag+guardrail pipeline
+    once every CACHE_TTL_SECONDS -- every other call within that window
+    returns the cached result immediately (no PlanetWeb round trip at
+    all). time.monotonic(), not wall-clock time, so this can't be thrown
+    off by a system clock adjustment.
+
+    A FAILED refresh (run_cleaning() returning empty output_rows -- see
+    its own docstring) is deliberately NOT cached: it doesn't reset
+    computed_at, so the very next request retries immediately instead of
+    the whole dashboard being stuck showing "Could not fetch marketing
+    data" for up to an hour because of one transient PlanetWeb blip. Only
+    a genuinely successful pull starts a new hour-long window.
+
+    Guarded by _cache_lock so two requests that both arrive while the
+    cache is cold/expired can't each kick off their own redundant ~10s
+    pipeline run at the same time (a "stampede") -- the second simply
+    waits for the first's result and reuses it."""
+    with _cache_lock:
+        now = time.monotonic()
+        if _cache["computed_at"] is not None and (now - _cache["computed_at"]) < CACHE_TTL_SECONDS:
+            return _cache["output_rows"], _cache["guardrail_report"]
+
+        output_rows, guardrail_report = run_cleaning()
+        if output_rows:
+            _cache["output_rows"] = output_rows
+            _cache["guardrail_report"] = guardrail_report
+            _cache["computed_at"] = now
+        return output_rows, guardrail_report
+
+
+# ============================================================
 # Available Now account lookup (name/address/created date) --
 # authenticated-only, NEVER embedded in the shareable/exportable Marketing
 # Channel Report. Backs app.py's /marketing/available-now route, reached
@@ -871,9 +928,11 @@ def get_available_now_accounts(from_date, to_date):
     other (each counted individually, never treated as duplicates of one
     another just because both lack an identifier).
 
-    Runs the FULL cleaning pipeline fresh (see run_cleaning()) -- no
-    caching, same "clean on every refresh" convention as the rest of this
-    pipeline.
+    Reads the same hourly-cached pipeline output generate_report() does
+    (run_cleaning_cached() -- see that function's docstring) rather than
+    running its own independent fetch+clean, so this route and
+    /marketing always agree on "the current data" and hitting both within
+    the same hour never triggers two redundant PlanetWeb pulls.
 
     IMPORTANT, verified against real data: only about 13% of ALL
     marketing form rows carry a QuoteID at all (86.7% are NULL, checked
@@ -897,7 +956,7 @@ def get_available_now_accounts(from_date, to_date):
     city_state_zip, created_date} dicts sorted by created_date ascending,
     and stats is {matched, no_quote_on_file, quote_not_found}. Never
     raises."""
-    output_rows, _guardrail_report = run_cleaning()
+    output_rows, _guardrail_report = run_cleaning_cached()
 
     scoped = [
         r for r in output_rows
@@ -1097,10 +1156,19 @@ def render_report_html(payload, guardrail_report, back_url=None, accounts_url=No
 
 
 def generate_report(back_url=None, accounts_url=None):
-    """Runs the full pipeline once and returns the rendered HTML string
+    """Runs the pipeline (via run_cleaning_cached() -- see its own
+    docstring for the hourly cache) and returns the rendered HTML string
     -- the one call both render entry points (the live route and the
-    standalone script) make."""
-    output_rows, guardrail_report = run_cleaning()
+    standalone script) make.
+
+    Safe for scripts/generate_marketing_report.py too, even though that
+    script wants a genuinely fresh pull every time it's run: the cache is
+    an in-memory, process-local dict, and the script is a separate
+    one-shot `python3` process each time -- it always starts with an
+    empty/expired cache, so run_cleaning_cached() always does a real
+    fetch+clean there. Only the long-running Flask app process (the
+    /marketing route) ever actually serves a cached result."""
+    output_rows, guardrail_report = run_cleaning_cached()
     payload = build_dashboard_payload(output_rows)
     html = render_report_html(payload, guardrail_report, back_url=back_url, accounts_url=accounts_url)
     return html, guardrail_report
