@@ -261,10 +261,7 @@ running.
   caching 2026-08-20 once that turned out to be too slow for real usage. A
   failed pull is never cached, so a transient PlanetWeb outage doesn't lock
   the page into an error state for the rest of the hour — the next request
-  just retries. `/marketing/available-now` (the "Available Now" KPI card's
-  drill-down) reads this exact same cache rather than pulling independently,
-  so visiting both pages inside the same hour still costs at most one real
-  pipeline run.
+  just retries.
 - **On demand, as a standalone file** —
   `python3 scripts/generate_marketing_report.py` runs the exact same
   pipeline once and writes a single self-contained HTML file (no server
@@ -301,34 +298,7 @@ rather than silently skipping the check.
 
 ---
 
-## 6. "Available Now" account drill-down (name/address)
-
-Clicking the **Available Now (ads)** KPI card on the live `/marketing` page
-opens a Bulk Account View (`/marketing/available-now?from=...&to=...`,
-`marketing_cleaning.get_available_now_accounts()`) showing the real name,
-address, and created date behind that number — the one place in this whole
-feature that shows customer PII, so it's an authenticated-only route, never
-reachable from the standalone/shareable report file (that file has no
-backend to query, and may end up shared outside this app entirely).
-
-**Only ~13% of leads can be matched to a name/address, and this is a real
-data-shape limit, not a bug.** Matching requires a `QuoteID`, which
-PlanetWeb only assigns once a submission reaches actual quote generation —
-verified directly: 86.7% of all marketing form rows have a `NULL` QuoteID.
-Two other paths were tried and ruled out during development: PlanetWeb's
-archived Ubersmith quote/client tables are a dead system (stopped
-2023-09-05, an entirely different and much smaller ID space — matched
-**zero** real rows when joined directly), and `email_id` is a salted/keyed
-hash this app has no way to reverse (several plausible hash-of-plaintext-
-email schemes were tested against real matched pairs; none matched). The
-account view labels the two remaining outcomes distinctly rather than
-lumping them into one generic "no match": **"no quote on file"** (the
-dominant, expected case — the person never advanced that far) vs. **"quote
-on file, no matching form record"** (a genuine, rarer lookup gap). Neither
-case drops the row — the account list's count always matches the KPI's
-count for the same range.
-
-## 7. Known limitations, in one place
+## 6. Known limitations, in one place
 
 - **CPA is directional except the blended figure.** Blended CPA (spend ÷
   Available Now ad entries) needs no assumption. Every other CPA — by
@@ -341,7 +311,6 @@ count for the same range.
   auto-update as new days of data arrive, so CPA accuracy will drift the
   longer this constant goes un-refreshed; update it whenever a current
   total is available.
-- **Only ~13% of leads can show a name/address** — see §6 above.
 - **MarketingToken sub-classification is a calibrated heuristic**, not a
   maintained lookup — see Tier 3 above.
 - **State is a zip3-prefix approximation**, not a per-zip lookup — see §2

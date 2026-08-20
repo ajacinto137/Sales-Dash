@@ -1662,13 +1662,21 @@ rows) on every single request, by explicit request ("clean on every
 refresh") — changed to hourly caching 2026-08-20, once that made real
 page loads too slow. A cold/expired cache still costs ~10 seconds; every
 other load within that hour is near-instant (served from memory, no
-PlanetWeb round trip at all). `/marketing/available-now` (below) reads
-the exact same cache, so hitting both routes inside the same hour never
-triggers more than one real pipeline run. A failed pull (PlanetWeb
-unreachable, etc.) is never cached — the next request retries
-immediately rather than the whole page being stuck erroring for an hour.
-It is a normal dashboard page — gated by `@auth.login_required` like
-`/dashboard`, **not** part of the Admin Portal.
+PlanetWeb round trip at all). A failed pull (PlanetWeb unreachable, etc.)
+is never cached — the next request retries immediately rather than the
+whole page being stuck erroring for an hour. It is a normal dashboard
+page — gated by `@auth.login_required` like `/dashboard`, **not** part
+of the Admin Portal.
+
+The **Available Now (ads)** KPI card's click-through to a real
+name/address account list (`/marketing/available-now`,
+`marketing_cleaning.get_available_now_accounts()`) was **removed
+2026-08-20, by request** — that card is now a plain, non-clickable
+number like every other KPI card on the report. Removed entirely rather
+than just unlinked: the route, the PII lookup against `FTTPFormData`
+(`_fetch_form_data_by_quote_id()`), and the report's own
+`ACCOUNTS_BASE_URL`/`accountsUrl()` JS are all gone, not just hidden —
+see git history if this drill-down needs to come back.
 
 **For the SQL query, the cleaning rules, and the 5-tier channel
 attribution model in full detail, see `MARKETING_DASHBOARD.md`** — that

@@ -1242,48 +1242,16 @@ def marketing_dashboard_page():
     report is entirely self-contained (its own <style>/<script>, no
     team_dashboard.css, no _topnav.html) so it can be shared as a plain
     file outside this app unchanged; back_url adds a small "Dashboard"
-    link back into the rest of the app, and accounts_url makes the
-    "Available Now (ads)" KPI card a clickable drill-down into real
-    name/address data (see marketing_available_now_accounts() below) --
-    both only for this, the live-served copy. The standalone file has
-    neither: no app to link back into, and no backend to query PII from."""
-    html, _guardrail_report = marketing_cleaning.generate_report(
-        back_url=url_for("dashboard_page"),
-        accounts_url=url_for("marketing_available_now_accounts"),
-    )
+    link back into the rest of the app, live-served copy only. The
+    standalone file has none: no app to link back into.
+
+    The "Available Now (ads)" KPI card used to be a clickable drill-down
+    into real name/address data (a dedicated /marketing/available-now
+    route + marketing_cleaning.get_available_now_accounts()) -- removed
+    2026-08-20, by request. The KPI card is now a plain, non-clickable
+    number like every other KPI card on this report."""
+    html, _guardrail_report = marketing_cleaning.generate_report(back_url=url_for("dashboard_page"))
     return html
-
-
-@app.route("/marketing/available-now")
-@auth.login_required
-def marketing_available_now_accounts():
-    """Bulk Account View drill-down for the live Marketing Channel
-    Report's "Available Now (ads)" KPI card -- real name/address/created
-    date for the Paid + Available Now leads in the clicked date range
-    (see marketing_cleaning.get_available_now_accounts()). Authenticated-
-    only, like every other route in this app; this is the one place in
-    the whole Marketing Channel Report feature that shows real customer
-    PII -- deliberately never embedded in the shareable/exportable report
-    itself (see that function's own docstring)."""
-    try:
-        from_date = datetime.strptime(request.args.get("from", ""), "%Y-%m-%d").date()
-        to_date = datetime.strptime(request.args.get("to", ""), "%Y-%m-%d").date()
-    except (TypeError, ValueError):
-        from_date, to_date = marketing_data.BASE_START_DATE, marketing_cleaning._today()
-    from_date = max(from_date, marketing_data.BASE_START_DATE)
-    to_date = max(to_date, from_date)
-
-    accounts, stats = marketing_cleaning.get_available_now_accounts(from_date, to_date)
-
-    return render_template(
-        "marketing_available_now.html",
-        active_page="marketing",
-        accounts=accounts,
-        stats=stats,
-        start_date=from_date.strftime("%-m/%-d/%Y"),
-        end_date=to_date.strftime("%-m/%-d/%Y"),
-        last_refreshed=data_store["last_refreshed"],
-    )
 
 
 @app.route("/cancellations")

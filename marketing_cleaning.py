@@ -809,12 +809,12 @@ def run_cleaning():
 # every single page view (the original, explicitly-requested behavior --
 # see this module's own header comment history) made /marketing too slow
 # in practice, so this now caches its result for CACHE_TTL_SECONDS and
-# only actually re-fetches/re-cleans when that expires. Both live callers
-# below -- generate_report() (the /marketing route) and
-# get_available_now_accounts() (/marketing/available-now) -- read from
-# this SAME cache via run_cleaning_cached(), so hitting both routes in
-# the same hour triggers at most one real pipeline run, not two, and both
-# always agree on what "the current data" is.
+# only actually re-fetches/re-cleans when that expires. generate_report()
+# (the /marketing route) is the only live caller today; run_cleaning_cached()
+# is still its own function (not inlined) so a future second consumer of
+# this same pipeline output can share the cache instead of re-fetching
+# independently, same as the removed Available Now accounts drill-down
+# used to (see git history if that feature ever needs to come back).
 
 CACHE_TTL_SECONDS = 3600  # 1 hour, by request
 
@@ -852,151 +852,6 @@ def run_cleaning_cached():
             _cache["guardrail_report"] = guardrail_report
             _cache["computed_at"] = now
         return output_rows, guardrail_report
-
-
-# ============================================================
-# Available Now account lookup (name/address/created date) --
-# authenticated-only, NEVER embedded in the shareable/exportable Marketing
-# Channel Report. Backs app.py's /marketing/available-now route, reached
-# by clicking the "Available Now (ads)" KPI card on the live report.
-# ============================================================
-
-_ACCOUNT_LOOKUP_COLUMNS = ["QuoteID", "FirstName", "LastName", "Address", "ApartmentSuite", "City", "State", "Zipcode"]
-
-
-def _fetch_form_data_by_quote_id(quote_ids):
-    """Looks up real name/address for a set of QuoteIDs directly against
-    FTTPFormData -- the raw table View_FormDataAnalytics is itself built
-    from (same InsertDate/AvailabilityID/QuoteID values), and the CURRENT
-    live one: unlike PlanetWeb's archived Ubersmith quote/client tables
-    (which stop in September 2023 and use an entirely different, much
-    smaller ID space -- confirmed by testing that join directly, it
-    matched zero real Available-Now rows), a QuoteID from this app's
-    marketing data joins cleanly here. Never raises; returns {} on any
-    failure so a lookup problem degrades to "no matching form record"
-    per account rather than breaking the whole page."""
-    if not quote_ids:
-        return {}
-    conn = None
-    try:
-        conn = db.get_planetweb_connection()
-        cursor = conn.cursor()
-        placeholders = ",".join("?" for _ in quote_ids)
-        select_list = ", ".join(f"[{c}]" for c in _ACCOUNT_LOOKUP_COLUMNS)
-        cursor.execute(
-            f"SELECT {select_list} FROM [PlanetWeb].[dbo].[FTTPFormData] WHERE [QuoteID] IN ({placeholders})",
-            list(quote_ids),
-        )
-        return {row[0]: dict(zip(_ACCOUNT_LOOKUP_COLUMNS, row)) for row in cursor.fetchall()}
-    except Exception as exc:
-        print("=" * 60)
-        print("AVAILABLE NOW ACCOUNT LOOKUP FAILED")
-        print("=" * 60)
-        print(f"Server:   {db.PLANETWEB_HOST}")
-        print(f"Database: {db.PLANETWEB_DATABASE}")
-        print(f"Error:    {exc}")
-        print("=" * 60)
-        return {}
-    finally:
-        if conn is not None:
-            conn.close()
-
-
-def _format_account(form):
-    name = f"{(form.get('FirstName') or '').strip()} {(form.get('LastName') or '').strip()}".strip() or "—"
-    address = (form.get("Address") or "").strip() or "—"
-    apt = (form.get("ApartmentSuite") or "").strip()
-    if apt:
-        address = f"{address}, {apt}"
-    city = (form.get("City") or "").strip()
-    state = (form.get("State") or "").strip()
-    zip5 = (form.get("Zipcode") or "").strip()
-    city_state_zip = ", ".join(p for p in [city, state] if p)
-    if zip5:
-        city_state_zip = f"{city_state_zip} {zip5}".strip()
-    return name, address, city_state_zip or "—"
-
-
-def get_available_now_accounts(from_date, to_date):
-    """Real name/address/created-date for the Paid + Available Now leads
-    in [from_date, to_date] -- backs the "Available Now" KPI card's bulk
-    account view drill-down. Deduplicates by email_id within the range,
-    keeping the earliest InsertDate per submitter -- the SAME semantics
-    the report's own client-side computeDedupedIndices() uses for that
-    KPI -- so the row count here always matches what the KPI showed for
-    the same range. Rows with no email_id are never merged with each
-    other (each counted individually, never treated as duplicates of one
-    another just because both lack an identifier).
-
-    Reads the same hourly-cached pipeline output generate_report() does
-    (run_cleaning_cached() -- see that function's docstring) rather than
-    running its own independent fetch+clean, so this route and
-    /marketing always agree on "the current data" and hitting both within
-    the same hour never triggers two redundant PlanetWeb pulls.
-
-    IMPORTANT, verified against real data: only about 13% of ALL
-    marketing form rows carry a QuoteID at all (86.7% are NULL, checked
-    directly via SQL during development) -- a QuoteID is only assigned
-    once a submission reaches actual quote generation, not at every
-    earlier funnel step. There is no other reliable join key available:
-    email_id is a salted/keyed hash this app does not have the secret
-    for (tested several plausible hash-of-plaintext-email schemes against
-    real matched pairs during development; none matched), and PlanetWeb's
-    archived Ubersmith quote/client tables are a dead system (stop
-    2023-09, an entirely different, much smaller ID space) that matched
-    ZERO real rows when tested directly. So a majority of accounts here
-    will legitimately show "No quote on file" -- this is the expected,
-    dominant case, not a lookup failure, and is labeled distinctly from
-    the rarer case of a real QuoteID with no FTTPFormData row found
-    ("Quote on file, no matching form record") so the two are never
-    conflated. Neither case drops the row -- the list's count always
-    matches the KPI's count for the same range.
-
-    Returns (accounts, stats) where accounts is a list of {name, address,
-    city_state_zip, created_date} dicts sorted by created_date ascending,
-    and stats is {matched, no_quote_on_file, quote_not_found}. Never
-    raises."""
-    output_rows, _guardrail_report = run_cleaning_cached()
-
-    scoped = [
-        r for r in output_rows
-        if r["channel_group"] == "Paid" and r["AvailabilityID"] == 1
-        and r["InsertDate"] is not None and from_date <= r["InsertDate"].date() <= to_date
-    ]
-
-    earliest_by_email = {}
-    for r in scoped:
-        email = r.get("email_id")
-        key = email if email else id(r)  # missing email_id -> never grouped with another row
-        existing = earliest_by_email.get(key)
-        if existing is None or r["InsertDate"] < existing["InsertDate"]:
-            earliest_by_email[key] = r
-    deduped_rows = sorted(earliest_by_email.values(), key=lambda r: r["InsertDate"])
-
-    quote_ids = {r["QuoteID"] for r in deduped_rows if r.get("QuoteID")}
-    form_by_quote = _fetch_form_data_by_quote_id(quote_ids)
-
-    accounts = []
-    stats = {"matched": 0, "no_quote_on_file": 0, "quote_not_found": 0}
-    for r in deduped_rows:
-        quote_id = r.get("QuoteID")
-        form = form_by_quote.get(quote_id) if quote_id else None
-        if form:
-            name, address, city_state_zip = _format_account(form)
-            stats["matched"] += 1
-        elif quote_id:
-            name, address, city_state_zip = "— (quote on file, no matching form record)", "—", "—"
-            stats["quote_not_found"] += 1
-        else:
-            name, address, city_state_zip = "— (no quote on file)", "—", "—"
-            stats["no_quote_on_file"] += 1
-        accounts.append({
-            "name": name,
-            "address": address,
-            "city_state_zip": city_state_zip,
-            "created_date": r["InsertDate"].strftime("%-m/%-d/%Y %-I:%M %p"),
-        })
-    return accounts, stats
 
 
 # ============================================================
@@ -1115,28 +970,18 @@ _DATA_PLACEHOLDER = "/*__MARKETING_DATA__*/"
 _BACK_LINK_PLACEHOLDER = "<!--__BACK_LINK__-->"
 
 
-def render_report_html(payload, guardrail_report, back_url=None, accounts_url=None):
+def render_report_html(payload, guardrail_report, back_url=None):
     """Fills templates/marketing_report_template.html's data placeholder
     with this run's payload/guardrails, and its back-link placeholder
     with a small "back to Dashboard" link when `back_url` is given (the
     live Flask route passes one; the standalone generator script does
     not -- a shared file meant for an agency partner with no login has
-    nothing to link back to).
-
-    `accounts_url`, when given, is embedded as a JS variable
-    (ACCOUNTS_BASE_URL) the report's own JS uses to make the "Available
-    Now (ads)" KPI card a clickable drill-down into
-    /marketing/available-now?from=...&to=... (real name/address data --
-    an authenticated-only route). Left null for the standalone file --
-    there is no backend there to query PII from, and that file may end
-    up shared outside this app entirely, so the report never even offers
-    the click when there is nowhere for it to safely go."""
+    nothing to link back to)."""
     with open(TEMPLATE_PATH) as f:
         template = f.read()
 
     data_js = "var D = " + json.dumps(payload, separators=(",", ":")) + ";\n"
     data_js += "var GUARDRAILS = " + json.dumps({"warnings": guardrail_report.get("warnings", [])}) + ";\n"
-    data_js += "var ACCOUNTS_BASE_URL = " + json.dumps(accounts_url) + ";\n"
 
     if _DATA_PLACEHOLDER not in template:
         raise RuntimeError(f"Template is missing the {_DATA_PLACEHOLDER} placeholder")
@@ -1155,7 +1000,7 @@ def render_report_html(payload, guardrail_report, back_url=None, accounts_url=No
     return html
 
 
-def generate_report(back_url=None, accounts_url=None):
+def generate_report(back_url=None):
     """Runs the pipeline (via run_cleaning_cached() -- see its own
     docstring for the hourly cache) and returns the rendered HTML string
     -- the one call both render entry points (the live route and the
@@ -1170,5 +1015,5 @@ def generate_report(back_url=None, accounts_url=None):
     /marketing route) ever actually serves a cached result."""
     output_rows, guardrail_report = run_cleaning_cached()
     payload = build_dashboard_payload(output_rows)
-    html = render_report_html(payload, guardrail_report, back_url=back_url, accounts_url=accounts_url)
+    html = render_report_html(payload, guardrail_report, back_url=back_url)
     return html, guardrail_report
