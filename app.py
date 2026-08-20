@@ -11,6 +11,9 @@ import auth
 import db
 import email_service
 import import_service
+import marketing_cleaning
+import marketing_data
+import marketing_metrics
 import needs_attention_service
 import permissions
 import user_store
@@ -1218,6 +1221,67 @@ def all_sales_view():
     )
 
 
+@app.route("/marketing")
+@auth.login_required
+def marketing_dashboard_page():
+    """Marketing Channel Report -- live version of the same self-contained
+    report scripts/generate_marketing_report.py can also write to a
+    standalone file (see marketing_cleaning.py's module docstring for why
+    there are two render paths sharing one template/pipeline). Re-runs
+    the FULL pipeline -- fetch PlanetWeb, clean, tag, guardrails -- on
+    EVERY request, by explicit request ("I want the data to be cleaned
+    every time on refresh"), so there is no caching here and no
+    data_store/ensure_data_loaded() involved; a request takes roughly
+    10s against ~15k PlanetWeb rows.
+
+    Returns the rendered HTML directly (not render_template()) -- the
+    report is entirely self-contained (its own <style>/<script>, no
+    team_dashboard.css, no _topnav.html) so it can be shared as a plain
+    file outside this app unchanged; back_url adds a small "Dashboard"
+    link back into the rest of the app, and accounts_url makes the
+    "Available Now (ads)" KPI card a clickable drill-down into real
+    name/address data (see marketing_available_now_accounts() below) --
+    both only for this, the live-served copy. The standalone file has
+    neither: no app to link back into, and no backend to query PII from."""
+    html, _guardrail_report = marketing_cleaning.generate_report(
+        back_url=url_for("dashboard_page"),
+        accounts_url=url_for("marketing_available_now_accounts"),
+    )
+    return html
+
+
+@app.route("/marketing/available-now")
+@auth.login_required
+def marketing_available_now_accounts():
+    """Bulk Account View drill-down for the live Marketing Channel
+    Report's "Available Now (ads)" KPI card -- real name/address/created
+    date for the Paid + Available Now leads in the clicked date range
+    (see marketing_cleaning.get_available_now_accounts()). Authenticated-
+    only, like every other route in this app; this is the one place in
+    the whole Marketing Channel Report feature that shows real customer
+    PII -- deliberately never embedded in the shareable/exportable report
+    itself (see that function's own docstring)."""
+    try:
+        from_date = datetime.strptime(request.args.get("from", ""), "%Y-%m-%d").date()
+        to_date = datetime.strptime(request.args.get("to", ""), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        from_date, to_date = marketing_data.BASE_START_DATE, marketing_cleaning._today()
+    from_date = max(from_date, marketing_data.BASE_START_DATE)
+    to_date = max(to_date, from_date)
+
+    accounts, stats = marketing_cleaning.get_available_now_accounts(from_date, to_date)
+
+    return render_template(
+        "marketing_available_now.html",
+        active_page="marketing",
+        accounts=accounts,
+        stats=stats,
+        start_date=from_date.strftime("%-m/%-d/%Y"),
+        end_date=to_date.strftime("%-m/%-d/%Y"),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
 @app.route("/cancellations")
 @auth.admin_required
 def cancellations_page():
@@ -1671,6 +1735,69 @@ def admin_update_sales_rep_team(rep_id):
     if not ok:
         return jsonify({"ok": False, "error": error}), 400
     return jsonify({"ok": True})
+
+
+@app.route("/admin/marketing-form-data")
+@auth.admin_required
+def admin_marketing_form_data():
+    """Admin-only raw-data verification tool for PlanetWeb's
+    [dbo].[View_FormDataAnalytics] (marketing_data.py) -- confirms the app
+    can reach the view and shows exactly what it returns. Every
+    filter/search/page value is read fresh from the query string and
+    re-queried on this one request -- there is no cached copy to go stale,
+    so "Refresh Data" (the template's own link back to this same URL) and
+    a plain page reload do the exact same thing.
+
+    Also renders the Attribution Quality panel (Tier 1/2/3 counts +
+    attribution-method breakdown, via marketing_metrics.get_attribution_
+    quality()) -- deliberately kept HERE and not on the main Marketing
+    Dashboard (spec: attribution-tier detail is a debugging/data-
+    validation concern, not a business-facing metric). It reuses the exact
+    same centralized marketing_attribution.attribute_record() the
+    Marketing Dashboard itself calls, just surfaced differently -- see
+    marketing_metrics.py's module docstring. Always the raw browser's own
+    base date window (marketing_data.BASE_START_DATE through today),
+    independent of this page's own search/filter controls above, same
+    reasoning dashboard.html's Planet Networks Records section documents
+    for staying independent of the page's period filter."""
+    search = request.args.get("search", "").strip()
+    filters = {
+        "date_from": request.args.get("date_from", "").strip(),
+        "date_to": request.args.get("date_to", "").strip(),
+        "municipality": request.args.get("municipality", "").strip(),
+        "zipcode": request.args.get("zipcode", "").strip(),
+        "utm_source": request.args.get("utm_source", "").strip(),
+        "utm_medium": request.args.get("utm_medium", "").strip(),
+        "utm_campaign": request.args.get("utm_campaign", "").strip(),
+    }
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+
+    result = marketing_data.get_marketing_form_data(filters, search, page)
+    filter_options = marketing_data.get_filter_options()
+    attribution_quality = marketing_metrics.get_attribution_quality()
+
+    return render_template(
+        "admin/marketing_form_data.html",
+        active_page="admin_marketing_form_data",
+        columns=marketing_data.COLUMNS,
+        result=result,
+        search=search,
+        filters=filters,
+        filter_options=filter_options,
+        attribution_quality=attribution_quality,
+        base_start_date=marketing_data.BASE_START_DATE,
+        # This route's OWN query-time timestamp -- deliberately not
+        # data_store["last_refreshed"] (the unrelated main PlanetWeb/KPI
+        # pipeline's own refresh time, still passed below for _topnav.html's
+        # separate "Last refreshed" display). Every page load re-runs the
+        # marketing query fresh (see this route's docstring), so this is
+        # simply "now" at query time.
+        marketing_last_refreshed=datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z"),
+        last_refreshed=data_store["last_refreshed"],
+    )
 
 
 @app.route("/health")

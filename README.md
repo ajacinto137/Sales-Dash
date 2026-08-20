@@ -79,6 +79,10 @@ SECRET_KEY=
 The first four are the source-database credentials your team already
 uses. Everything else about them (hosts, database names, ports, driver
 name, SSL settings, and the queries themselves) is already filled in.
+This also covers the Admin Portal's Marketing Form Data tool — it reads
+PlanetWeb's `View_FormDataAnalytics` view over this same
+`PLANETWEB_*`/`db.get_planetweb_connection()` connection, so it needed no
+new environment variables at all.
 
 `APPDB_PASSWORD` is different in kind: it's not an existing credential to
 look up anywhere — it sets the password for a brand-new, empty Postgres
@@ -523,23 +527,28 @@ Admin Portal page, replacing three near-identical hand-copied
 pill-tab groups:
 - **Admin Tools** — User Management, Sales Reps, Import Users, Audit Log.
 - **Data Tools** — Overview, Main Sales, Service Cancellations, Vision
-  Packages. **Moved here 2026-08-19** from the main top nav
+  Packages, **Marketing Form Data** (added 2026-08-19, see below). The
+  first four **moved here 2026-08-19** from the main top nav
   (`_topnav.html`) — by request, since the main nav is meant for daily
   sales-dashboard navigation, not admin/data tooling. This is a UX
-  reorganization only: every one of these 4 routes already had, and
+  reorganization only: every one of these routes already had, and
   still has, its own `@auth.admin_required` in `app.py` — moving a link
   never changes what's actually protected (see "Authorization" below).
-  Their own page shell (`templates/base.html` + `static/css/dashboard.css`,
-  a separate, older light-theme layout predating the dark `team_dashboard.css`
+  Overview/Main Sales/Service Cancellations/Vision Packages' own page
+  shell (`templates/base.html` + `static/css/dashboard.css`, a separate,
+  older light-theme layout predating the dark `team_dashboard.css`
   redesign) is intentionally left as-is rather than reskinned — an
   unrequested visual overhaul of 4 working data pages — but now carries a
-  "← Admin Portal" link back into the rest of the portal.
+  "← Admin Portal" link back into the rest of the portal. Marketing Form
+  Data, being new, was built directly in the premium theme from the
+  start — no legacy shell to reconcile.
 
 Each tab highlights via `active_page`, one distinct value per route
 (`admin_users`/`admin_sales_reps`/`admin_import`/`admin_audit`/
-`overview`/`main_sales`/`cancellations`/`vision_packages`) — add a new
-Admin Portal tool by adding one route with its own `active_page` value
-and one more `<a>` in `_admin_nav.html`, not a new nav system.
+`overview`/`main_sales`/`cancellations`/`vision_packages`/
+`admin_marketing_form_data`) — add a new Admin Portal tool by adding one
+route with its own `active_page` value and one more `<a>` in
+`_admin_nav.html`, not a new nav system.
 
 **Sales Reps** (`/admin/sales-reps`, `templates/admin/sales_reps.html` +
 `static/js/admin_sales_reps.js`, added 2026-08-19) — one row per
@@ -553,6 +562,80 @@ failure reverts the `<select>` to its last-saved value and shows the
 server's error message, both without a page reload. See "Sales Rep
 Roles / Teams" under "Database Models" above for the full model and what
 changing a team does/doesn't affect.
+
+**Marketing Form Data** (`/admin/marketing-form-data`,
+`templates/admin/marketing_form_data.html` + `marketing_data.py` +
+`static/js/admin_marketing_form_data.js`, added 2026-08-19) — a raw-data
+**verification tool**, built ahead of any actual Marketing dashboard, to
+confirm the app can reach PlanetWeb SQL Server's
+`[dbo].[View_FormDataAnalytics]` view and see exactly what it returns.
+Deliberately does none of the eventual Marketing-dashboard work yet — no
+attribution rules, channel grouping, dedup, conversion/ROI calculation,
+or joins to sales/installs; see `marketing_data.py`'s module docstring
+for the full "not yet" list. On the `feature/marketing-dashboard` branch.
+
+- **No new environment variables.** The view lives on the exact same
+  server/database (`sql1.planetweb.planet.net` / `PlanetWeb`) every other
+  PlanetWeb query already uses — `marketing_data.py` calls
+  `db.get_planetweb_connection()` unchanged, reusing
+  `PLANETWEB_HOST`/`PLANETWEB_DATABASE`/`PLANETWEB_USERNAME`/`PLANETWEB_PASSWORD`
+  exactly as `queries.py`'s `MAIN_SALES_QUERY` does.
+- **Different data-loading pattern from Overview/Main Sales/Vision
+  Packages/Service Cancellations, on purpose.** Those four pull their
+  entire source query into one pandas DataFrame in `data_store` on every
+  page load (`app.py`'s `ensure_data_loaded()`), then trim for display
+  (`dataframe_to_table(df, limit=500)`). `View_FormDataAnalytics` can be
+  far larger, and this page is explicitly a row-by-row browser, so it
+  never joins that pipeline — every request runs its own fresh,
+  **server-side paginated** SQL Server query (`OFFSET`/`FETCH NEXT`, 50
+  rows/page) directly against PlanetWeb, with search/filters compiled
+  into parameterized `WHERE` clauses (never string-interpolated) rather
+  than filtered in-memory after the fact. `COUNT(*)`/`MIN`/`MAX` over
+  that same `WHERE` clause drive the **Total Rows**/**Earliest
+  Record**/**Latest Record** status figures, so they always describe
+  exactly what's currently paged through, not a stale or unfiltered
+  number.
+- **Business logic is untouched.** The base query (columns, base
+  `WHERE [InsertDate] >= '2026-03-01' AND [InsertDate] <= GETDATE()`,
+  `ORDER BY [InsertDate]`) matches the spec verbatim
+  (`marketing_data.BASE_START_DATE`/`COLUMNS`) — every filter/search
+  value the admin supplies is ANDed on top, only ever narrowing the
+  result, never changing what a row means.
+- **Status area** (`.td-kpi-bar`, same component the Team Overview KPI
+  bar uses): Connection Status (`Connected`/`Connection Error`, driven by
+  whether the query itself succeeded — not a separate `SELECT 1` ping),
+  Total Rows, Earliest/Latest Record, Last Refreshed (this route's own
+  query-time timestamp — deliberately not `data_store["last_refreshed"]`,
+  which describes the unrelated main PlanetWeb/KPI pipeline), and a
+  **Refresh Data** button that's just a link back to the current URL —
+  trivially "reruns the query" since nothing here is cached.
+- **Search** (one box) matches QuoteID/AvailabilityID (cast to text),
+  Municipality, Zipcode, MarketingToken, UTM Campaign, and UTM Source via
+  `LIKE '%term%'`. **Filters**: Date From/To (narrows the base window),
+  Municipality/UTM Source/UTM Medium/UTM Campaign (`<select>`s populated
+  by `marketing_data.get_filter_options()` — `SELECT DISTINCT` scoped to
+  the base date window, not cross-filtered by other active filters, same
+  convention `app.py`'s `unique_sorted_values()` already uses for the
+  Main Sales page's own filters), and Zipcode (free-text exact match).
+  **Clear Filters** is a plain link back to the bare route.
+- **Table**: all 26 columns, `table-layout: auto` (not the Individual Rep
+  Leaderboard's fixed-equal-width `.td-table`), sticky header, and every
+  cell's value wrapped in a `max-width` + `text-overflow: ellipsis` span
+  carrying the full value in its `title` attribute — long UTM/click-ID
+  values truncate visually but are always available via the browser's
+  native hover tooltip. `NULL`/empty renders as a plain `—`. Horizontal
+  **and** a capped-height vertical scroll (`.td-table-scroll--tall`) so a
+  full 50-row page doesn't push everything else far down the page.
+- **Error handling**: a query failure never raises past `marketing_data
+  .get_marketing_form_data()` — it returns the same shape with
+  `ok: False` and a `db.sanitize_error()`-cleaned message (never a raw
+  driver error that could contain a connection string), logged in full to
+  stdout first for backend troubleshooting (same `print()` convention as
+  `sales_metrics.py`'s own pipeline banner, not a logging framework). The
+  page still renders normally — status area shows `Connection Error` +
+  the sanitized message, the table shows "Data unavailable," and
+  **Refresh Data** lets the admin retry — the rest of the Admin Portal is
+  completely unaffected by this route's failure.
 
 **User Management** (`/admin/users`, `templates/admin/users.html`) — one
 table, columns per the spec: Name/Rep, Email, Role, Sales Rep mapping,
@@ -1567,6 +1650,116 @@ a small vanilla-JS factory function, the same pattern
   + `charts.js` pair should be reused for any future chart rather than
   hand-rolling new canvas/tooltip/token-reading code.
 
+## Marketing Dashboard
+
+`/marketing` (added 2026-08-19, rewritten 2026-08-20) is the Marketing
+Channel Report, served live: it re-runs the full data-cleaning +
+channel-attribution pipeline (`marketing_cleaning.py`) against PlanetWeb
+on **every page load**, by explicit request — no caching, so a refresh
+always reflects the current database. A request takes roughly 10 seconds
+against ~15,000 rows. It is a normal dashboard page — gated by
+`@auth.login_required` like `/dashboard`, **not** part of the Admin
+Portal.
+
+**For the SQL query, the cleaning rules, and the 5-tier channel
+attribution model in full detail, see `MARKETING_DASHBOARD.md`** — that
+file is the authoritative data-pipeline reference; this section only
+covers how the page fits into the rest of the app.
+
+The page itself is entirely self-contained (its own `<style>`/`<script>`,
+not `static/css/team_dashboard.css` or `_topnav.html`) — the same
+template `scripts/generate_marketing_report.py` uses to produce a
+shareable standalone HTML file (see "Marketing Channel Report" below).
+One template, one pipeline, two render paths that can never drift apart:
+`marketing_cleaning.generate_report(back_url=...)` is the single function
+both the live route and the script call. The live version adds one small
+"← Dashboard" link back into the rest of the app; the standalone file
+does not (nothing to link back to for someone with no login).
+
+### Attribution Quality (Admin Portal) — a separate, older attribution model
+
+`marketing_attribution.py` + `marketing_metrics.py` are a DIFFERENT,
+simpler Paid/Not-Paid + platform attribution model (three tiers: UTM,
+click IDs, then a `_gcl_aw` cookie fallback) than the Marketing Channel
+Report's 5-way model in `marketing_cleaning.py` — the two are
+intentionally not merged. This older model's only remaining consumer is
+the Admin Portal's **Admin → Data Tools → Marketing Form Data →
+Attribution Quality** panel (`marketing_metrics.get_attribution_quality()`,
+a collapsed panel above the raw row browser) — Tier 1/2/3 counts and
+attribution-method breakdown, for data-validation purposes, always over
+the raw browser's own base date window
+(`marketing_data.BASE_START_DATE` through today).
+
+Unit tests for this older model: `tests/test_marketing_attribution.py`
+(21 cases). For the Marketing Channel Report's own pipeline, see
+`tests/test_marketing_cleaning.py` (28 cases) and `MARKETING_DASHBOARD.md`.
+
+### Prepare for Marketing V2
+
+Every row `marketing_cleaning.py` tags keys off (date, municipality,
+channel, campaign-adjacent MarketingToken) — the same dimensions a future
+Lead → Sale → Install join will need to group by. Not built yet: any join
+to `main_sales`/`vision_packages`/`service_cancellations`, a real ad-spend
+data source, cost per lead/sale, CAC, MRR, or ROI — see
+`MARKETING_DASHBOARD.md` §6 "Known limitations".
+
+## Marketing Channel Report
+
+The report behind `/marketing` (above) can also be produced as a
+**single self-contained HTML file**, generated on demand, for sharing
+outside this app — with an agency partner who has no login, for
+instance. Open it directly in a browser (no server needed once
+generated) or share the file itself; nothing about it depends on this
+app being reachable.
+
+```
+python3 scripts/generate_marketing_report.py [output_path]   # default: marketing_report.html
+```
+
+This is the exact same template and the exact same pipeline the live
+`/marketing` route uses — `marketing_cleaning.generate_report()` is the
+one function both call — just written to a file instead of returned as
+an HTTP response, and without the live page's small "← Dashboard" link
+back into the rest of the app (nothing to link back to for someone with
+no login). **This is a deliberately different, more detailed data model
+than `marketing_attribution.py`/`marketing_metrics.py`** (the Admin
+Portal's older, simpler Paid/Not-Paid + platform model — see "Attribution
+Quality" above) — a 5-way channel taxonomy (Paid / Email /
+Offline-Referral / AI-Referral / Organic-Direct) with MarketingToken-based
+offline/referral sub-classification and click-ID reuse dedup. The two are
+intentionally not merged; see `marketing_cleaning.py`'s module docstring
+if they ever need to converge. **For the full SQL query and every
+cleaning/attribution rule, see `MARKETING_DASHBOARD.md`.**
+
+Two architectural points worth calling out here (the rest — SQL, cleaning,
+attribution — lives in `MARKETING_DASHBOARD.md`):
+
+- **Deliberately does NOT deduplicate by `email_id`** in
+  `marketing_cleaning.py` itself. Dedup must happen *after* date-range
+  filtering, scoped to whichever range is selected — deduping once
+  globally first would drop anyone whose first-ever submission fell
+  outside that range. Since the report lets the viewer change the date
+  range client-side, dedup runs client-side too (in the report's own
+  embedded JS), recomputed on every range/preset change. A person active
+  in two different months therefore counts once in each month's slice and
+  once in the full-period view — month slices will not sum to the
+  full-period total; this is correct (same semantics as unique-visitor
+  metrics in any analytics tool), not a bug.
+- **CPA is directional, not exact.** Blended CPA (spend ÷ Available Now
+  ad entries) needs no assumption. Every other CPA (by channel/state/zip)
+  apportions spend by that segment's share of ad entries, since ad
+  platforms don't report spend by geography — the report labels this
+  explicitly. No real ad-spend source is wired in yet, so `spend_total`
+  is always 0 in the generated payload; the report's own spend input
+  prompts the viewer to supply it per range rather than showing a
+  misleading `$0.00`.
+- Unit tests: `tests/test_marketing_cleaning.py` (28 cases — zip/state
+  cleaning, AvailabilityID validation, every channel tier and the
+  `utm_medium=social` exclusion, MarketingToken sub-classification
+  including the real "Jberg"-vs-short-code collision found during
+  development, click-ID reuse dedup incl. the `gbraid`-is-exempt rule,
+  and the dashboard payload shape).
+
 ## What's intentionally not built yet
 
 Scheduled ETL, email/SMS reports, and CRM integration are all out of
@@ -1598,3 +1791,12 @@ simpler fit given this app's zero-framework-dependency style — see
 "Authentication, Roles & Admin Portal"), `.xls` import (`.xlsx` was the
 hard requirement), and note-editing (notes are deliberately append-only
 — see "Needs Attention Workflow" → Notes).
+
+**A Marketing Dashboard is no longer out of scope** — see "Marketing
+Dashboard" / "Marketing Channel Report" / `MARKETING_DASHBOARD.md` above
+(V1 added 2026-08-19, rewritten to the current live pipeline
+2026-08-20). It visualizes marketing/form activity and channel
+attribution, with directional CPA math once a spend figure is entered.
+It is NOT yet joined to `main_sales`/`vision_packages`/
+`service_cancellations`, and has no real ad-spend data source, CAC, MRR,
+or ROI metric — see `MARKETING_DASHBOARD.md` §6.

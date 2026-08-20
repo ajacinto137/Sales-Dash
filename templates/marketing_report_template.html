@@ -1,0 +1,1464 @@
+<meta charset="utf-8">
+<title>Marketing Channel Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --surface-page:   #f7f8f7;
+  --surface-card:   #ffffff;
+  --surface-alt:    #eef1f0;
+  --surface-hover:  #e7ebe9;
+  --border:         #dde1de;
+  --border-soft:    #e9ece9;
+  --text-primary:   #10151a;
+  --text-secondary: #4c5560;
+  --text-muted:     #8a9096;
+  --accent:         #2a78d6;
+  --accent-soft:    rgba(42,120,214,0.10);
+  --good:           #0ca30c;
+  --good-soft:      rgba(12,163,12,0.10);
+  --critical:       #d03b3b;
+  --critical-soft:  rgba(208,59,59,0.10);
+  --warning:        #eda100;
+  /* channel group palette -- fixed order, never cycled (Paid, Email,
+     Offline-Referral, AI-Referral, Organic-Direct) */
+  --ch-paid:        #2a78d6;
+  --ch-email:       #eb6834;
+  --ch-offline:     #1baf7a;
+  --ch-ai:          #eda100;
+  --ch-organic:     #e87ba4;
+  /* serviceability ramp -- ordinal blue, gray for Unavailable, green for
+     Available Now (see status codes below) */
+  --sv-0: #b7bcc1; /* Unavailable */
+  --sv-1: #0ca30c; /* Available Now */
+  --sv-2: #cde2fb; /* Coming soon, no order */
+  --sv-3: #9ec5f4; /* Coming soon, preorder */
+  --sv-4: #6da7ec; /* Permitting */
+  --sv-5: #3987e5; /* Strand Construction */
+  --sv-6: #1c5cab; /* Fiber Construction */
+  --shadow: 0 1px 2px rgba(16,21,26,0.04), 0 4px 16px rgba(16,21,26,0.06);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font-display: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-page:   #0c0e10;
+    --surface-card:   #15181b;
+    --surface-alt:    #1b1f22;
+    --surface-hover:  #21262a;
+    --border:         #2a2f33;
+    --border-soft:    #23282b;
+    --text-primary:   #f4f6f5;
+    --text-secondary: #b7bec4;
+    --text-muted:     #7d8288;
+    --accent:         #3987e5;
+    --accent-soft:    rgba(57,135,229,0.14);
+    --good:           #17c317;
+    --good-soft:      rgba(23,195,23,0.14);
+    --critical:       #e66767;
+    --critical-soft:  rgba(230,103,103,0.14);
+    --warning:        #eda100;
+    --ch-paid:        #3987e5;
+    --ch-email:       #d95926;
+    --ch-offline:     #199e70;
+    --ch-ai:          #c98500;
+    --ch-organic:     #d55181;
+    --sv-0: #52585d;
+    --sv-1: #17c317;
+    --sv-2: #16385f;
+    --sv-3: #1c4c82;
+    --sv-4: #235f9f;
+    --sv-5: #3987e5;
+    --sv-6: #6da7ec;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-page:   #0c0e10;
+  --surface-card:   #15181b;
+  --surface-alt:    #1b1f22;
+  --surface-hover:  #21262a;
+  --border:         #2a2f33;
+  --border-soft:    #23282b;
+  --text-primary:   #f4f6f5;
+  --text-secondary: #b7bec4;
+  --text-muted:     #7d8288;
+  --accent:         #3987e5;
+  --accent-soft:    rgba(57,135,229,0.14);
+  --good:           #17c317;
+  --good-soft:      rgba(23,195,23,0.14);
+  --critical:       #e66767;
+  --critical-soft:  rgba(230,103,103,0.14);
+  --warning:        #eda100;
+  --ch-paid:        #3987e5;
+  --ch-email:       #d95926;
+  --ch-offline:     #199e70;
+  --ch-ai:          #c98500;
+  --ch-organic:     #d55181;
+  --sv-0: #52585d;
+  --sv-1: #17c317;
+  --sv-2: #16385f;
+  --sv-3: #1c4c82;
+  --sv-4: #235f9f;
+  --sv-5: #3987e5;
+  --sv-6: #6da7ec;
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+.mr-page { max-width: 1320px; margin: 0 auto; padding: 20px 24px 64px; }
+.mr-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.mr-mono { font-family: var(--font-mono); }
+
+/* ---------- Header ---------- */
+.mr-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap; padding: 22px 0 18px;
+}
+.mr-brand-eyebrow {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--accent); font-weight: 600;
+}
+.mr-title { font-size: 26px; font-weight: 700; margin: 4px 0 4px; letter-spacing: -0.01em; text-wrap: balance; }
+.mr-subtitle { color: var(--text-secondary); font-size: 13.5px; max-width: 60ch; }
+
+/* ---------- Controls ---------- */
+.mr-controls {
+  background: var(--surface-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px;
+  display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow);
+}
+.mr-controls-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mr-control-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-muted); font-weight: 600; margin-right: 2px;
+}
+.mr-preset-btn, .mr-toggle-btn {
+  border: 1px solid var(--border); background: var(--surface-alt);
+  color: var(--text-secondary); font: inherit; font-size: 12.5px; font-weight: 500;
+  padding: 6px 11px; border-radius: 999px; cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.mr-preset-btn:hover, .mr-toggle-btn:hover { color: var(--text-primary); background: var(--surface-hover); }
+.mr-preset-btn.active, .mr-toggle-btn.active {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.mr-date-input {
+  border: 1px solid var(--border); background: var(--surface-alt); color: var(--text-primary);
+  font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: var(--radius-sm);
+}
+.mr-spend-wrap { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.mr-spend-input {
+  border: 1px solid var(--border); background: var(--surface-alt); color: var(--text-primary);
+  font: inherit; font-family: var(--font-mono); font-size: 13px; padding: 6px 9px;
+  border-radius: var(--radius-sm); width: 130px;
+}
+.mr-spend-input:focus, .mr-date-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.mr-spend-tag {
+  font-size: 10.5px; padding: 3px 7px; border-radius: 999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.mr-spend-tag.est { background: var(--surface-alt); color: var(--text-muted); }
+.mr-spend-tag.manual { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------- Section shell ---------- */
+.mr-section { margin: 28px 0; }
+.mr-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.mr-section-title { font-size: 16px; font-weight: 700; letter-spacing: -0.005em; }
+.mr-section-note { color: var(--text-muted); font-size: 12px; max-width: 68ch; }
+.mr-card {
+  background: var(--surface-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px;
+}
+.mr-footnote { color: var(--text-muted); font-size: 11.5px; margin-top: 10px; line-height: 1.5; }
+
+/* ---------- KPI row ---------- */
+.mr-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.mr-kpi {
+  background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 16px 14px; box-shadow: var(--shadow);
+}
+.mr-kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
+.mr-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mr-kpi-export {
+  border: 1px solid var(--border); background: var(--surface-alt); color: var(--text-secondary);
+  font: inherit; font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+  white-space: nowrap; transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.mr-kpi-export:hover { color: var(--text-primary); background: var(--surface-hover); border-color: var(--accent); }
+.mr-kpi-export-status { display: block; font-size: 10.5px; color: var(--text-muted); height: 13px; margin-top: 1px; }
+.mr-kpi-export-status.ok { color: var(--good); }
+.mr-kpi-export-status.err { color: var(--critical); }
+.mr-kpi-value { font-size: 27px; font-weight: 700; margin: 6px 0 4px; letter-spacing: -0.01em; }
+.mr-kpi-value.small { font-size: 17px; }
+.mr-kpi-value-link { color: inherit; text-decoration: none; border-bottom: 2px dotted var(--accent); }
+.mr-kpi-value-link:hover { color: var(--accent); }
+.mr-kpi-detail { font-size: 11.5px; color: var(--text-secondary); }
+.mr-kpi-detail a.mr-kpi-value-link { font-size: inherit; font-weight: 600; border-bottom-width: 1px; }
+.mr-kpi-prompt { font-size: 11.5px; color: var(--accent); font-weight: 500; }
+
+/* ---------- Availability mix ---------- */
+.mr-avail-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.mr-avail-cell { padding: 10px 10px 9px; border-radius: var(--radius-sm); background: var(--surface-alt); border: 1px solid var(--border-soft); }
+.mr-avail-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.mr-avail-name { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
+.mr-avail-count { font-size: 19px; font-weight: 700; margin: 5px 0 2px; }
+.mr-avail-share { font-size: 11px; color: var(--text-muted); }
+.mr-avail-bar { height: 4px; border-radius: 999px; background: var(--border-soft); margin-top: 7px; overflow: hidden; }
+.mr-avail-bar-fill { height: 100%; border-radius: 999px; }
+
+/* ---------- Volume chart ---------- */
+.mr-chart-wrap { position: relative; }
+.mr-chart-legend { display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary); }
+.mr-legend-item { display: flex; align-items: center; gap: 6px; }
+.mr-legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+.mr-legend-line { width: 14px; height: 2px; border-radius: 2px; }
+.mr-tooltip {
+  position: absolute; pointer-events: none; background: var(--text-primary); color: var(--surface-card);
+  font-size: 11.5px; padding: 7px 10px; border-radius: 6px; box-shadow: var(--shadow);
+  transform: translate(-50%, -110%); white-space: nowrap; opacity: 0; transition: opacity 0.08s ease; z-index: 5;
+}
+.mr-tooltip.show { opacity: 1; }
+
+/* ---------- Tables ---------- */
+.mr-table-scroll { overflow-x: auto; }
+table.mr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.mr-table th {
+  text-align: right; font-weight: 600; color: var(--text-muted); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.04em; padding: 7px 10px; border-bottom: 1px solid var(--border);
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+table.mr-table th:first-child, table.mr-table th.mr-th-left, table.mr-table td.mr-td-left { text-align: left; }
+table.mr-table th.sorted { color: var(--accent); }
+table.mr-table th .arrow { font-size: 9px; margin-left: 2px; }
+table.mr-table td { padding: 7px 10px; border-bottom: 1px solid var(--border-soft); text-align: right; white-space: nowrap; }
+table.mr-table tbody tr:hover { background: var(--surface-hover); }
+table.mr-table tbody tr.clickable { cursor: pointer; }
+table.mr-table tbody tr.active-row { background: var(--accent-soft); }
+table.mr-table tr.sub-row td:first-child { padding-left: 26px; color: var(--text-secondary); font-weight: 400; }
+table.mr-table tr.group-row td:first-child { font-weight: 600; }
+.mr-em-dash { color: var(--text-muted); }
+.mr-chip { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.mr-chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.mr-bar-cell { position: relative; }
+.mr-inline-bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-soft); border-radius: 3px; z-index: 0; }
+.mr-inline-bar-label { position: relative; z-index: 1; }
+
+/* ---------- Split layout ---------- */
+.mr-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+
+/* ---------- Zip table controls ---------- */
+.mr-zip-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.mr-search-input, .mr-select {
+  border: 1px solid var(--border); background: var(--surface-alt); color: var(--text-primary);
+  font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: var(--radius-sm);
+}
+.mr-search-input { width: 220px; }
+.mr-kpi-prompt, td .mr-kpi-prompt { cursor: pointer; background: none; border: none; font: inherit; color: var(--accent); padding: 0; }
+.mr-kpi-prompt:hover { text-decoration: underline; }
+.mr-summary-line { color: var(--text-secondary); font-size: 12.5px; margin: 10px 0; font-family: var(--font-mono); }
+.mr-show-more { display: block; margin: 12px auto 0; border: 1px solid var(--border); background: var(--surface-alt); color: var(--text-secondary); font: inherit; font-size: 12.5px; padding: 8px 18px; border-radius: 999px; cursor: pointer; }
+.mr-show-more:hover { color: var(--text-primary); background: var(--surface-hover); }
+
+/* ---------- Waste zips ---------- */
+.mr-waste-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
+.mr-waste-card { background: var(--critical-soft); border: 1px solid var(--critical); border-radius: var(--radius-sm); padding: 10px 12px; }
+.mr-waste-zip { font-family: var(--font-mono); font-weight: 700; font-size: 14px; color: var(--critical); }
+.mr-waste-muni { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+.mr-waste-count { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+/* ---------- Footer ---------- */
+.mr-footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 11.5px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- Guardrail banner ---------- */
+.mr-guardrail { border-radius: var(--radius); padding: 12px 16px; margin-bottom: 18px; font-size: 12.5px; border: 1px solid var(--warning); background: rgba(237,161,0,0.10); }
+.mr-guardrail-title { font-weight: 700; color: var(--warning); margin-bottom: 4px; }
+.mr-guardrail ul { margin: 4px 0 0; padding-left: 18px; }
+
+@media (max-width: 860px) {
+  .mr-kpi-grid { grid-template-columns: repeat(2,1fr); }
+  .mr-avail-grid { grid-template-columns: repeat(4,1fr); }
+  .mr-split { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="mr-page">
+  <!--__BACK_LINK__-->
+
+  <header class="mr-header">
+    <div>
+      <div class="mr-brand-eyebrow">Planet Networks &middot; Marketing</div>
+      <h1 class="mr-title">Marketing Channel Report</h1>
+      <p class="mr-subtitle">Form-submission volume, paid-media efficiency, and serviceability by channel and geography.</p>
+    </div>
+    <div style="text-align:right;">
+      <div class="mr-control-label">Theme</div>
+      <button class="mr-toggle-btn" id="mr-theme-toggle" type="button">Auto</button>
+    </div>
+  </header>
+
+  <div id="mr-guardrail-banner"></div>
+
+  <div class="mr-controls">
+    <div class="mr-controls-row" id="mr-preset-row">
+      <span class="mr-control-label">Range</span>
+    </div>
+    <div class="mr-controls-row">
+      <span class="mr-control-label">Custom</span>
+      <input type="date" class="mr-date-input" id="mr-from-date">
+      <span style="color:var(--text-muted);">&rarr;</span>
+      <input type="date" class="mr-date-input" id="mr-to-date">
+      <div class="mr-spend-wrap">
+        <span class="mr-control-label">Spend (range)</span>
+        <input type="text" class="mr-spend-input mr-num" id="mr-spend-input" placeholder="Enter spend&hellip;">
+        <span class="mr-spend-tag est" id="mr-spend-tag">unset</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 1. KPI row ============ -->
+  <section class="mr-section">
+    <div class="mr-kpi-grid" id="mr-kpi-grid"></div>
+  </section>
+
+  <!-- ============ 2. Availability mix ============ -->
+  <section class="mr-section">
+    <div class="mr-section-head">
+      <div class="mr-section-title">Availability mix</div>
+      <div class="mr-controls-row">
+        <button class="mr-toggle-btn active" data-avail-toggle="ads" type="button">Ad entries</button>
+        <button class="mr-toggle-btn" data-avail-toggle="all" type="button">All traffic</button>
+      </div>
+    </div>
+    <div class="mr-card"><div class="mr-avail-grid" id="mr-avail-grid"></div></div>
+  </section>
+
+  <!-- ============ 3. Volume vs serviceable rate ============ -->
+  <section class="mr-section">
+    <div class="mr-section-head">
+      <div class="mr-section-title">Volume vs. serviceable rate</div>
+      <div class="mr-section-note" id="mr-volume-bucket-note"></div>
+    </div>
+    <div class="mr-card">
+      <div class="mr-chart-legend">
+        <span class="mr-legend-item"><span class="mr-legend-swatch" style="background:var(--accent);"></span>Ad entries</span>
+        <span class="mr-legend-item"><span class="mr-legend-line" style="background:var(--good);"></span>% Available Now (ads)</span>
+      </div>
+      <div class="mr-chart-wrap" id="mr-volume-chart-wrap"></div>
+    </div>
+  </section>
+
+  <!-- ============ 4. By channel ============ -->
+  <section class="mr-section">
+    <div class="mr-section-head">
+      <div class="mr-section-title">By channel</div>
+    </div>
+    <div class="mr-card">
+      <div class="mr-table-scroll"><table class="mr-table" id="mr-channel-table"></table></div>
+      <p class="mr-footnote">Only paid channels receive a CPA. CTV and radio cannot set a click ID, so that spend surfaces in Organic/Direct. Offline/Referral is attributed via MarketingToken, and some code meanings remain unconfirmed (see &ldquo;&mdash; confirm&rdquo; labels).</p>
+    </div>
+  </section>
+
+  <!-- ============ 5. By state ============ -->
+  <section class="mr-section">
+    <div class="mr-section-head">
+      <div class="mr-section-title">By state</div>
+      <div class="mr-section-note">Click a row to filter the zip table below.</div>
+    </div>
+    <div class="mr-card">
+      <div class="mr-table-scroll"><table class="mr-table" id="mr-state-table"></table></div>
+      <p class="mr-footnote">Platforms do not report spend by geography, so spend is apportioned by each area&rsquo;s share of ad entries and divided by its Available Now count &mdash; a directional ranking, not an exact cost. The Blended CPA above requires no such assumption.</p>
+    </div>
+  </section>
+
+  <!-- ============ 6. Where the waste is ============ -->
+  <section class="mr-section">
+    <div class="mr-section-head">
+      <div class="mr-section-title">Where the waste is</div>
+      <div class="mr-section-note">Top zips by ad volume with zero Available Now conversions.</div>
+    </div>
+    <div class="mr-card"><div class="mr-waste-grid" id="mr-waste-grid"></div></div>
+  </section>
+
+  <!-- ============ 7. Ad entries by zip ============ -->
+  <section class="mr-section">
+    <div class="mr-section-head">
+      <div class="mr-section-title">Ad entries by zip</div>
+      <div class="mr-controls-row">
+        <button class="mr-toggle-btn active" data-zip-view="avail" type="button">Available Now + CPA</button>
+        <button class="mr-toggle-btn" data-zip-view="full" type="button">Full status breakdown</button>
+      </div>
+    </div>
+    <div class="mr-card">
+      <div class="mr-zip-controls">
+        <input type="text" class="mr-search-input" id="mr-zip-search" placeholder="Search zip or municipality&hellip;">
+        <select class="mr-select" id="mr-zip-state-filter"></select>
+        <select class="mr-select" id="mr-zip-quick-filter">
+          <option value="all">All zips</option>
+          <option value="10">10+ entries</option>
+          <option value="50">50+ entries</option>
+          <option value="zero">Zero Available Now</option>
+          <option value="half">50%+ Available Now</option>
+        </select>
+      </div>
+      <div class="mr-summary-line" id="mr-zip-summary"></div>
+      <div class="mr-table-scroll"><table class="mr-table" id="mr-zip-table"></table></div>
+      <button class="mr-show-more" id="mr-zip-show-more" type="button">Show more</button>
+    </div>
+  </section>
+
+  <!-- ============ 8. Footer ============ -->
+  <div class="mr-footer" id="mr-footer"></div>
+
+</div>
+
+<div class="mr-tooltip" id="mr-tooltip"></div>
+
+<script>
+/*__MARKETING_DATA__*/
+</script>
+<script>
+(function () {
+"use strict";
+
+/* ======================================================================
+   Constants
+====================================================================== */
+var STATUS_SHORT = ["Unavail", "Avail Now", "CS-NoOrd", "CS-Preord", "Permitting", "Strand", "Fiber"];
+var STATUS_FULL = ["Unavailable", "Available Now", "Coming soon (no ordering)", "Coming soon (preorder)", "Permitting", "Strand Construction", "Fiber Construction"];
+var STATUS_COLOR_VARS = ["--sv-0", "--sv-1", "--sv-2", "--sv-3", "--sv-4", "--sv-5", "--sv-6"];
+var CHANNEL_ORDER = ["Paid", "Email", "Offline-Referral", "AI-Referral", "Organic-Direct"];
+var CHANNEL_COLOR_VAR = { "Paid": "--ch-paid", "Email": "--ch-email", "Offline-Referral": "--ch-offline", "AI-Referral": "--ch-ai", "Organic-Direct": "--ch-organic" };
+var FOOTPRINT_STATES = ["NJ", "NY", "PA", "VA"];
+
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+/* ======================================================================
+   Formatting helpers
+====================================================================== */
+function fmtInt(n) { return Math.round(n).toLocaleString("en-US"); }
+function fmtPct(fraction) {
+  if (fraction === null || fraction === undefined || !isFinite(fraction)) return "—";
+  return (fraction * 100).toFixed(1) + "%";
+}
+function fmtCurrency(n) {
+  if (n === null || n === undefined || !isFinite(n)) return "—";
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+var EM_DASH = "—";
+
+/* UTC-only date helpers -- day indices are pure calendar days, no
+   timezone conversion anywhere, so the report renders identical dates
+   for every viewer regardless of local timezone (a `new Date("2026-03-
+   01")` parsed as UTC midnight would otherwise display as Feb 28 for any
+   viewer west of UTC if read back with local-time getters). */
+var DAY0 = (function () {
+  var parts = D.day0.split("-").map(Number);
+  return Date.UTC(parts[0], parts[1] - 1, parts[2]);
+})();
+function dateFromDay(dayIndex) { return new Date(DAY0 + dayIndex * 86400000); }
+function dayFromDate(dt) { return Math.round((Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) - DAY0) / 86400000); }
+function fmtDateShort(dayIndex) {
+  var dt = dateFromDay(dayIndex);
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+function fmtDateISO(dayIndex) {
+  var dt = dateFromDay(dayIndex);
+  return dt.getUTCFullYear() + "-" + String(dt.getUTCMonth() + 1).padStart(2, "0") + "-" + String(dt.getUTCDate()).padStart(2, "0");
+}
+function fmtMonthLabel(dayIndex) {
+  var dt = dateFromDay(dayIndex);
+  return dt.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+}
+function isoToDay(iso) {
+  if (!iso) return null;
+  var parts = iso.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return null;
+  return Math.round((Date.UTC(parts[0], parts[1] - 1, parts[2]) - DAY0) / 86400000);
+}
+
+/* ======================================================================
+   State
+====================================================================== */
+var state = {
+  fromDay: 0,
+  toDay: D.maxday,
+  activePreset: "full",
+  spend: null,       // null = unset (prompt); number once set
+  spendManual: false,
+  availToggle: "ads",
+  stateFilter: null,
+  zipView: "avail",
+  zipSearch: "",
+  zipStateFilter: "",
+  zipQuickFilter: "all",
+  zipSort: { key: "ad", dir: "desc" },
+  zipShowCount: 25,
+  channelSort: null,
+  stateSort: null,
+};
+
+/* ======================================================================
+   Core: dedup + aggregation
+   ----------------------------------------------------------------------
+   Dedup is ALWAYS scoped to [fromDay, toDay] and computed fresh from the
+   full row set every time the range changes -- never "dedupe once
+   globally, then filter by date" (that drops anyone whose first-ever
+   entry fell outside the window). As a direct consequence, a person
+   active in two different months counts once in each month's slice and
+   once in the full-period view; month slices will not sum to the full-
+   period total. This matches unique-visitor semantics in any analytics
+   tool and is intentionally not "fixed".
+====================================================================== */
+
+// Returns row-indices (into the parallel arrays) for exactly one entry
+// per submitter (D.e[i]) within [fromDay, toDay] -- the earliest day
+// index for that submitter within the range wins. Row order is
+// preserved as data-array order, so ties (same submitter, same day) keep
+// the first-encountered row deterministically.
+function computeDedupedIndices(fromDay, toDay) {
+  var bestDayForSubmitter = new Map(); // e -> day
+  var bestIndexForSubmitter = new Map(); // e -> row index
+  var n = D.d.length;
+  for (var i = 0; i < n; i++) {
+    var day = D.d[i];
+    if (day < fromDay || day > toDay) continue;
+    var e = D.e[i];
+    var best = bestDayForSubmitter.get(e);
+    if (best === undefined || day < best) {
+      bestDayForSubmitter.set(e, day);
+      bestIndexForSubmitter.set(e, i);
+    }
+  }
+  return Array.from(bestIndexForSubmitter.values());
+}
+
+// Raw (non-deduped) row count within [fromDay, toDay] -- used only for
+// the "duplicates removed" KPI detail line.
+function countRawInRange(fromDay, toDay) {
+  var count = 0;
+  for (var i = 0; i < D.d.length; i++) {
+    if (D.d[i] >= fromDay && D.d[i] <= toDay) count++;
+  }
+  return count;
+}
+
+// Builds every rollup the report's sections need from one deduped index
+// list, in a single pass (plus a couple of small follow-up passes for
+// per-zip/per-channel/per-state grouping). Nothing here re-dedupes --
+// `indices` is assumed already deduped for the caller's range.
+function aggregate(indices) {
+  var totalCount = indices.length;
+  var adCount = 0, adAvailNowCount = 0, allAvailNowCount = 0;
+  var statusAllCounts = [0, 0, 0, 0, 0, 0, 0];
+  var statusAdCounts = [0, 0, 0, 0, 0, 0, 0];
+
+  // channelKey "group||detail" -> { group, detail, entries, statusCounts[7], isPaid }
+  var channelMap = new Map();
+  // state -> { entries, adEntries, adAvailNow, statusCounts[7] }
+  var stateMap = new Map();
+  // zipIndex -> { z, m, s, adEntries, adAvailNow, statusCountsAd[7] }
+  var zipMap = new Map();
+
+  for (var k = 0; k < indices.length; k++) {
+    var i = indices[k];
+    var s = D.s[i];
+    var isPaid = D.a[i] === 1;
+    var chan = D.chans[D.c[i]];
+    var zip = D.zips[D.zi[i]];
+    var st = zip.s || "Unknown";
+    var stKey = FOOTPRINT_STATES.indexOf(st) >= 0 ? st : "Outside footprint";
+
+    statusAllCounts[s]++;
+    if (isPaid) { adCount++; statusAdCounts[s]++; if (s === 1) adAvailNowCount++; }
+    if (s === 1) allAvailNowCount++;
+
+    var chanKey = chan.g + "||" + chan.d;
+    var chanEntry = channelMap.get(chanKey);
+    if (!chanEntry) {
+      chanEntry = { group: chan.g, detail: chan.d, entries: 0, statusCounts: [0, 0, 0, 0, 0, 0, 0], isPaid: chan.g === "Paid" };
+      channelMap.set(chanKey, chanEntry);
+    }
+    chanEntry.entries++;
+    chanEntry.statusCounts[s]++;
+
+    var stEntry = stateMap.get(stKey);
+    if (!stEntry) {
+      stEntry = { state: stKey, entries: 0, adEntries: 0, adAvailNow: 0, statusCounts: [0, 0, 0, 0, 0, 0, 0], zipSet: new Set() };
+      stateMap.set(stKey, stEntry);
+    }
+    stEntry.entries++;
+    stEntry.statusCounts[s]++;
+    stEntry.zipSet.add(zip.z);
+    if (isPaid) { stEntry.adEntries++; if (s === 1) stEntry.adAvailNow++; }
+
+    if (isPaid) {
+      var zEntry = zipMap.get(D.zi[i]);
+      if (!zEntry) {
+        zEntry = { zi: D.zi[i], z: zip.z, m: zip.m, s: st, adEntries: 0, adAvailNow: 0, statusCountsAd: [0, 0, 0, 0, 0, 0, 0] };
+        zipMap.set(D.zi[i], zEntry);
+      }
+      zEntry.adEntries++;
+      zEntry.statusCountsAd[s]++;
+      if (s === 1) zEntry.adAvailNow++;
+    }
+  }
+
+  var channels = Array.from(channelMap.values());
+  var states = Array.from(stateMap.values()).map(function (r) { return { state: r.state, entries: r.entries, adEntries: r.adEntries, adAvailNow: r.adAvailNow, statusCounts: r.statusCounts, zips: r.zipSet.size }; });
+  var zips = Array.from(zipMap.values());
+
+  return {
+    totalCount: totalCount, adCount: adCount, adAvailNowCount: adAvailNowCount, allAvailNowCount: allAvailNowCount,
+    statusAllCounts: statusAllCounts, statusAdCounts: statusAdCounts,
+    channels: channels, states: states, zips: zips,
+  };
+}
+
+// Generic CPA formula used everywhere below KPI-level: spend apportioned
+// by this segment's share of ALL paid (ad) entries in the current range,
+// divided by the segment's OWN Available-Now-among-ads count. Returns
+// null (unset spend), or a number, or NaN-safe "no denominator" via the
+// caller checking availNowCount === 0 first.
+function segmentCPA(spend, segmentAdEntries, segmentAdAvailNow, totalAdEntries) {
+  if (spend === null) return null;
+  if (segmentAdAvailNow === 0 || totalAdEntries === 0) return NaN; // undefined -- em dash
+  var share = segmentAdEntries / totalAdEntries;
+  return (spend * share) / segmentAdAvailNow;
+}
+function blendedCPA(spend, adAvailNowCount) {
+  if (spend === null) return null;
+  if (adAvailNowCount === 0) return NaN;
+  return spend / adAvailNowCount;
+}
+function renderCPA(cpaValue) {
+  if (cpaValue === null) return '<button type="button" class="mr-kpi-prompt" data-focus-spend>Enter spend</button>';
+  if (isNaN(cpaValue)) return '<span class="mr-em-dash">—</span>';
+  return fmtCurrency(cpaValue);
+}
+// Delegated so it keeps working across every re-render (KPI card + every
+// "Enter spend" cell in the channel/state/zip tables all re-render their
+// innerHTML on every recompute()).
+document.addEventListener("click", function (e) {
+  if (e.target.closest("[data-focus-spend]")) document.getElementById("mr-spend-input").focus();
+});
+
+/* ======================================================================
+   Generic sortable-table helper
+====================================================================== */
+function sortRows(rows, sortState, accessors) {
+  if (!sortState) return rows;
+  var get = accessors[sortState.key];
+  if (!get) return rows;
+  var copy = rows.slice();
+  copy.sort(function (a, b) {
+    var av = get(a), bv = get(b);
+    // Undefined/NaN (e.g. CPA with zero Available Now) always sorts last,
+    // regardless of direction -- spec: "Zips with no Available Now sort
+    // last on CPA."
+    var aBad = av === null || av === undefined || (typeof av === "number" && isNaN(av));
+    var bBad = bv === null || bv === undefined || (typeof bv === "number" && isNaN(bv));
+    if (aBad && bBad) return 0;
+    if (aBad) return 1;
+    if (bBad) return -1;
+    if (av < bv) return sortState.dir === "asc" ? -1 : 1;
+    if (av > bv) return sortState.dir === "asc" ? 1 : -1;
+    return 0;
+  });
+  return copy;
+}
+function wireSortableHeaders(tableEl, sortStateGetter, sortStateSetter, onSort) {
+  tableEl.querySelectorAll("th[data-sort-key]").forEach(function (th) {
+    th.addEventListener("click", function () {
+      var key = th.getAttribute("data-sort-key");
+      var current = sortStateGetter();
+      var dir = "desc";
+      if (current && current.key === key && current.dir === "desc") dir = "asc";
+      sortStateSetter({ key: key, dir: dir });
+      onSort();
+    });
+  });
+}
+function sortArrow(sortState, key) {
+  if (!sortState || sortState.key !== key) return "";
+  return '<span class="arrow">' + (sortState.dir === "asc" ? "▲" : "▼") + "</span>";
+}
+
+/* ======================================================================
+   Status color / label helpers
+====================================================================== */
+function statusDot(statusIndex) {
+  return '<span class="mr-avail-dot" style="background:' + cssVar(STATUS_COLOR_VARS[statusIndex]) + ';"></span>';
+}
+function channelDot(group) {
+  return '<span class="mr-chip-dot" style="background:' + cssVar(CHANNEL_COLOR_VAR[group]) + ';"></span>';
+}
+
+/* ======================================================================
+   1. KPI row
+====================================================================== */
+/* ACCOUNTS_BASE_URL is injected by marketing_cleaning.render_report_html()
+   -- a real URL when this page is served live by app.py's /marketing
+   route (/marketing/available-now, an authenticated route that shows
+   real name/address data), or null for the standalone shareable file
+   (no backend there to query PII from -- see that function's own
+   comment). typeof-guarded everywhere it's read since the standalone
+   file's template still has the `var ACCOUNTS_BASE_URL = null;` line
+   from generation, but defends against a template served without the
+   substitution ever having run at all. */
+function accountsUrl() {
+  return ACCOUNTS_BASE_URL + "?from=" + fmtDateISO(state.fromDay) + "&to=" + fmtDateISO(state.toDay);
+}
+
+function renderKPIs(agg) {
+  var days = state.toDay - state.fromDay + 1;
+  var rawInRange = countRawInRange(state.fromDay, state.toDay);
+  var duplicatesRemoved = rawInRange - agg.totalCount;
+  var entriesPerDay = days > 0 ? agg.totalCount / days : 0;
+
+  var pctFromAds = agg.totalCount ? agg.adCount / agg.totalCount : 0;
+  var pctAvailOfAds = agg.adCount ? agg.adAvailNowCount / agg.adCount : 0;
+  var pctAvailOfAll = agg.totalCount ? agg.allAvailNowCount / agg.totalCount : 0;
+
+  var cpa = blendedCPA(state.spend, agg.adAvailNowCount);
+
+  function exportHead(label, exportKey) {
+    return '<div class="mr-kpi-head"><span class="mr-kpi-label">' + label + '</span>' +
+      '<button type="button" class="mr-kpi-export" data-export="' + exportKey + '" title="Export these entries as a CSV file">Export &#8681;</button></div>' +
+      '<span class="mr-kpi-export-status" data-export-status="' + exportKey + '"></span>';
+  }
+
+  var html = "";
+  html += '<div class="mr-kpi">' + exportHead("Unique entries", "unique") +
+    '<div class="mr-kpi-value mr-num">' + fmtInt(agg.totalCount) + '</div>' +
+    '<div class="mr-kpi-detail mr-num">' + fmtInt(days) + ' day' + (days === 1 ? "" : "s") + ' · ' + entriesPerDay.toFixed(1) + '/day · ' + fmtInt(duplicatesRemoved) + ' duplicate' + (duplicatesRemoved === 1 ? "" : "s") + ' removed</div></div>';
+
+  html += '<div class="mr-kpi">' + exportHead("From ads", "ads") +
+    '<div class="mr-kpi-value mr-num">' + fmtInt(agg.adCount) + '</div>' +
+    '<div class="mr-kpi-detail mr-num">' + fmtPct(pctFromAds) + ' of all entries</div></div>';
+
+  var availValueInner = fmtInt(agg.adAvailNowCount);
+  if (typeof ACCOUNTS_BASE_URL === "string" && ACCOUNTS_BASE_URL) {
+    availValueInner = '<a class="mr-kpi-value-link" href="' + accountsUrl() + '" title="View accounts (name, address, created date)">' + availValueInner + '</a>';
+  }
+  html += '<div class="mr-kpi">' + exportHead("Available Now (ads)", "avail") +
+    '<div class="mr-kpi-value mr-num">' + availValueInner + '</div>' +
+    '<div class="mr-kpi-detail mr-num">' + fmtPct(pctAvailOfAds) + ' of ad entries · ' + fmtPct(pctAvailOfAll) + ' of all traffic' +
+    (typeof ACCOUNTS_BASE_URL === "string" && ACCOUNTS_BASE_URL ? ' · <a class="mr-kpi-value-link" href="' + accountsUrl() + '">view accounts</a>' : '') + '</div></div>';
+
+  html += '<div class="mr-kpi"><div class="mr-kpi-label">Blended CPA</div>' +
+    '<div class="mr-kpi-value' + (cpa === null ? ' small' : '') + '">' + renderCPA(cpa) + '</div>' +
+    '<div class="mr-kpi-detail">cost per Available Now ad entry</div></div>';
+
+  document.getElementById("mr-kpi-grid").innerHTML = html;
+}
+
+/* ======================================================================
+   2. Availability mix
+====================================================================== */
+function renderAvailabilityMix(agg) {
+  var counts = state.availToggle === "ads" ? agg.statusAdCounts : agg.statusAllCounts;
+  var total = counts.reduce(function (a, b) { return a + b; }, 0);
+  var maxCount = Math.max.apply(null, counts.concat([1]));
+  var html = "";
+  for (var s = 0; s < 7; s++) {
+    var count = counts[s];
+    var share = total ? count / total : 0;
+    var barPct = maxCount ? (count / maxCount) * 100 : 0;
+    html += '<div class="mr-avail-cell">' +
+      '<div class="mr-avail-name">' + statusDot(s) + STATUS_SHORT[s] + '</div>' +
+      '<div class="mr-avail-count mr-num">' + fmtInt(count) + '</div>' +
+      '<div class="mr-avail-share mr-num">' + fmtPct(share) + '</div>' +
+      '<div class="mr-avail-bar"><div class="mr-avail-bar-fill" style="width:' + barPct + '%;background:' + cssVar(STATUS_COLOR_VARS[s]) + ';"></div></div>' +
+      '</div>';
+  }
+  document.getElementById("mr-avail-grid").innerHTML = html;
+}
+
+/* ======================================================================
+   3. Volume vs. serviceable rate -- hand-rolled SVG bar+line combo.
+   Deliberately a two-axis chart (bar count on the left, % Available Now
+   on the right) -- normally avoided (a single scale reads more honestly),
+   but explicitly requested to correlate ad volume with serviceable rate
+   over time in one view; both axes are labeled and colored distinctly to
+   keep the two scales from being confused with one another.
+====================================================================== */
+function bucketizeAdEntries(indices) {
+  var days = state.toDay - state.fromDay + 1;
+  var monthly = days > 70;
+  var buckets = new Map(); // bucketKey -> { label, sortKey, ad, availNow }
+
+  for (var k = 0; k < indices.length; k++) {
+    var i = indices[k];
+    if (D.a[i] !== 1) continue;
+    var day = D.d[i];
+    var key, label, sortKey;
+    if (monthly) {
+      var dt = dateFromDay(day);
+      key = dt.getUTCFullYear() + "-" + dt.getUTCMonth();
+      label = fmtMonthLabel(day);
+      sortKey = dt.getUTCFullYear() * 12 + dt.getUTCMonth();
+    } else {
+      key = String(day);
+      label = fmtDateShort(day);
+      sortKey = day;
+    }
+    var b = buckets.get(key);
+    if (!b) { b = { label: label, sortKey: sortKey, ad: 0, availNow: 0 }; buckets.set(key, b); }
+    b.ad++;
+    if (D.s[i] === 1) b.availNow++;
+  }
+  var arr = Array.from(buckets.values());
+  arr.sort(function (a, b) { return a.sortKey - b.sortKey; });
+  return { buckets: arr, monthly: monthly };
+}
+
+function renderVolumeChart(indices) {
+  var result = bucketizeAdEntries(indices);
+  var buckets = result.buckets;
+  document.getElementById("mr-volume-bucket-note").textContent = result.monthly ? "Bucketed by month (range > 70 days)" : "Bucketed by day";
+
+  var wrap = document.getElementById("mr-volume-chart-wrap");
+  if (!buckets.length) {
+    wrap.innerHTML = '<p style="color:var(--text-muted); padding:24px 0;">No ad entries in this range.</p>';
+    return;
+  }
+
+  var W = Math.max(wrap.clientWidth || 900, 300), H = 260;
+  var padL = 44, padR = 44, padT = 14, padB = 30;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+  var maxAd = Math.max.apply(null, buckets.map(function (b) { return b.ad; }).concat([1]));
+  var n = buckets.length;
+  var barGap = 3;
+  var barW = Math.max(2, plotW / n - barGap);
+
+  var accent = cssVar("--accent"), good = cssVar("--good"), grid = cssVar("--border-soft"), muted = cssVar("--text-muted");
+
+  function x(idx) { return padL + idx * (plotW / n) + (plotW / n - barW) / 2; }
+  function yBar(val) { return padT + plotH - (val / maxAd) * plotH; }
+  function yLine(pct) { return padT + plotH - pct * plotH; }
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" style="display:block;">';
+
+  // gridlines (left axis only -- avoids doubled gridlines confusing the
+  // two scales together)
+  for (var g = 0; g <= 4; g++) {
+    var gy = padT + (plotH / 4) * g;
+    svg += '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + gy + '" y2="' + gy + '" stroke="' + grid + '" stroke-width="1"/>';
+    var val = Math.round(maxAd - (maxAd / 4) * g);
+    svg += '<text x="' + (padL - 8) + '" y="' + (gy + 3) + '" text-anchor="end" font-size="9.5" fill="' + muted + '" font-family="var(--font-mono)">' + val + '</text>';
+  }
+  for (var pg = 0; pg <= 2; pg++) {
+    var pgy = padT + (plotH / 2) * pg;
+    var pct = 100 - pg * 50;
+    svg += '<text x="' + (W - padR + 8) + '" y="' + (pgy + 3) + '" text-anchor="start" font-size="9.5" fill="' + good + '" font-family="var(--font-mono)">' + pct + '%</text>';
+  }
+
+  // bars
+  for (var bi = 0; bi < n; bi++) {
+    var bx = x(bi), by = yBar(buckets[bi].ad), bh = padT + plotH - by;
+    svg += '<rect class="mr-vbar" data-idx="' + bi + '" x="' + bx + '" y="' + by + '" width="' + barW + '" height="' + Math.max(bh, 0) + '" rx="2" fill="' + accent + '" opacity="0.88"/>';
+  }
+
+  // line
+  var pts = buckets.map(function (b, idx) {
+    var pct = b.ad ? b.availNow / b.ad : 0;
+    return (x(idx) + barW / 2) + "," + yLine(pct);
+  }).join(" ");
+  svg += '<polyline points="' + pts + '" fill="none" stroke="' + good + '" stroke-width="2"/>';
+  buckets.forEach(function (b, idx) {
+    var pct = b.ad ? b.availNow / b.ad : 0;
+    svg += '<circle class="mr-vpt" data-idx="' + idx + '" cx="' + (x(idx) + barW / 2) + '" cy="' + yLine(pct) + '" r="3" fill="' + good + '"/>';
+  });
+
+  // x labels (sparse to avoid crowding)
+  var labelEvery = Math.ceil(n / (result.monthly ? n : 10));
+  for (var li = 0; li < n; li += labelEvery) {
+    svg += '<text x="' + (x(li) + barW / 2) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="9.5" fill="' + muted + '" font-family="var(--font-mono)">' + buckets[li].label + '</text>';
+  }
+
+  svg += "</svg>";
+  wrap.innerHTML = svg;
+
+  var tooltip = document.getElementById("mr-tooltip");
+  wrap.querySelectorAll(".mr-vbar, .mr-vpt").forEach(function (el) {
+    el.addEventListener("mousemove", function (evt) {
+      var idx = Number(el.getAttribute("data-idx"));
+      var b = buckets[idx];
+      var pct = b.ad ? b.availNow / b.ad : 0;
+      tooltip.innerHTML = "<strong>" + b.label + "</strong><br>" + fmtInt(b.ad) + " ad entries · " + fmtPct(pct) + " Available Now";
+      tooltip.style.left = evt.pageX + "px";
+      tooltip.style.top = evt.pageY + "px";
+      tooltip.classList.add("show");
+    });
+    el.addEventListener("mouseleave", function () { tooltip.classList.remove("show"); });
+  });
+}
+
+/* ======================================================================
+   4. By channel
+====================================================================== */
+function statusCells(counts, prefix) {
+  var cells = "";
+  for (var s = 0; s < 7; s++) cells += '<td class="mr-num">' + fmtInt(counts[s]) + '</td>';
+  return cells;
+}
+function channelTableHeaderHTML(sortState) {
+  var cols = [["group", "Channel", true], ["entries", "Entries"], ["share", "Share"],
+    ["s0", "Unavail"], ["s1", "Avail Now"], ["s2", "CS-NoOrd"], ["s3", "CS-Preord"], ["s4", "Permitting"], ["s5", "Strand"], ["s6", "Fiber"],
+    ["pctAvail", "% Avail"], ["cpa", "Est. CPA"]];
+  var html = "<thead><tr>";
+  cols.forEach(function (c) {
+    var left = c[2] ? " mr-th-left" : "";
+    var sorted = sortState && sortState.key === c[0] ? " sorted" : "";
+    html += '<th class="' + left + sorted + '" data-sort-key="' + c[0] + '">' + c[1] + sortArrow(sortState, c[0]) + '</th>';
+  });
+  html += "</tr></thead>";
+  return html;
+}
+function renderChannelTable(agg) {
+  var totalEntries = agg.totalCount || 1;
+  var byGroup = {};
+  CHANNEL_ORDER.forEach(function (g) { byGroup[g] = { group: g, entries: 0, statusCounts: [0, 0, 0, 0, 0, 0, 0], details: [] }; });
+  agg.channels.forEach(function (row) {
+    if (!byGroup[row.group]) return;
+    byGroup[row.group].entries += row.entries;
+    for (var s = 0; s < 7; s++) byGroup[row.group].statusCounts[s] += row.statusCounts[s];
+    byGroup[row.group].details.push(row);
+  });
+
+  function withComputed(r, isPaid) {
+    var availNow = r.statusCounts[1];
+    var pctAvail = r.entries ? availNow / r.entries : 0;
+    var cpa = isPaid ? segmentCPA(state.spend, r.entries, availNow, agg.adCount) : undefined;
+    return Object.assign({}, r, { share: r.entries / totalEntries, pctAvail: pctAvail, cpa: cpa });
+  }
+
+  var groupRows = CHANNEL_ORDER.map(function (g) { return withComputed(byGroup[g], g === "Paid"); });
+  groupRows = sortRows(groupRows, state.channelSort, {
+    group: function (r) { return CHANNEL_ORDER.indexOf(r.group); },
+    entries: function (r) { return r.entries; }, share: function (r) { return r.share; },
+    s0: function (r) { return r.statusCounts[0]; }, s1: function (r) { return r.statusCounts[1]; },
+    s2: function (r) { return r.statusCounts[2]; }, s3: function (r) { return r.statusCounts[3]; },
+    s4: function (r) { return r.statusCounts[4]; }, s5: function (r) { return r.statusCounts[5]; }, s6: function (r) { return r.statusCounts[6]; },
+    pctAvail: function (r) { return r.pctAvail; }, cpa: function (r) { return r.cpa; },
+  });
+
+  var html = channelTableHeaderHTML(state.channelSort) + "<tbody>";
+  groupRows.forEach(function (r) {
+    var isPaid = r.group === "Paid";
+    html += '<tr class="group-row"><td class="mr-td-left"><span class="mr-chip">' + channelDot(r.group) + r.group + '</span></td>' +
+      '<td class="mr-num">' + fmtInt(r.entries) + '</td><td class="mr-num">' + fmtPct(r.share) + '</td>' +
+      statusCells(r.statusCounts) +
+      '<td class="mr-num">' + fmtPct(r.pctAvail) + '</td>' +
+      '<td class="mr-num">' + (isPaid ? renderCPA(r.cpa) : '<span class="mr-em-dash">—</span>') + '</td></tr>';
+
+    var detailByRaw = byGroup[r.group].details;
+    if (detailByRaw.length > 1) {
+      var detailRows = detailByRaw.map(function (d) { return withComputed(d, isPaid); });
+      detailRows.sort(function (a, b) { return b.entries - a.entries; });
+      detailRows.forEach(function (d) {
+        html += '<tr class="sub-row"><td class="mr-td-left">' + d.detail + '</td>' +
+          '<td class="mr-num">' + fmtInt(d.entries) + '</td><td class="mr-num">' + fmtPct(d.share) + '</td>' +
+          statusCells(d.statusCounts) +
+          '<td class="mr-num">' + fmtPct(d.pctAvail) + '</td>' +
+          '<td class="mr-num">' + (isPaid ? renderCPA(d.cpa) : '<span class="mr-em-dash">—</span>') + '</td></tr>';
+      });
+    }
+  });
+  html += "</tbody>";
+  var table = document.getElementById("mr-channel-table");
+  table.innerHTML = html;
+  wireSortableHeaders(table, function () { return state.channelSort; }, function (s) { state.channelSort = s; }, function () { renderChannelTable(currentAgg); });
+}
+
+/* ======================================================================
+   5. By state
+====================================================================== */
+function stateTableHeaderHTML(sortState) {
+  var cols = [["state", "State", true], ["entries", "Entries"],
+    ["s0", "Unavail"], ["s1", "Avail Now"], ["s2", "CS-NoOrd"], ["s3", "CS-Preord"], ["s4", "Permitting"], ["s5", "Strand"], ["s6", "Fiber"],
+    ["zips", "Zips"], ["ad", "Ad entries"], ["share", "Share"], ["pctAvail", "% Avail"], ["cpa", "Est. CPA"]];
+  var html = "<thead><tr>";
+  cols.forEach(function (c) {
+    var left = c[2] ? " mr-th-left" : "";
+    var sorted = sortState && sortState.key === c[0] ? " sorted" : "";
+    html += '<th class="' + left + sorted + '" data-sort-key="' + c[0] + '">' + c[1] + sortArrow(sortState, c[0]) + '</th>';
+  });
+  html += "</tr></thead>";
+  return html;
+}
+function renderStateTable(agg) {
+  var byState = {};
+  FOOTPRINT_STATES.concat(["Outside footprint"]).forEach(function (s) {
+    byState[s] = { state: s, entries: 0, adEntries: 0, adAvailNow: 0, statusCounts: [0, 0, 0, 0, 0, 0, 0], zips: 0 };
+  });
+  agg.states.forEach(function (row) { byState[row.state] = row; });
+
+  var totalAd = agg.adCount || 1;
+  var rows = FOOTPRINT_STATES.concat(["Outside footprint"]).map(function (s) {
+    var r = byState[s];
+    var pctAvail = r.adEntries ? r.adAvailNow / r.adEntries : 0;
+    var share = r.adEntries / totalAd;
+    var cpa = segmentCPA(state.spend, r.adEntries, r.adAvailNow, agg.adCount);
+    return Object.assign({}, r, { pctAvail: pctAvail, share: share, cpa: cpa });
+  });
+
+  rows = sortRows(rows, state.stateSort, {
+    state: function (r) { return FOOTPRINT_STATES.concat(["Outside footprint"]).indexOf(r.state); },
+    entries: function (r) { return r.entries; },
+    s0: function (r) { return r.statusCounts[0]; }, s1: function (r) { return r.statusCounts[1]; },
+    s2: function (r) { return r.statusCounts[2]; }, s3: function (r) { return r.statusCounts[3]; },
+    s4: function (r) { return r.statusCounts[4]; }, s5: function (r) { return r.statusCounts[5]; }, s6: function (r) { return r.statusCounts[6]; },
+    zips: function (r) { return r.zips; }, ad: function (r) { return r.adEntries; }, share: function (r) { return r.share; },
+    pctAvail: function (r) { return r.pctAvail; }, cpa: function (r) { return r.cpa; },
+  });
+
+  var html = stateTableHeaderHTML(state.stateSort) + "<tbody>";
+  rows.forEach(function (r) {
+    var active = state.stateFilter === r.state ? " active-row" : "";
+    html += '<tr class="clickable' + active + '" data-state="' + r.state + '"><td class="mr-td-left">' + r.state + '</td>' +
+      '<td class="mr-num">' + fmtInt(r.entries) + '</td>' +
+      statusCells(r.statusCounts) +
+      '<td class="mr-num">' + fmtInt(r.zips) + '</td>' +
+      '<td class="mr-num">' + fmtInt(r.adEntries) + '</td>' +
+      '<td class="mr-num">' + fmtPct(r.share) + '</td>' +
+      '<td class="mr-num">' + fmtPct(r.pctAvail) + '</td>' +
+      '<td class="mr-num">' + renderCPA(r.cpa) + '</td></tr>';
+  });
+  html += "</tbody>";
+  var table = document.getElementById("mr-state-table");
+  table.innerHTML = html;
+  wireSortableHeaders(table, function () { return state.stateSort; }, function (s) { state.stateSort = s; }, function () { renderStateTable(currentAgg); });
+  table.querySelectorAll("tbody tr[data-state]").forEach(function (tr) {
+    tr.addEventListener("click", function () {
+      var s = tr.getAttribute("data-state");
+      state.stateFilter = state.stateFilter === s ? null : s;
+      state.zipStateFilter = state.stateFilter || "";
+      document.getElementById("mr-zip-state-filter").value = state.zipStateFilter;
+      state.zipShowCount = 25;
+      renderStateTable(currentAgg);
+      renderZipTable(currentAgg);
+    });
+  });
+}
+
+/* ======================================================================
+   6. Where the waste is
+====================================================================== */
+function renderWasteZips(agg) {
+  var zeroed = agg.zips.filter(function (z) { return z.adEntries > 0 && z.adAvailNow === 0; });
+  zeroed.sort(function (a, b) { return b.adEntries - a.adEntries; });
+  var top = zeroed.slice(0, 7);
+  var grid = document.getElementById("mr-waste-grid");
+  if (!top.length) {
+    grid.innerHTML = '<p style="color:var(--text-muted);">No zips with ad volume and zero Available Now in this range.</p>';
+    return;
+  }
+  grid.innerHTML = top.map(function (z) {
+    return '<div class="mr-waste-card"><div class="mr-waste-zip mr-num">' + z.z + '</div>' +
+      '<div class="mr-waste-muni">' + (z.m || "—") + ", " + z.s + '</div>' +
+      '<div class="mr-waste-count mr-num">' + fmtInt(z.adEntries) + ' ad entries · 0 Available Now</div></div>';
+  }).join("");
+}
+
+/* ======================================================================
+   7. Ad entries by zip
+====================================================================== */
+function zipTableHeaderHTML(view, sortState) {
+  var cols = view === "full"
+    ? [["zip", "Zip", true], ["state", "State"], ["muni", "Municipality"], ["ad", "Ad entries"],
+       ["s0", "Unavail"], ["s1", "Avail Now"], ["s2", "CS-NoOrd"], ["s3", "CS-Preord"], ["s4", "Permitting"], ["s5", "Strand"], ["s6", "Fiber"]]
+    : [["zip", "Zip", true], ["state", "State"], ["muni", "Municipality"], ["ad", "Ad entries"], ["avail", "Available Now"], ["pctAvail", "% Avail"], ["cpa", "Est. CPA"]];
+  var html = "<thead><tr>";
+  cols.forEach(function (c) {
+    var left = c[2] ? " mr-th-left" : "";
+    var sorted = sortState && sortState.key === c[0] ? " sorted" : "";
+    html += '<th class="' + left + sorted + '" data-sort-key="' + c[0] + '">' + c[1] + sortArrow(sortState, c[0]) + '</th>';
+  });
+  html += "</tr></thead>";
+  return html;
+}
+function renderZipTable(agg) {
+  var totalAd = agg.adCount || 1;
+  var rows = agg.zips.map(function (z) {
+    var pctAvail = z.adEntries ? z.adAvailNow / z.adEntries : 0;
+    var cpa = segmentCPA(state.spend, z.adEntries, z.adAvailNow, agg.adCount);
+    var stKey = FOOTPRINT_STATES.indexOf(z.s) >= 0 ? z.s : "Outside footprint";
+    return { zi: z.zi, z: z.z, m: z.m, s: z.s, stKey: stKey, ad: z.adEntries, avail: z.adAvailNow, pctAvail: pctAvail, cpa: cpa, statusCounts: z.statusCountsAd };
+  });
+
+  // filters
+  var search = state.zipSearch.trim().toLowerCase();
+  if (search) rows = rows.filter(function (r) { return r.z.indexOf(search) >= 0 || (r.m || "").toLowerCase().indexOf(search) >= 0; });
+  if (state.zipStateFilter) rows = rows.filter(function (r) { return r.stKey === state.zipStateFilter; });
+  if (state.zipQuickFilter === "10") rows = rows.filter(function (r) { return r.ad >= 10; });
+  else if (state.zipQuickFilter === "50") rows = rows.filter(function (r) { return r.ad >= 50; });
+  else if (state.zipQuickFilter === "zero") rows = rows.filter(function (r) { return r.avail === 0; });
+  else if (state.zipQuickFilter === "half") rows = rows.filter(function (r) { return r.ad > 0 && r.avail / r.ad >= 0.5; });
+
+  var filteredCount = rows.length;
+  var filteredAd = rows.reduce(function (s, r) { return s + r.ad; }, 0);
+  var filteredAvail = rows.reduce(function (s, r) { return s + r.avail; }, 0);
+  var filteredPct = filteredAd ? filteredAvail / filteredAd : 0;
+  var filteredCpaSum = segmentCPA(state.spend, filteredAd, filteredAvail, agg.adCount);
+
+  rows = sortRows(rows, state.zipSort, {
+    zip: function (r) { return r.z; }, state: function (r) { return r.stKey; }, muni: function (r) { return r.m || ""; },
+    ad: function (r) { return r.ad; }, avail: function (r) { return r.avail; }, pctAvail: function (r) { return r.pctAvail; }, cpa: function (r) { return r.cpa; },
+    s0: function (r) { return r.statusCounts[0]; }, s1: function (r) { return r.statusCounts[1]; },
+    s2: function (r) { return r.statusCounts[2]; }, s3: function (r) { return r.statusCounts[3]; },
+    s4: function (r) { return r.statusCounts[4]; }, s5: function (r) { return r.statusCounts[5]; }, s6: function (r) { return r.statusCounts[6]; },
+  });
+
+  document.getElementById("mr-zip-summary").textContent =
+    fmtInt(filteredCount) + " zips · " + fmtInt(filteredAd) + " entries · " + fmtInt(filteredAvail) + " Available Now (" + fmtPct(filteredPct) + ") · CPA " +
+    (filteredCpaSum === null ? "unset" : (isNaN(filteredCpaSum) ? "—" : fmtCurrency(filteredCpaSum)));
+
+  var visible = rows.slice(0, state.zipShowCount);
+  var html = zipTableHeaderHTML(state.zipView, state.zipSort) + "<tbody>";
+  visible.forEach(function (r) {
+    if (state.zipView === "full") {
+      html += "<tr><td class=\"mr-td-left mr-mono\">" + r.z + "</td><td class=\"mr-td-left\">" + r.stKey + "</td><td class=\"mr-td-left\">" + (r.m || "—") + "</td>" +
+        '<td class="mr-num">' + fmtInt(r.ad) + '</td>' + statusCells(r.statusCounts) + "</tr>";
+    } else {
+      html += "<tr><td class=\"mr-td-left mr-mono\">" + r.z + "</td><td class=\"mr-td-left\">" + r.stKey + "</td><td class=\"mr-td-left\">" + (r.m || "—") + "</td>" +
+        '<td class="mr-num">' + fmtInt(r.ad) + '</td><td class="mr-num">' + fmtInt(r.avail) + '</td>' +
+        '<td class="mr-num">' + fmtPct(r.pctAvail) + '</td><td class="mr-num">' + renderCPA(r.cpa) + '</td></tr>';
+    }
+  });
+  if (!visible.length) {
+    var colspan = state.zipView === "full" ? 11 : 7;
+    html += '<tr><td colspan="' + colspan + '" style="text-align:center; color:var(--text-muted); padding:20px;">No zips match the current filters.</td></tr>';
+  }
+  html += "</tbody>";
+  var table = document.getElementById("mr-zip-table");
+  table.innerHTML = html;
+  wireSortableHeaders(table, function () { return state.zipSort; }, function (s) { state.zipSort = s; }, function () { renderZipTable(currentAgg); });
+
+  var showMoreBtn = document.getElementById("mr-zip-show-more");
+  showMoreBtn.style.display = rows.length > visible.length ? "" : "none";
+  showMoreBtn.textContent = "Show more (" + fmtInt(Math.min(50, rows.length - visible.length)) + " of " + fmtInt(rows.length - visible.length) + " remaining)";
+}
+
+/* ======================================================================
+   8. Footer
+====================================================================== */
+function renderFooter() {
+  var span = fmtDateShort(0) + " – " + fmtDateShort(D.maxday);
+  document.getElementById("mr-footer").innerHTML =
+    "<span>Full data span: " + span + " (day 0–" + D.maxday + ")</span>" +
+    '<span class="mr-num">' + fmtInt(D.raw_rows) + " raw submissions loaded · duplicates removed within the selected date range only</span>";
+}
+
+/* ======================================================================
+   Guardrail banner (populated from a separate GUARDRAILS blob, if present)
+====================================================================== */
+function renderGuardrails() {
+  var el = document.getElementById("mr-guardrail-banner");
+  if (typeof GUARDRAILS === "undefined" || !GUARDRAILS.warnings || !GUARDRAILS.warnings.length) { el.innerHTML = ""; return; }
+  el.innerHTML = '<div class="mr-guardrail"><div class="mr-guardrail-title">Data quality flags</div><ul>' +
+    GUARDRAILS.warnings.map(function (w) { return "<li>" + w + "</li>"; }).join("") + "</ul></div>";
+}
+
+/* ======================================================================
+   Main recompute + render orchestration
+====================================================================== */
+var currentAgg = null;
+var currentIndices = []; // the currently deduped row-index list for [state.fromDay, state.toDay] -- read by the KPI export buttons below.
+function recompute() {
+  var indices = computeDedupedIndices(state.fromDay, state.toDay);
+  currentIndices = indices;
+  currentAgg = aggregate(indices);
+  renderKPIs(currentAgg);
+  renderAvailabilityMix(currentAgg);
+  renderVolumeChart(indices);
+  renderChannelTable(currentAgg);
+  renderStateTable(currentAgg);
+  renderWasteZips(currentAgg);
+  renderZipTable(currentAgg);
+  renderFooter();
+}
+
+/* ======================================================================
+   KPI card exports (Unique entries / From ads / Available Now) --
+   CSV, not a hand-rolled binary .xlsx: Excel opens CSV natively with
+   correct columns, and CSV is the one spreadsheet format the published-
+   Artifact copy's `downloads` capability actually allowlists (`xlsx` is
+   not in that allowlist at all, base or extended set -- see the
+   artifact-capabilities skill's downloads.d.ts). One save path handles
+   both hosting contexts this file can run in: the sandboxed Artifact
+   viewer (via window.claude.use("downloads")) and a normal browser tab
+   -- the live /marketing route or a directly-opened standalone file
+   (via a plain Blob + <a download>, which is inert inside the Artifact
+   sandbox but works everywhere else).
+====================================================================== */
+function csvEscape(value) {
+  var s = value === null || value === undefined ? "" : String(value);
+  if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function rowsToCsv(indices) {
+  var header = ["Date", "Zip", "Municipality", "State", "Availability Status", "Channel Group", "Channel Detail"];
+  var lines = [header.map(csvEscape).join(",")];
+  indices.forEach(function (i) {
+    var zip = D.zips[D.zi[i]];
+    var chan = D.chans[D.c[i]];
+    var cells = [fmtDateISO(D.d[i]), zip.z, zip.m || "", zip.s || "Unknown", STATUS_FULL[D.s[i]], chan.g, chan.d];
+    lines.push(cells.map(csvEscape).join(","));
+  });
+  return lines.join("\r\n");
+}
+function exportFilename(exportKey) {
+  var label = { unique: "unique-entries", ads: "from-ads", avail: "available-now-ads" }[exportKey] || exportKey;
+  return "planet-networks-marketing-" + label + "_" + fmtDateISO(state.fromDay) + "_to_" + fmtDateISO(state.toDay) + ".csv";
+}
+function setExportStatus(exportKey, text, kind) {
+  var el = document.querySelector('[data-export-status="' + exportKey + '"]');
+  if (!el) return;
+  el.textContent = text;
+  el.className = "mr-kpi-export-status" + (kind ? " " + kind : "");
+  if (text) setTimeout(function () { if (el.textContent === text) { el.textContent = ""; el.className = "mr-kpi-export-status"; } }, 3500);
+}
+async function saveCsv(filename, csvString) {
+  if (window.claude && typeof window.claude.use === "function") {
+    // Running inside a Claude-hosted view (the published Artifact) --
+    // the ONLY way to hand the viewer a file here is the "downloads"
+    // capability. A plain Blob + <a download> is INERT inside that
+    // sandbox (the platform silently drops it), so if the capability
+    // isn't granted (not declared, disabled, or -- as with a publicly
+    // shared artifact -- not allowed at all) this must report failure
+    // honestly rather than fall through to a "download" that would
+    // silently do nothing while claiming success.
+    try {
+      var downloads = await window.claude.use("downloads");
+      if (downloads) {
+        await downloads.save({ filename: filename, data: csvString });
+        return { ok: true };
+      }
+    } catch (err) {
+      if (err && err.code === "declined") return { ok: false, message: "Declined" };
+    }
+    return { ok: false, message: "Not available in this shared view" };
+  }
+  // Not a Claude-hosted view at all -- the live /marketing route, or
+  // this file opened directly -- a normal browser download.
+  try {
+    var blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: "Unavailable in this view" };
+  }
+}
+function wireKpiExports() {
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-export]");
+    if (!btn) return;
+    var key = btn.getAttribute("data-export");
+    var indices = key === "ads" ? currentIndices.filter(function (i) { return D.a[i] === 1; })
+      : key === "avail" ? currentIndices.filter(function (i) { return D.a[i] === 1 && D.s[i] === 1; })
+      : currentIndices;
+    if (!indices.length) { setExportStatus(key, "No rows in range", "err"); return; }
+    setExportStatus(key, "Preparing…");
+    var csv = rowsToCsv(indices);
+    var filename = exportFilename(key);
+    saveCsv(filename, csv).then(function (result) {
+      setExportStatus(key, result.ok ? ("Saved " + fmtInt(indices.length) + " rows") : (result.message || "Export failed"), result.ok ? "ok" : "err");
+    });
+  });
+}
+
+/* ======================================================================
+   Controls: date range presets + custom pickers
+====================================================================== */
+function monthsInRange() {
+  var months = [];
+  var d0 = dateFromDay(0), d1 = dateFromDay(D.maxday);
+  var y = d0.getUTCFullYear(), m = d0.getUTCMonth();
+  while (y < d1.getUTCFullYear() || (y === d1.getUTCFullYear() && m <= d1.getUTCMonth())) {
+    var monthStart = Date.UTC(y, m, 1);
+    var monthEnd = Date.UTC(y, m + 1, 0);
+    var fromDay = Math.max(0, Math.round((monthStart - DAY0) / 86400000));
+    var toDay = Math.min(D.maxday, Math.round((monthEnd - DAY0) / 86400000));
+    months.push({ label: new Date(monthStart).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }), fromDay: fromDay, toDay: toDay, key: y + "-" + m });
+    m++; if (m > 11) { m = 0; y++; }
+  }
+  return months;
+}
+
+function applyRange(fromDay, toDay, presetKey) {
+  state.fromDay = Math.max(0, fromDay);
+  state.toDay = Math.min(D.maxday, toDay);
+  state.activePreset = presetKey || null;
+  state.zipShowCount = 25;
+  document.getElementById("mr-from-date").value = fmtDateISO(state.fromDay);
+  document.getElementById("mr-to-date").value = fmtDateISO(state.toDay);
+  updatePresetButtons();
+  applySpendProration();
+  recompute();
+}
+
+function updatePresetButtons() {
+  document.querySelectorAll(".mr-preset-btn").forEach(function (btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-preset") === state.activePreset);
+  });
+}
+
+function buildPresetRow() {
+  var row = document.getElementById("mr-preset-row");
+  var presets = [
+    { key: "full", label: "Full period" },
+    { key: "last30", label: "Last 30 days" },
+    { key: "last7", label: "Last 7 days" },
+    { key: "mtd", label: "Month to date" },
+  ];
+  presets.forEach(function (p) {
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.className = "mr-preset-btn"; btn.setAttribute("data-preset", p.key); btn.textContent = p.label;
+    btn.addEventListener("click", function () {
+      if (p.key === "full") applyRange(0, D.maxday, "full");
+      else if (p.key === "last30") applyRange(D.maxday - 29, D.maxday, "last30");
+      else if (p.key === "last7") applyRange(D.maxday - 6, D.maxday, "last7");
+      else if (p.key === "mtd") {
+        var dt = dateFromDay(D.maxday);
+        var monthStartDay = dayFromDate(new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1)));
+        applyRange(monthStartDay, D.maxday, "mtd");
+      }
+    });
+    row.appendChild(btn);
+  });
+  monthsInRange().forEach(function (mo) {
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.className = "mr-preset-btn"; btn.setAttribute("data-preset", "month:" + mo.key); btn.textContent = mo.label;
+    btn.addEventListener("click", function () { applyRange(mo.fromDay, mo.toDay, "month:" + mo.key); });
+    row.appendChild(btn);
+  });
+}
+
+function wireCustomDateInputs() {
+  var fromEl = document.getElementById("mr-from-date"), toEl = document.getElementById("mr-to-date");
+  fromEl.min = fmtDateISO(0); fromEl.max = fmtDateISO(D.maxday);
+  toEl.min = fmtDateISO(0); toEl.max = fmtDateISO(D.maxday);
+  function onCustomChange() {
+    var f = isoToDay(fromEl.value), t = isoToDay(toEl.value);
+    if (f === null || t === null || f > t) return;
+    applyRange(f, t, null);
+  }
+  fromEl.addEventListener("change", onCustomChange);
+  toEl.addEventListener("change", onCustomChange);
+}
+
+/* ======================================================================
+   Controls: spend
+====================================================================== */
+function applySpendProration() {
+  if (state.spendManual) return;
+  if (!D.spend_total) { state.spend = null; updateSpendUI(); return; }
+  var days = state.toDay - state.fromDay + 1;
+  var totalDays = D.maxday + 1;
+  state.spend = D.spend_total * (days / totalDays);
+  updateSpendUI();
+}
+function updateSpendUI() {
+  var input = document.getElementById("mr-spend-input");
+  var tag = document.getElementById("mr-spend-tag");
+  if (state.spend === null) { input.value = ""; tag.textContent = "unset"; tag.className = "mr-spend-tag est"; return; }
+  input.value = state.spend.toFixed(2);
+  if (state.spendManual) { tag.textContent = "manual"; tag.className = "mr-spend-tag manual"; }
+  else { tag.textContent = "estimated"; tag.className = "mr-spend-tag est"; }
+}
+function wireSpendInput() {
+  var input = document.getElementById("mr-spend-input");
+  input.addEventListener("change", function () {
+    var raw = input.value.replace(/[^0-9.]/g, "");
+    var val = parseFloat(raw);
+    if (isNaN(val) || raw === "") { state.spendManual = false; state.spend = null; applySpendProration(); }
+    else { state.spendManual = true; state.spend = val; updateSpendUI(); }
+    recompute();
+  });
+}
+
+/* ======================================================================
+   Controls: toggles, zip filters, show more
+====================================================================== */
+function wireToggleGroup(selector, onSelect) {
+  document.querySelectorAll(selector).forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll(selector).forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      onSelect(btn);
+    });
+  });
+}
+function wireControls() {
+  wireToggleGroup("[data-avail-toggle]", function (btn) { state.availToggle = btn.getAttribute("data-avail-toggle"); renderAvailabilityMix(currentAgg); });
+  wireToggleGroup("[data-zip-view]", function (btn) { state.zipView = btn.getAttribute("data-zip-view"); renderZipTable(currentAgg); });
+
+  var zipStateSel = document.getElementById("mr-zip-state-filter");
+  zipStateSel.innerHTML = '<option value="">All states</option>' + FOOTPRINT_STATES.concat(["Outside footprint"]).map(function (s) { return '<option value="' + s + '">' + s + "</option>"; }).join("");
+  zipStateSel.addEventListener("change", function () { state.zipStateFilter = zipStateSel.value; state.stateFilter = zipStateSel.value || null; state.zipShowCount = 25; renderStateTable(currentAgg); renderZipTable(currentAgg); });
+
+  var zipSearch = document.getElementById("mr-zip-search");
+  var searchTimer = null;
+  zipSearch.addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { state.zipSearch = zipSearch.value; state.zipShowCount = 25; renderZipTable(currentAgg); }, 180);
+  });
+
+  document.getElementById("mr-zip-quick-filter").addEventListener("change", function (e) { state.zipQuickFilter = e.target.value; state.zipShowCount = 25; renderZipTable(currentAgg); });
+  document.getElementById("mr-zip-show-more").addEventListener("click", function () { state.zipShowCount += 50; renderZipTable(currentAgg); });
+
+  window.addEventListener("resize", function () { renderVolumeChart(computeDedupedIndices(state.fromDay, state.toDay)); });
+}
+
+/* ======================================================================
+   Theme toggle (Auto -> Light -> Dark -> Auto)
+====================================================================== */
+function wireThemeToggle() {
+  var btn = document.getElementById("mr-theme-toggle");
+  var order = ["auto", "light", "dark"];
+  var idx = 0;
+  btn.addEventListener("click", function () {
+    idx = (idx + 1) % order.length;
+    var mode = order[idx];
+    btn.textContent = mode === "auto" ? "Auto" : (mode === "light" ? "Light" : "Dark");
+    if (mode === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", mode);
+  });
+}
+
+/* ======================================================================
+   Init
+====================================================================== */
+renderGuardrails();
+buildPresetRow();
+wireCustomDateInputs();
+wireSpendInput();
+wireControls();
+wireThemeToggle();
+wireKpiExports();
+applyRange(0, D.maxday, "full");
+
+})();
+</script>
+

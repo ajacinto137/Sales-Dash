@@ -15,7 +15,10 @@
      management -- the portal's original purpose) and **Data Tools**
      (Overview/Main Sales/Service Cancellations/Vision Packages, moved
      here 2026-08-19 from the main top nav -- see _topnav.html's own
-     header comment and README.md "Admin Portal Navigation"). Every link
+     header comment and README.md "Admin Portal Navigation" -- plus
+     Marketing Form Data, added 2026-08-19 as a raw-data verification
+     tool ahead of the future Marketing dashboard, see
+     marketing_data.py). Every link
      below points at a route already guarded server-side by
      @auth.admin_required (see auth.py) -- this nav is a convenience, not
      the real access control; hiding a link never substitutes for that
@@ -37,6 +40,7 @@
             <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'main_sales' else '' }}" href="{{ url_for('main_sales_page') }}">Main Sales</a>
             <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'cancellations' else '' }}" href="{{ url_for('cancellations_page') }}">Service Cancellations</a>
             <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'vision_packages' else '' }}" href="{{ url_for('vision_packages_page') }}">Vision Packages</a>
+            <a class="td-admin-tab{{ ' td-admin-tab-active' if active_page == 'admin_marketing_form_data' else '' }}" href="{{ url_for('admin_marketing_form_data') }}">Marketing Form Data</a>
         </div>
     </div>
 </nav>

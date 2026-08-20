@@ -26,7 +26,14 @@
         {% if current_user and current_user.role == 'Admin' %}
         <a href="{{ url_for('admin_users') }}">Admin</a>
         {% endif %}
-        <a class="td-topnav-active" href="{{ url_for('dashboard_page') }}">Dashboard</a>
+        <a class="{{ 'td-topnav-active' if active_page == 'dashboard' else '' }}" href="{{ url_for('dashboard_page') }}">Dashboard</a>
+        <!-- Marketing Dashboard V1 (added 2026-08-19) -- wired up to the
+             real /marketing route. Login-gated only (@auth.login_required
+             on marketing_dashboard_page()), same as Dashboard above -- not
+             part of Admin, so no role check here beyond the shared
+             current_user-exists guard the rest of this nav already
+             assumes. -->
+        <a class="{{ 'td-topnav-active' if active_page == 'marketing' else '' }}" href="{{ url_for('marketing_dashboard_page') }}">Marketing Dashboard</a>
     </nav>
 
     <!-- Global search: reps + customer accounts, debounced fetch to

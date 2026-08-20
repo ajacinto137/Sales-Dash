@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Marketing Form Data — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/admin_marketing_form_data.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    {% include "_admin_nav.html" %}
+
+    <!-- Marketing Form Data (added 2026-08-19) -- raw-data verification
+         tool ahead of the future Marketing dashboard. Reads directly from
+         PlanetWeb SQL Server's dbo.View_FormDataAnalytics
+         (marketing_data.py), server-side paginated/filtered/searched --
+         never loaded whole into memory. Deliberately shows the data as-is:
+         no attribution rules, channel grouping, dedup, conversion/ROI
+         calculation, or joins to sales/installs -- see marketing_data.py's
+         module docstring. -->
+    <div class="td-section-heading">
+        <h2>Marketing Form Data</h2>
+        <span class="td-muted-inline">Raw rows from PlanetWeb.dbo.View_FormDataAnalytics &middot; no attribution/aggregation logic yet</span>
+    </div>
+
+    <section class="td-kpi-bar">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Connection Status</span>
+            <span class="td-kpi-value {{ 'td-green' if result.ok else 'td-magenta' }}">{{ 'Connected' if result.ok else 'Connection Error' }}</span>
+            <span class="td-kpi-note">sql1.planetweb.planet.net &middot; PlanetWeb</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Total Rows</span>
+            <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(result.total) }}</span>
+            <span class="td-kpi-note">matching current search/filters</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Earliest Record</span>
+            <span class="td-kpi-value td-cyan">{{ result.earliest.strftime('%m/%d/%Y') if result.earliest else '—' }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Latest Record</span>
+            <span class="td-kpi-value td-cyan">{{ result.latest.strftime('%m/%d/%Y') if result.latest else '—' }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Last Refreshed</span>
+            <span class="td-kpi-value td-purple" style="font-size: 15px;">{{ marketing_last_refreshed }}</span>
+            <a class="td-btn td-btn-primary td-btn-block" href="{{ request.full_path }}" data-refresh-btn>Refresh Data</a>
+        </div>
+    </section>
+
+    {% if not result.ok %}
+    <section class="td-error-panel">
+        <div class="td-error-panel-title">Could not load Marketing Form Data</div>
+        <p class="td-error-panel-message">{{ result.error or "The query against PlanetWeb SQL Server failed. See the container logs for the full driver error." }}</p>
+        <p class="td-error-panel-message">Click <strong>Refresh Data</strong> above to retry once the connection issue is resolved.</p>
+    </section>
+    {% endif %}
+
+    <!-- ================= Attribution Quality =================
+         Debugging/data-validation panel for the SAME centralized
+         attribution logic the Marketing Dashboard uses
+         (marketing_attribution.attribute_record(), surfaced here via
+         marketing_metrics.get_attribution_quality()) -- Tier 1/2/3 split
+         and attribution-method breakdown. Deliberately lives HERE, not on
+         the main Marketing Dashboard (spec: this is a data-validation
+         concern, not a business-facing metric). Always the raw browser's
+         own base date window (marketing_data.BASE_START_DATE through
+         today), independent of the search/filter controls below --
+         collapsed by default via a native <details> disclosure, same
+         convention as dashboard.html's Planet Networks Records. -->
+    <section class="td-section">
+        <details class="td-collapsible">
+            <summary class="td-section-heading td-collapsible-summary">
+                <h2>Attribution Quality</h2>
+                <span class="td-muted-inline">Tier 1/2/3 breakdown &middot; {{ base_start_date.strftime('%-m/%-d/%Y') }} through today</span>
+                <span class="td-collapsible-chevron" aria-hidden="true">&#9662;</span>
+            </summary>
+
+            {% if not attribution_quality.ok %}
+            <section class="td-error-panel">
+                <div class="td-error-panel-title">Could not compute Attribution Quality</div>
+                <p class="td-error-panel-message">{{ attribution_quality.error or "The query against PlanetWeb SQL Server failed." }}</p>
+            </section>
+            {% else %}
+            <section class="td-kpi-bar">
+                <div class="td-kpi">
+                    <span class="td-kpi-label">Total Leads</span>
+                    <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(attribution_quality.total) }}</span>
+                </div>
+                <div class="td-kpi">
+                    <span class="td-kpi-label">Paid Leads</span>
+                    <span class="td-kpi-value td-cyan">{{ "{:,}".format(attribution_quality.paid) }}</span>
+                    <span class="td-kpi-note">{{ "%.1f"|format(attribution_quality.pct_paid) }}% of total</span>
+                </div>
+                {% for t in attribution_quality.tiers %}
+                <div class="td-kpi">
+                    <span class="td-kpi-label">Tier {{ t.tier }}</span>
+                    <span class="td-kpi-value {{ ['td-green', 'td-yellow', 'td-orange'][loop.index0] }}">{{ "{:,}".format(t.count) }}</span>
+                    <span class="td-kpi-note">{{ "%.1f"|format(t.pct) }}% of paid leads</span>
+                </div>
+                {% endfor %}
+            </section>
+
+            <section class="td-table-card">
+                <div class="td-table-scroll">
+                    <table class="td-table">
+                        <thead>
+                            <tr><th>Attribution Method</th><th>Paid Leads</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for m in attribution_quality.methods %}
+                            <tr><td>{{ m.method }}</td><td class="td-cyan">{{ "{:,}".format(m.count) }}</td></tr>
+                            {% else %}
+                            <tr><td colspan="2" class="td-empty-row">No paid leads in the current window.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {% endif %}
+        </details>
+    </section>
+
+    <form class="td-marketing-filters" method="get" action="{{ url_for('admin_marketing_form_data') }}">
+        <div class="td-marketing-filter-field td-marketing-filter-search">
+            <label for="mfd-search">Search</label>
+            <input type="search" id="mfd-search" name="search" class="td-search-input" value="{{ search }}"
+                   placeholder="Quote ID, Availability ID, municipality, ZIP, token, campaign, source…">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="mfd-date-from">Date From</label>
+            <input type="date" id="mfd-date-from" name="date_from" class="td-date-input" value="{{ filters.date_from }}">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="mfd-date-to">Date To</label>
+            <input type="date" id="mfd-date-to" name="date_to" class="td-date-input" value="{{ filters.date_to }}">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="mfd-municipality">Municipality</label>
+            <select id="mfd-municipality" name="municipality" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.municipality %}
+                <option value="{{ val }}" {{ 'selected' if val == filters.municipality else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="mfd-zipcode">Zipcode</label>
+            <input type="text" id="mfd-zipcode" name="zipcode" class="td-search-input" value="{{ filters.zipcode }}" placeholder="e.g. 07052">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="mfd-utm-source">UTM Source</label>
+            <select id="mfd-utm-source" name="utm_source" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.utm_source %}
+                <option value="{{ val }}" {{ 'selected' if val == filters.utm_source else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="mfd-utm-medium">UTM Medium</label>
+            <select id="mfd-utm-medium" name="utm_medium" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.utm_medium %}
+                <option value="{{ val }}" {{ 'selected' if val == filters.utm_medium else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="mfd-utm-campaign">UTM Campaign</label>
+            <select id="mfd-utm-campaign" name="utm_campaign" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.utm_campaign %}
+                <option value="{{ val }}" {{ 'selected' if val == filters.utm_campaign else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-actions">
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_marketing_form_data') }}">Clear Filters</a>
+        </div>
+    </form>
+
+    <section class="td-table-card">
+        <div class="td-table-scroll td-table-scroll--tall">
+            <table class="td-table td-admin-table td-marketing-table">
+                <thead>
+                    <tr>
+                        {% for col, label in columns %}
+                        <th>{{ label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if result.ok %}
+                        {% for row in result.rows %}
+                        <tr>
+                            {% for col, label in columns %}
+                            {% set value = row[col] %}
+                            <td>
+                                {% if value is none or value == '' %}
+                                <span class="td-admin-muted">—</span>
+                                {% elif col == 'InsertDate' %}
+                                <span class="td-cell-truncate" title="{{ value.strftime('%m/%d/%Y %I:%M:%S %p') }}">{{ value.strftime('%m/%d/%Y %I:%M %p') }}</span>
+                                {% else %}
+                                <span class="td-cell-truncate" title="{{ value }}">{{ value }}</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="{{ columns|length }}" class="td-empty-row">No records match the current search/filters.</td></tr>
+                        {% endfor %}
+                    {% else %}
+                    <tr><td colspan="{{ columns|length }}" class="td-empty-row">Data unavailable — see the connection error above.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% if result.ok and result.rows %}
+    <div class="td-marketing-pagination">
+        <span class="td-muted-inline">Page {{ result.page }} of {{ result.total_pages }} &middot; {{ "{:,}".format(result.total) }} total row{{ '' if result.total == 1 else 's' }}</span>
+        <div class="td-marketing-pagination-btns">
+            {% if result.page > 1 %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_marketing_form_data', page=result.page - 1, search=search, date_from=filters.date_from, date_to=filters.date_to, municipality=filters.municipality, zipcode=filters.zipcode, utm_source=filters.utm_source, utm_medium=filters.utm_medium, utm_campaign=filters.utm_campaign) }}">&larr; Prev</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">&larr; Prev</span>
+            {% endif %}
+            {% if result.page < result.total_pages %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_marketing_form_data', page=result.page + 1, search=search, date_from=filters.date_from, date_to=filters.date_to, municipality=filters.municipality, zipcode=filters.zipcode, utm_source=filters.utm_source, utm_medium=filters.utm_medium, utm_campaign=filters.utm_campaign) }}">Next &rarr;</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">Next &rarr;</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

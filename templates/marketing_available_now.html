@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Available Now — Marketing — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+
+    <!-- ================= Available Now (Marketing) =================
+         Bulk Account View for the Marketing Channel Report's "Available
+         Now (ads)" KPI card (see marketing_cleaning.get_available_now_
+         accounts()) -- the one place in the whole Marketing Channel
+         Report feature that shows real customer PII (name/address, via
+         a live join to FTTPFormData on QuoteID), so this route is
+         authenticated like every other page in this app and is never
+         reachable from the standalone/shareable report file. Deduped by
+         email_id within [start_date, end_date] -- same semantics as the
+         KPI card itself, so this count always matches what was clicked. -->
+    <header class="td-profile-header">
+        <a class="td-back-link" href="{{ url_for('marketing_dashboard_page') }}">&larr; Back to Marketing</a>
+
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">Bulk Account View</p>
+                <h1 class="td-profile-name">Available Now — Paid Leads</h1>
+            </div>
+            <span class="td-muted-inline">{{ accounts|length }} account{{ '' if accounts|length == 1 else 's' }} &middot; {{ start_date }} &ndash; {{ end_date }}</span>
+        </div>
+    </header>
+
+    {% if stats.no_quote_on_file or stats.quote_not_found %}
+    <p class="td-muted-inline" style="margin: -8px 0 16px; max-width: 72ch;">
+        Name/address requires a PlanetWeb quote record, which only about 13% of marketing form
+        submissions have (a QuoteID is only assigned once a submission reaches quote generation,
+        not at every earlier funnel step) &mdash; there is no other reliable way to identify who
+        submitted a given lead. {{ stats.matched }} matched here.
+        {% if stats.no_quote_on_file %}{{ stats.no_quote_on_file }} never reached a quote (&ldquo;no quote on file&rdquo;).{% endif %}
+        {% if stats.quote_not_found %}{{ stats.quote_not_found }} had a quote but no matching form record was found.{% endif %}
+    </p>
+    {% endif %}
+
+    <section class="td-tab-panel">
+        {% if accounts %}
+        <div class="td-bulk-list">
+            {% for account in accounts %}
+            <div class="td-bulk-card">
+                <div class="td-bulk-card-head">
+                    <span class="td-bulk-name">{{ account.name }}</span>
+                </div>
+                <span class="td-bulk-address">{{ account.address }}</span>
+                <span class="td-bulk-address">{{ account.city_state_zip }}</span>
+                <div class="td-bulk-meta">
+                    <span class="td-bulk-date">Created {{ account.created_date }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="td-empty">No accounts found for this date range.</p>
+        {% endif %}
+    </section>
+
+</div>
+</body>
+</html>

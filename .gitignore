@@ -17,3 +17,10 @@ venv/
 
 # OS
 .DS_Store
+
+# Marketing Channel Report -- generated output (scripts/generate_marketing_report.py)
+# and its guardrail day-over-day snapshot. Both are runtime artifacts,
+# regenerated on demand from live PlanetWeb data -- never source, never
+# committed. See README.md "Marketing Channel Report".
+/marketing_report.html
+/marketing_cleaning_snapshot.json

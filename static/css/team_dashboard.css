@@ -2210,3 +2210,125 @@ a.td-record-rep:hover {
 .td-import-result-item strong {
     color: var(--td-text-primary);
 }
+
+/* ---------------- Marketing Form Data (admin, added 2026-08-19) ---------------- */
+
+.td-error-panel {
+    background: var(--td-orange-bg);
+    border: 1px solid var(--td-orange);
+    border-radius: var(--td-radius);
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+
+.td-error-panel-title {
+    font-weight: 700;
+    color: var(--td-orange);
+    margin-bottom: 6px;
+}
+
+.td-error-panel-message {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--td-text-secondary);
+}
+
+.td-error-panel-message + .td-error-panel-message {
+    margin-top: 4px;
+}
+
+.td-marketing-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px 16px;
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+}
+
+.td-marketing-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.td-marketing-filter-field label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+}
+
+.td-marketing-filter-search {
+    flex: 1 1 240px;
+    min-width: 200px;
+}
+
+.td-marketing-filter-search .td-search-input {
+    width: 100%;
+}
+
+.td-marketing-filter-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+/* Reuses .td-table/.td-admin-table for the base look (borders, header
+   type, row separation) but overrides table-layout -- a 26-column raw
+   data table needs natural per-column sizing, not an even fixed split --
+   and adds a sticky header + truncated cells (full value available via
+   the browser's native title tooltip on hover) since several columns
+   (uniqueURL, click/tracking IDs) can be very long. */
+.td-marketing-table {
+    table-layout: auto;
+}
+
+.td-marketing-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--td-panel);
+    z-index: 1;
+}
+
+.td-cell-truncate {
+    display: inline-block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Vertical scroll cap (on top of .td-table-scroll's existing horizontal
+   scroll) so a full 50-row page doesn't push pagination/the rest of the
+   page far below the fold -- the sticky header above stays visible while
+   scrolling through it. */
+.td-table-scroll--tall {
+    max-height: 65vh;
+    overflow-y: auto;
+}
+
+.td-marketing-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.td-marketing-pagination-btns {
+    display: flex;
+    gap: 8px;
+}
+
+.td-btn-disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
