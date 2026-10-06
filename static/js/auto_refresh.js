@@ -12,10 +12,21 @@
 // On/off + interval is a per-browser preference (localStorage), not a
 // server setting -- there's no "everyone's dashboard reloads on the same
 // clock" requirement, and this way it survives navigating away and back.
-// On by default at 60s (by request, 2026-10-06) -- the toggle/interval
-// picker stays so anyone who needs it off (e.g. mid-edit for a long
-// stretch) still can, but nobody has to opt in first just to get the
-// page to stop going stale.
+// Off by default (reverted 2026-10-06, same day as the "on by default"
+// change, after sales.planet.net hit a sustained 504 outage) --
+// production runs gunicorn with --workers 1, and ensure_data_loaded()
+// does a full live PlanetWeb + KPI round trip, serialized behind one
+// process-wide lock, on every single full-page GET. That setup has very
+// little headroom for extra concurrent/background load: it only takes a
+// handful of reps' tabs silently reloading every 60s, on top of normal
+// traffic, to back up that one lock and start timing requests out at
+// nginx's 60s proxy_read_timeout for EVERYONE, not just the tabs doing
+// the reloading. Opt-in (toggle stays, still defaults to 60s once
+// someone turns it on) keeps this feature available without adding
+// standing load nobody asked for -- if this is wanted on by default
+// later, that really needs the backend to stop doing a live double-DB
+// query per request first (e.g. a short server-side cache), not just a
+// client-side change.
 document.addEventListener("DOMContentLoaded", function () {
     var container = document.querySelector("[data-auto-refresh]");
     if (!container) return;
@@ -68,7 +79,7 @@ document.addEventListener("DOMContentLoaded", function () {
         intervalSeconds = DEFAULT_INTERVAL;
         intervalSelect.value = String(DEFAULT_INTERVAL);
     }
-    toggle.checked = readStoredBool(STORAGE_ENABLED, true);
+    toggle.checked = readStoredBool(STORAGE_ENABLED, false);
 
     var timer = null;
     var secondsLeft = intervalSeconds;
