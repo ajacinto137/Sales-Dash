@@ -558,7 +558,18 @@ def attach_attention_metadata(accounts):
 # upper-cased/stripped for the same reason build_vision_url()'s
 # VISION_BASE_URLS comparison already does, since the raw column isn't
 # guaranteed clean.
-DASHBOARD_STATE_VIEWS = [("team", "Team", None), ("nj", "NJ", "NJ"), ("ny", "NY", "NY"), ("va", "VA", "VA")]
+DASHBOARD_STATE_VIEWS = [
+    ("team", "Team", None),
+    ("nj", "NJ", "NJ"),
+    ("ny", "NY", "NY"),
+    ("va", "VA", "VA"),
+    ("pa", "PA", "PA"),
+    # Combined NY/PA (added 2026-10-06, by request) -- state_code is a
+    # tuple here instead of a single string, so _state_filtered() below
+    # matches either state rather than adding a second "combined views"
+    # concept alongside DASHBOARD_STATE_VIEWS/_state_filtered().
+    ("ny-pa", "NY/PA", ("NY", "PA")),
+]
 DASHBOARD_STATE_VIEW_KEYS = {key for key, _, _ in DASHBOARD_STATE_VIEWS}
 
 
@@ -567,7 +578,10 @@ def _state_filtered(df, state_code):
         return df
     if df is None or df.empty or "state" not in df.columns:
         return df
-    return df[df["state"].astype(str).str.strip().str.upper() == state_code]
+    normalized_state = df["state"].astype(str).str.strip().str.upper()
+    if isinstance(state_code, (tuple, list, set)):
+        return df[normalized_state.isin(state_code)]
+    return df[normalized_state == state_code]
 
 
 def _state_code_for_view(view_key):
@@ -808,9 +822,18 @@ def dashboard_page():
         sales_volume_views[opt["key"]] = calculate_sales_volume_trend(team_df)
 
     valid_volume_keys = {opt["key"] for opt in team_view_options}
-    volume_view = request.args.get("volume_view", team_view_options[0]["key"])
+    # NJ - Sales Reps is the default team shown (by request, 2026-10-06;
+    # previously defaulted to team_view_options[0], i.e. whichever team
+    # happens to lead SALES_REP_TEAMS -- Junior). Falls back to that same
+    # first-team behavior if NJ is ever missing from the list, same as
+    # the invalid-key fallback below.
+    default_volume_view = next(
+        (opt["key"] for opt in team_view_options if opt["label"] == "NJ - Sales Reps"),
+        team_view_options[0]["key"],
+    )
+    volume_view = request.args.get("volume_view", default_volume_view)
     if volume_view not in valid_volume_keys:
-        volume_view = team_view_options[0]["key"]
+        volume_view = default_volume_view
 
     return render_template(
         "dashboard.html",
