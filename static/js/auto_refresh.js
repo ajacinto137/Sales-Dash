@@ -12,10 +12,10 @@
 // On/off + interval is a per-browser preference (localStorage), not a
 // server setting -- there's no "everyone's dashboard reloads on the same
 // clock" requirement, and this way it survives navigating away and back.
-// Off by default: an unattended wall-mounted screen is a real use case
-// for this, but so is someone actively working the Needs Attention list,
-// and auto-reloading out from under that without being asked would be
-// worse than just leaving the manual Refresh Data button as-is.
+// On by default at 60s (by request, 2026-10-06) -- the toggle/interval
+// picker stays so anyone who needs it off (e.g. mid-edit for a long
+// stretch) still can, but nobody has to opt in first just to get the
+// page to stop going stale.
 document.addEventListener("DOMContentLoaded", function () {
     var container = document.querySelector("[data-auto-refresh]");
     if (!container) return;
@@ -29,11 +29,17 @@ document.addEventListener("DOMContentLoaded", function () {
     var STORAGE_INTERVAL = "td-auto-refresh-interval-seconds";
     var DEFAULT_INTERVAL = 60;
 
-    function readStoredBool(key) {
+    // Tri-state: "1"/"0" is an explicit saved choice; nothing saved yet
+    // (null, first-ever visit, or storage blocked) falls back to
+    // `defaultValue` instead of always reading as off.
+    function readStoredBool(key, defaultValue) {
         try {
-            return window.localStorage.getItem(key) === "1";
+            var raw = window.localStorage.getItem(key);
+            if (raw === "1") return true;
+            if (raw === "0") return false;
+            return defaultValue;
         } catch (e) {
-            return false;
+            return defaultValue;
         }
     }
 
@@ -62,7 +68,7 @@ document.addEventListener("DOMContentLoaded", function () {
         intervalSeconds = DEFAULT_INTERVAL;
         intervalSelect.value = String(DEFAULT_INTERVAL);
     }
-    toggle.checked = readStoredBool(STORAGE_ENABLED);
+    toggle.checked = readStoredBool(STORAGE_ENABLED, true);
 
     var timer = null;
     var secondsLeft = intervalSeconds;
