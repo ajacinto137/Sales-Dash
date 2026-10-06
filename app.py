@@ -15,6 +15,9 @@ import marketing_cleaning
 import marketing_data
 import marketing_metrics
 import needs_attention_service
+import passings_activity_store
+import passings_classification
+import passings_data
 import permissions
 import user_store
 from queries import (
@@ -1254,6 +1257,290 @@ def marketing_dashboard_page():
     return html
 
 
+# ================================================================
+# PASSINGS & LEADS (README.md "Passings & Leads")
+# ================================================================
+
+PASSINGS_CATEGORY_OPTIONS = [
+    ("", "All"),
+    (passings_classification.CATEGORY_RESIDENTIAL_LEAD, "Residential Leads"),
+    (passings_classification.CATEGORY_COMMERCIAL_HOT_LEAD, "Commercial Hot Leads"),
+    (passings_classification.CATEGORY_COMMERCIAL_FIELD_TARGET, "Commercial Field Targets"),
+]
+
+PASSINGS_SORT_OPTIONS = [
+    ("became_available", "Became Available"),
+    ("address", "Address"),
+    ("city", "City"),
+    ("state", "State"),
+    ("zip", "ZIP"),
+    ("email", "Email"),
+    ("availability", "Availability"),
+    ("units", "Units"),
+    ("place_id", "Passing ID"),
+]
+
+_PROPERTY_TYPE_LABELS = {label for label, _keywords in passings_classification.COMMERCIAL_PROPERTY_KEYWORDS}
+
+
+def _parse_bool_param(value):
+    """'yes'/'no' query param -> True/False/None ("not set" -- the filter
+    is inactive, not "explicitly false")."""
+    if value == "yes":
+        return True
+    if value == "no":
+        return False
+    return None
+
+
+def _parse_date_param(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_passings_activity_filters(has_activity, called, visited, rep, last_activity_from, last_activity_to):
+    """Cross-database orchestration for the activity-based filters
+    (spec #15: Has Activity/No Activity, Called/Not Called, Visited/Not
+    Visited, Rep, Last Activity date range) -- see passings_data.py's
+    module docstring for why this can't be a single SQL join across
+    PlanetWeb (SQL Server) and appdb (Postgres). Returns
+    (place_id_in, place_id_not_in) as sets or None, ready to drop into a
+    passings_data filters dict.
+
+    Every "positive"/narrowing constraint (Has Activity=Yes, Called=Yes,
+    Visited=Yes, Rep, Last Activity range) is ANDed together via set
+    intersection so combined filters behave correctly -- e.g. spec #15's
+    own example of Rep + Called both active should mean "this rep called
+    this Passing", not "either". Every "No"/negative constraint is
+    unioned into one exclusion set instead, since excluding a Passing for
+    ANY one of several reasons is the correct OR-of-exclusions semantics."""
+    required_sets = []
+    excluded_ids = set()
+    cache = {}
+
+    def all_activity_ids():
+        if "ids" not in cache:
+            cache["ids"] = set(passings_activity_store.get_all_place_ids_with_activity())
+        return cache["ids"]
+
+    if has_activity is True:
+        required_sets.append(all_activity_ids())
+    elif has_activity is False:
+        excluded_ids |= all_activity_ids()
+
+    if called is True:
+        required_sets.append(set(passings_activity_store.get_place_ids_with_activity_type("Call")))
+    elif called is False:
+        excluded_ids |= set(passings_activity_store.get_place_ids_with_activity_type("Call"))
+
+    if visited is True:
+        required_sets.append(set(passings_activity_store.get_place_ids_with_activity_type("Field Visit")))
+    elif visited is False:
+        excluded_ids |= set(passings_activity_store.get_place_ids_with_activity_type("Field Visit"))
+
+    if rep:
+        required_sets.append(set(passings_activity_store.get_place_ids_by_rep(rep)))
+
+    if last_activity_from or last_activity_to:
+        required_sets.append(set(passings_activity_store.get_place_ids_by_last_activity_range(last_activity_from, last_activity_to)))
+
+    place_id_in = set.intersection(*required_sets) if required_sets else None
+    place_id_not_in = excluded_ids if excluded_ids else None
+    return place_id_in, place_id_not_in
+
+
+@app.route("/passings")
+@auth.login_required
+def passings_page():
+    """Passings & Leads -- footprint/lead-penetration analytics plus the
+    three prospecting workflows (Residential Leads, Commercial Hot Leads,
+    Commercial Field Targets). Every filter/search/sort/page value is read
+    fresh from the query string and re-queried on this one request, same
+    convention admin_marketing_form_data() already uses -- there is no
+    cached copy to go stale. Server-side filtered/searched/sorted/
+    paginated against PlanetWeb the whole way (passings_data.py) -- never
+    a whole-dataset load, see that module's docstring.
+
+    Activity-based filters are resolved against appdb FIRST
+    (_resolve_passings_activity_filters(), passings_activity_store.py),
+    then folded into the PlanetWeb query as a place_id allow-/deny-list."""
+    time_range = request.args.get("time_range", "30d")
+    custom_start_raw = request.args.get("start", "")
+    custom_end_raw = request.args.get("end", "")
+    became_from, became_to = passings_data.resolve_time_range(time_range, custom_start_raw, custom_end_raw)
+
+    category = request.args.get("category", "")
+    if category not in {key for key, _label in PASSINGS_CATEGORY_OPTIONS if key}:
+        category = ""
+
+    property_type = request.args.get("property_type", "")
+    if property_type not in _PROPERTY_TYPE_LABELS:
+        property_type = ""
+
+    availability_raw = request.args.get("availability", "")
+    availability_id = int(availability_raw) if availability_raw in ("1", "3") else None
+
+    has_lead_raw = request.args.get("has_lead", "")
+    has_activity_raw = request.args.get("has_activity", "")
+    called_raw = request.args.get("called", "")
+    visited_raw = request.args.get("visited", "")
+    has_lead = _parse_bool_param(has_lead_raw)
+    has_activity = _parse_bool_param(has_activity_raw)
+    called = _parse_bool_param(called_raw)
+    visited = _parse_bool_param(visited_raw)
+    prequal_only = request.args.get("prequal_only") == "1"
+
+    city = request.args.get("city", "").strip()
+    state = request.args.get("state", "").strip()
+    zip_code = request.args.get("zip", "").strip()
+    rep = request.args.get("rep", "").strip()
+    last_activity_from_raw = request.args.get("last_activity_from", "")
+    last_activity_to_raw = request.args.get("last_activity_to", "")
+    last_activity_from = _parse_date_param(last_activity_from_raw)
+    last_activity_to = _parse_date_param(last_activity_to_raw)
+    search = request.args.get("search", "").strip()
+
+    sort_key = request.args.get("sort", "became_available")
+    sort_dir = request.args.get("dir", "desc")
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+
+    place_id_in, place_id_not_in = _resolve_passings_activity_filters(
+        has_activity, called, visited, rep, last_activity_from, last_activity_to
+    )
+
+    filters = {
+        "category": category or None,
+        "prequal_only": prequal_only,
+        "property_type": property_type or None,
+        "has_lead": has_lead,
+        "city": city or None,
+        "state": state or None,
+        "zip": zip_code or None,
+        "availability_id": availability_id,
+        "became_from": became_from,
+        "became_to": became_to,
+        "place_id_in": place_id_in,
+        "place_id_not_in": place_id_not_in,
+    }
+
+    page_result = passings_data.get_page(filters, search, sort_key, sort_dir, page)
+
+    activity_place_ids = passings_activity_store.get_all_place_ids_with_activity()
+    kpis = passings_data.get_kpis(filters, search=search, activity_place_ids=activity_place_ids)
+
+    granularity = passings_data.auto_granularity(became_from, became_to)
+    over_time = passings_data.get_passings_over_time(filters, search, granularity)
+    market_by_city = passings_data.get_market_breakdown(filters, search, dimension="city", top_n=15)
+    # Same rows as market_by_city, just re-sorted lowest-penetration-first
+    # (spec #13: "High Passings + Low Lead Penetration" markets) -- one
+    # query, two views, rather than a second query with a different
+    # ORDER BY (see passings_data.get_market_breakdown()'s docstring).
+    market_by_city_low_penetration = sorted(
+        market_by_city.get("markets") or [], key=lambda m: m["lead_penetration_pct"]
+    )[:15]
+
+    # Chart-ready {label, value}/{label, a, b} series, computed here rather
+    # than in the template -- simpler and more testable than zipping
+    # parallel lists inside Jinja for a chart's data-* JSON attribute.
+    over_time_buckets = over_time.get("buckets") or []
+    new_passings_series = [{"label": b["bucket"], "value": b["new_passings"]} for b in over_time_buckets]
+    cumulative_passings_series = [{"label": b["bucket"], "value": b["cumulative_passings"]} for b in over_time_buckets]
+    new_vs_leads_series = [{"label": b["bucket"], "a": b["new_passings"], "b": b["new_leads"]} for b in over_time_buckets]
+
+    market_labels = [m["market"] for m in (market_by_city.get("markets") or [])]
+    market_values = [m["passings"] for m in (market_by_city.get("markets") or [])]
+    low_penetration_labels = [m["market"] for m in market_by_city_low_penetration]
+    low_penetration_values = [round(m["lead_penetration_pct"], 1) for m in market_by_city_low_penetration]
+
+    last_activity_available, last_activity_map = passings_activity_store.get_last_activity_map(
+        [row["PlaceID"] for row in page_result["rows"]]
+    )
+    for row in page_result["rows"]:
+        activity = last_activity_map.get(row["PlaceID"])
+        if activity is not None:
+            activity = {**activity, "activity_at_display": _format_note_timestamp(activity["activity_at"])}
+        row["last_activity"] = activity
+
+    reps_with_activity = passings_activity_store.get_reps_with_activity()
+    filter_options = passings_data.get_filter_options()
+
+    return render_template(
+        "passings.html",
+        active_page="passings",
+        page_result=page_result,
+        kpis=kpis,
+        over_time=over_time,
+        over_time_granularity=granularity,
+        new_passings_series=new_passings_series,
+        cumulative_passings_series=cumulative_passings_series,
+        new_vs_leads_series=new_vs_leads_series,
+        market_by_city=market_by_city,
+        market_labels=market_labels,
+        market_values=market_values,
+        low_penetration_labels=low_penetration_labels,
+        low_penetration_values=low_penetration_values,
+        filter_options=filter_options,
+        reps_with_activity=reps_with_activity,
+        last_activity_available=last_activity_available,
+        activity_types=passings_activity_store.ACTIVITY_TYPES,
+        category_options=PASSINGS_CATEGORY_OPTIONS,
+        sort_options=PASSINGS_SORT_OPTIONS,
+        time_range_options=passings_data.TIME_RANGE_OPTIONS,
+        selected={
+            "time_range": time_range, "start": custom_start_raw, "end": custom_end_raw,
+            "category": category, "property_type": property_type, "availability": availability_raw,
+            "has_lead": has_lead_raw, "has_activity": has_activity_raw,
+            "called": called_raw, "visited": visited_raw,
+            "prequal_only": "1" if prequal_only else "",
+            "city": city, "state": state, "zip": zip_code, "rep": rep,
+            "last_activity_from": last_activity_from_raw, "last_activity_to": last_activity_to_raw,
+            "search": search, "sort": sort_key, "dir": sort_dir,
+        },
+        category_labels=passings_classification.CATEGORY_LABELS,
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/passings/activity", methods=["POST"])
+@auth.login_required
+def passings_log_activity():
+    """Quick Actions (Log Call/Email/Visit/Note, spec #21) -- small
+    fetch() POST + in-place DOM update, same shape as
+    attention_set_status()/attention_add_note(). There is no
+    account-ownership permission check like _authorize_account_action()
+    here -- a Passing has no "owning rep" concept (spec #24: activity is
+    workflow metadata, not sales attribution), so any logged-in user may
+    log activity on any Passing, same as every other login_required-only
+    page in this app."""
+    payload = request.get_json(silent=True) or {}
+    place_id = payload.get("place_id")
+    activity_type = (payload.get("activity_type") or "").strip()
+    note = payload.get("note") or ""
+
+    user = auth.current_user()
+    ok, error, activity = passings_activity_store.log_activity(place_id, activity_type, note, user)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+
+    return jsonify({
+        "ok": True,
+        "place_id": activity["place_id"],
+        "last_activity": {
+            "activity_type": activity["activity_type"],
+            "activity_at_display": _format_note_timestamp(activity["activity_at"]),
+            "rep_display_name": activity["rep_display_name"],
+            "note": activity["note"],
+        },
+    })
+
+
 @app.route("/cancellations")
 @auth.admin_required
 def cancellations_page():
@@ -1768,6 +2055,50 @@ def admin_marketing_form_data():
         # marketing query fresh (see this route's docstring), so this is
         # simply "now" at query time.
         marketing_last_refreshed=datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z"),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/admin/passings-data")
+@auth.admin_required
+def admin_passings_data():
+    """Admin-only raw-data verification tool for the Passings & Leads
+    feature (spec #25/#26) -- mirrors admin_marketing_form_data()'s shape:
+    confirms the app can reach PlanetWeb's View_Places/FTTPFormData and
+    shows exactly what it returns (raw columns, source field name next to
+    this app's interpretation -- see passings_data.ADMIN_COLUMNS), plus
+    the validation metrics (Rows Imported/Unique+Duplicate PlaceIDs/Valid+
+    Missing Emails/Prequal as Business Count/Commercial+Industrial+Church
+    Property Counts/Missing AuxVar1+AuxVar4) at the top, always computed
+    over the FULL unfiltered population regardless of this page's own
+    search/filter controls below -- see
+    passings_data.get_validation_metrics()'s docstring."""
+    search = request.args.get("search", "").strip()
+    filters = {
+        "city": request.args.get("city", "").strip() or None,
+        "state": request.args.get("state", "").strip() or None,
+        "zip": request.args.get("zip", "").strip() or None,
+    }
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+
+    result = passings_data.get_admin_page(filters, search, page)
+    metrics = passings_data.get_validation_metrics()
+    filter_options = passings_data.get_filter_options()
+
+    return render_template(
+        "admin/passings_data.html",
+        active_page="admin_passings_data",
+        columns=passings_data.ADMIN_COLUMNS,
+        result=result,
+        metrics=metrics,
+        search=search,
+        filters=filters,
+        filter_options=filter_options,
+        availability_labels_full=passings_classification.AVAILABILITY_LABELS_FULL,
+        passings_last_refreshed=datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z"),
         last_refreshed=data_store["last_refreshed"],
     )
 

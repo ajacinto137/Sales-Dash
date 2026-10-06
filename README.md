@@ -1777,6 +1777,207 @@ attribution — lives in `MARKETING_DASHBOARD.md`):
   development, click-ID reuse dedup incl. the `gbraid`-is-exempt rule,
   and the dashboard payload shape).
 
+## Passings & Leads
+
+`/passings` — footprint/lead-penetration analytics plus the three
+prospecting workflows Residential/Commercial sales reps and Marketing
+actually need day to day. Login-gated only (`@auth.login_required`, same
+tier as `/dashboard`/`/marketing`), with a companion Admin-only raw-data
+verification tab at `/admin/passings-data`.
+
+### Business definitions (do not conflate these)
+
+- **Passing** — one unique serviceable fiber location/address,
+  identified by PlanetWeb's `View_Places.ID` ("PlaceID"). `PlaceID` is
+  never surfaced as "Place" to normal users — always "Passing" or
+  "Passing ID".
+- **Lead** — a Passing with a real, usable email
+  (`passings_classification.is_valid_email()` — rejects `None`, blank/
+  whitespace, and the literal string `"None"`). **Passing ≠ Lead**: every
+  Lead is a Passing, not every Passing is a Lead.
+- **Prequal as Business** (`AuxVar3`) — a business actually submitted a
+  prequal with contact info. This is a **Commercial Hot Lead**, always,
+  **regardless of property type**.
+- **Property type** (`AuxVar4`/`ClassName`) — a targeting signal, not
+  lead intent. A commercial-relevant property type (Commercial/
+  Industrial/Church &amp; Religious) that is **not** Prequal as Business is a
+  **Commercial Field Target** — a canvassing opportunity, not a confirmed
+  lead. `AuxVar3` and `AuxVar4` are checked independently in
+  `passings_classification.classify()` and must never be treated as
+  equivalent.
+
+Three prospecting categories, computed by `passings_classification.classify()`
+(the ONE place this logic lives — both the live page and the Admin
+raw-data tab import from here so they can never drift apart):
+
+| Category | Rule | Primary action |
+|---|---|---|
+| Residential Lead | not commercial-relevant + valid email | Call |
+| Commercial Hot Lead | Prequal as Business = true (any property type) | Call / Email / Visit |
+| Commercial Field Target | commercial-relevant property type, not Prequal as Business | Field Canvas / Visit |
+
+A Passing that is none of the three (e.g. a residential Passing with no
+email) still counts toward Total Passings but has no prospecting category.
+
+### Source data
+
+Every business rule above mirrors PlanetWeb's existing campaign-list
+stored procedure, `dbo.SP_CampaignEmailListBuilder_24`, verbatim — this
+app does not reinvent what "a qualifying Passing" means:
+
+```sql
+WHERE p.ID IS NOT NULL
+  AND p.As_AvailabilityID IN (1, 3)
+  AND p.USPSPropertyAddress IS NOT NULL
+  AND p.IsPlanetImproved = 1
+```
+
+`EmailAddress` = the most recent non-blank `FTTPFormData.EmailAddress`
+for the PlaceID; `PrequalAsBusiness` = an `EXISTS` check against
+`FTTPFormData.IsBusiness = 1` for the PlaceID; **`BecameAvailable`
+(AuxVar1)** = `COALESCE(As_DateFirstAvailability1, As_DateFirstAvailability3,
+As_AvailabilityModifiedDate, PP_UpdatedDate, PP_InsertDate)` — the same
+fallback chain the SP uses, kept as a real date (not the SP's formatted
+display string) since this feature filters/buckets/sorts on it. AuxVar1
+is never the date the dashboard imported a record — see
+`passings_data.py`'s module docstring.
+
+`As_AvailabilityID` 1/3 labels reuse the exact wording already
+established in `marketing_cleaning.py`'s `VALID_AVAILABILITY_IDS`
+(`1` = "Available Now", `3` = "Coming soon (preorder)", shown as
+**"Pre-Order"** in badges/charts per this feature's own terminology).
+
+**Commercial property-type mapping** (`passings_classification.COMMERCIAL_PROPERTY_KEYWORDS`)
+is a case-insensitive keyword table, verified 2026-08-20 against the real
+distinct `ClassName` values in production (`Residential Property (1 - 4
+Family)`, `Commercial`, `Public Property`, `Farm (House)`, `Farm
+(Qualified)`, `Other Exempt`, `Church &amp; Charitable Property`,
+`Industrial`, `Apartment`, `Public School Property`, `Vacant Land`,
+`Other School Property`, `Cemeteries &amp; Graveyards`) — the keywords
+match exactly `Commercial`, `Industrial`, and `Church &amp; Charitable
+Property` with zero false positives among the other ten values. `Public
+Property`/`Public School Property`/`Apartment` etc. are deliberately
+**not** included (not one of the spec's named categories) — if Marketing
+wants those treated as commercial-relevant too, add them to that one
+keyword table; nothing else needs to change. Verify against current
+production values any time via Admin → Data Tools → Passings & Leads
+Data below.
+
+### Architecture
+
+- **`passings_data.py`** — all PlanetWeb access (`View_Places` +
+  `FTTPFormData`), raw parameterized `pyodbc` SQL, modeled on
+  `marketing_data.py`: server-side filtering/searching/sorting/pagination
+  (`OFFSET`/`FETCH`) and SQL aggregate queries for every KPI/chart — the
+  full dataset (60k+ qualifying Passings in production) is never loaded
+  whole into memory or the browser. One shared base CTE (`_BASE_CTE`,
+  including a `PropertyTypeLabel` computed column so "is this row
+  commercial" is a plain column reference everywhere downstream rather
+  than a repeated, easy-to-mis-parameterize `LIKE` predicate) backs every
+  query function.
+- **`passings_classification.py`** — pure functions, no I/O:
+  `is_valid_email()`, the commercial-keyword mapping, and `classify()`
+  (the full decision tree above). Unit tests: `tests/test_passings_classification.py`.
+- **`passings_activity_store.py`** — the outreach/activity model (below),
+  appdb-only, sibling to `attention_store.py`.
+- Cross-database filters (Has Activity/Called/Visited/Rep/Last Activity
+  range) can't be one SQL join — PlanetWeb (SQL Server) and appdb
+  (Postgres) are different engines. `app.py`'s
+  `_resolve_passings_activity_filters()` resolves those against appdb
+  first, then folds the result in as a chunked `PlaceID IN (...)`/
+  `NOT IN (...)` clause (`passings_data._membership_sql()`, chunked to
+  stay under SQL Server's ~2100-parameter ceiling).
+- **KPIs and the Global Time Range**: Total Passings/Total Leads/Lead
+  Penetration/Residential Leads/Commercial Hot Leads/Commercial Field
+  Targets/Outreach Coverage reflect every active filter **except** the
+  Global Time Range (independent of it, same convention the Team
+  Leaderboard's Records/Calendar sections already use). **New Passings**
+  is the one KPI scoped to the selected AuxVar1 range — see
+  `passings_data.get_kpis()`'s docstring for why (otherwise it would be
+  redundant with Total Passings under any non-"All Time" range). Time
+  range options: 7 Days / 30 Days / 90 Days / YTD / 1 Year / All Time /
+  Custom Range (`passings_data.resolve_time_range()`); charts
+  auto-aggregate by day/week/month based on range length
+  (`passings_data.auto_granularity()`).
+
+### Outreach / Activity Tracking
+
+Application-side only — **never** written back to PlanetWeb source data.
+`passing_activity` (appdb, migration 4 in `db_migrations.py`), keyed by
+`place_id`: `id, place_id, activity_type, activity_at, note, user_id,
+rep_display_name, created_at`. Append-only (unlike `account_attention`,
+there is no mutable "current status" row — every logged action is a
+permanent fact); Last Activity is always derived from the latest row
+(`passings_activity_store.get_last_activity_map()`), never stored
+redundantly. Activity types today: Call / Email / Field Visit
+(`passings_activity_store.ACTIVITY_TYPES`) — add a new one by adding to
+that one list. This is pure workflow metadata and can never influence a
+Passing's classification, availability, or AuxVar1 (spec: "Do Not
+Conflate Activity With Lead Status") — `passings_classification.py`
+never imports this module.
+
+Quick Actions (Log Call/Log Email/Log Visit/+ Note) are a small `fetch()`
+POST to `POST /passings/activity` + in-place DOM update
+(`static/js/passings.js`), mirroring `attention.js`'s pattern exactly —
+no page reload, no multi-screen flow.
+
+### Filters, search, Card/Table toggle
+
+Filters combine (every active filter is ANDed): Residential Leads/
+Commercial Hot Leads/Commercial Field Targets (quick-tabs), Prequal as
+Business, Property Type, Has Lead/No Lead, Has Activity/No Activity,
+Called/Not Called, Visited/Not Visited, City, State, ZIP, Availability,
+AuxVar1 date range (the Global Time Range control doubles as this
+filter), Last Activity date range, Rep. Search
+(`passings_data._build_where()`'s search clause) covers Address, Email,
+Passing ID, City, and ZIP together. Card/Table toggle
+(`templates/_passings_list.html`) reuses the *existing generic*
+`data-bulk-view`/`data-bulk-view-btn`/`data-bulk-view-panel` handler
+already in `team_dashboard.js` (no new JS) — both views render from the
+exact same server-side-filtered/paginated row list. Table column sorting
+is a plain link reload (`sort=`/`dir=` query params), not client-side
+re-sort, since sort must apply across the full paginated result set, not
+just the current page.
+
+### Admin Data Tools — Passings & Leads Data
+
+`/admin/passings-data` (Admin-only, in the existing Admin Portal's Data
+Tools group next to Marketing Form Data) — a raw-row browser over the
+same source query, unclassified, with the source field name shown next
+to this app's interpretation (`AuxVar1` → Became Available, `AuxVar2` →
+Address Units, `AuxVar3` → Prequal as Business, `AuxVar4` → Property Type
+/ ClassName, `AuxVar5` → PlaceID). Validation metrics at the top
+(`passings_data.get_validation_metrics()`) — Rows Imported, Unique/
+Duplicate PlaceIDs, Valid/Missing Emails, Prequal as Business Count,
+Commercial/Industrial/Church &amp; Religious Property Counts, Missing
+AuxVar1/AuxVar4 — always over the full unfiltered population, independent
+of that page's own search/filter controls.
+
+### Permissions
+
+No "Commercial" role or `sales_reps.team` value exists anywhere in this
+codebase today (`user_store.ROLES` = Admin/Sales Rep/Customer Success/
+Other; `SALES_REP_TEAMS` has no Commercial entry) — per the original
+spec's explicit instruction not to invent a destructive permission rule,
+`/passings` stays `login_required`-only and every role sees all three
+prospecting categories with manual tab switching.
+`passings_classification.COMMERCIAL_REP_TEAMS` is a documented, currently
+-empty extension point: once a real Commercial role/team is defined, wire
+its exact `sales_reps.team` value(s) into that set so `passings_page()`
+can default the initial category tab for those users — nothing else in
+this feature needs to change.
+
+### Known V1 scope limits
+
+Lead Penetration analytics ship for City in V1 (`passings_data.get_market_breakdown()`);
+State/Availability/Property-Type/Commercial-vs-Residential breakdowns are
+a straightforward extension of that same function (swap the `GROUP BY`
+column) if/when needed. Outreach Coverage's numerator is computed by
+intersecting the current filter scope against every place_id that has
+*ever* had activity logged (`passings_activity_store.get_all_place_ids_with_activity()`)
+rather than a true cross-database join — see `passings_data.get_kpis()`'s
+docstring.
+
 ## What's intentionally not built yet
 
 Scheduled ETL, email/SMS reports, and CRM integration are all out of

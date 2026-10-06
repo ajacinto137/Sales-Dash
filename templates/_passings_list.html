@@ -1,0 +1,170 @@
+<!-- ================= Passings & Leads: Card/Table list =================
+     Same reusable PATTERN as _bulk_account_view.html (Cards/Table toggle
+     via the generic data-bulk-view/data-bulk-view-btn/data-bulk-view-panel
+     handler already in team_dashboard.js -- no new JS needed for the
+     toggle itself), but not that same partial: the row shape (address,
+     email, category/availability/activity badges, quick actions) and
+     column set are materially different from a sales account row. Both
+     views render from the exact same `page_result.rows` list (spec #18:
+     "Both views MUST use the same underlying filtered dataset").
+
+     Column-header sorting (table view) is a plain link that reloads the
+     page with sort=/dir= set -- NOT client-side re-sort -- because sort
+     must apply across the full server-side-paginated result set, not
+     just the 50 rows on the current page (client-side re-sort would
+     silently only reorder what's already on screen). Every link below
+     preserves every other active filter by merging `request.args` rather
+     than hand-listing each of the ~18 possible query params. -->
+{% set rows = page_result.rows %}
+{% if rows %}
+<div class="td-bulk-view" data-bulk-view>
+
+    <div class="td-bulk-view-toggle-row">
+        <div class="td-chart-toggle">
+            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-bulk-view-btn="cards">Cards</button>
+            <button type="button" class="td-chart-toggle-btn" data-bulk-view-btn="table">Table</button>
+        </div>
+        <span class="td-muted-inline">{{ "{:,}".format(page_result.total) }} result{{ '' if page_result.total == 1 else 's' }} &middot; page {{ page_result.page }} of {{ page_result.total_pages }}</span>
+    </div>
+
+    <div class="td-bulk-list" data-bulk-view-panel="cards">
+        {% for row in rows %}
+        <div class="td-passing-card{{ ' td-passing-card--hot' if row.category == 'commercial_hot_lead' else '' }}" data-passing-card data-place-id="{{ row.PlaceID }}">
+            <div class="td-passing-card-head">
+                <span class="td-passing-address">{{ row.FullAddress or '—' }}</span>
+            </div>
+            <span class="td-bulk-address">{{ row.City }}{% if row.City and row.State %}, {% endif %}{{ row.State }} {{ row.ZipCode }}</span>
+
+            <div class="td-passing-badges">
+                {% if row.category_label %}
+                <span class="td-passing-badge td-passing-badge-{{ row.category|replace('_', '-') }}">{{ row.category_label }}</span>
+                {% endif %}
+                {% if row.is_prequal_business %}
+                <span class="td-passing-badge td-passing-badge-prequal-business">Prequal as Business</span>
+                {% endif %}
+                <span class="td-passing-badge td-passing-badge-{{ 'available-now' if row.AvailabilityID == 1 else 'pre-order' }}">{{ row.availability_label }}</span>
+                <span data-activity-badge>
+                    {% if row.last_activity %}
+                        {% if row.last_activity.activity_type == 'Call' %}
+                        <span class="td-passing-badge td-passing-badge-called">Called</span>
+                        {% elif row.last_activity.activity_type == 'Field Visit' %}
+                        <span class="td-passing-badge td-passing-badge-visited">Visited</span>
+                        {% else %}
+                        <span class="td-passing-badge td-passing-badge-called">{{ row.last_activity.activity_type }}</span>
+                        {% endif %}
+                    {% else %}
+                    <span class="td-passing-badge td-passing-badge-no-activity">No Activity</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            <div class="td-passing-meta-row">
+                {% if row.EmailAddress %}<span><span class="td-passing-meta-label">Email:</span>{{ row.EmailAddress }}</span>{% endif %}
+                <span><span class="td-passing-meta-label">Passing ID:</span>{{ row.PlaceID }}</span>
+                {% if row.property_type_label %}<span><span class="td-passing-meta-label">Property:</span>{{ row.property_type_label }}</span>{% endif %}
+                {% if row.AddressUnits %}<span><span class="td-passing-meta-label">Units:</span>{{ row.AddressUnits }}</span>{% endif %}
+                {% if row.BecameAvailable %}<span><span class="td-passing-meta-label">Available:</span>{{ row.BecameAvailable.strftime('%m/%d/%Y') }}</span>{% endif %}
+            </div>
+
+            <div class="td-passing-meta-row" data-last-activity-row style="{{ 'display: none;' if not row.last_activity else '' }}">
+                <span class="td-passing-meta-label">Last Activity:</span>
+                <span data-last-activity-text>{% if row.last_activity %}{{ row.last_activity.activity_type }} by {{ row.last_activity.rep_display_name or 'Unknown' }} &middot; {{ row.last_activity.activity_at_display }}{% endif %}</span>
+            </div>
+
+            <div class="td-quick-actions" data-quick-actions>
+                {% for activity_type in activity_types %}
+                <button type="button" class="td-quick-action-btn" data-log-activity="{{ activity_type }}">Log {{ activity_type }}</button>
+                {% endfor %}
+                <button type="button" class="td-quick-action-btn" data-open-note-panel>+ Note</button>
+            </div>
+
+            <div class="td-attention-panel" data-note-panel style="display: none;">
+                <select class="td-select" data-note-activity-type>
+                    {% for activity_type in activity_types %}
+                    <option value="{{ activity_type }}">{{ activity_type }}</option>
+                    {% endfor %}
+                </select>
+                <textarea class="td-search-input" rows="2" placeholder="Optional note…" data-note-input></textarea>
+                <div class="td-attention-actions">
+                    <button type="button" class="td-attention-link" data-note-save>Save</button>
+                    <button type="button" class="td-attention-link" data-note-cancel>Cancel</button>
+                </div>
+                <p class="td-error-panel-message" data-note-error style="display: none;"></p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="td-table-card" data-bulk-view-panel="table" style="display: none;">
+        <div class="td-table-scroll td-table-scroll--tall">
+            <table class="td-table td-admin-table td-marketing-table">
+                <thead>
+                    <tr>
+                        {% macro sort_th(key, label) %}
+                        {% set next_dir = 'asc' if (selected.sort == key and selected.dir == 'desc') else 'desc' %}
+                        <th><a class="td-sort-link" href="{{ url_for('passings_page', **dict(request.args.to_dict(), sort=key, dir=next_dir, page=1)) }}">{{ label }}{% if selected.sort == key %} {{ '▲' if selected.dir == 'asc' else '▼' }}{% endif %}</a></th>
+                        {% endmacro %}
+                        {{ sort_th('address', 'Address') }}
+                        {{ sort_th('city', 'City') }}
+                        {{ sort_th('state', 'State') }}
+                        {{ sort_th('zip', 'ZIP') }}
+                        {{ sort_th('email', 'Email') }}
+                        <th>Category</th>
+                        <th>Property Type</th>
+                        <th>Prequal as Business</th>
+                        {{ sort_th('availability', 'Availability') }}
+                        {{ sort_th('units', 'Units') }}
+                        {{ sort_th('became_available', 'Became Available') }}
+                        <th>Last Activity</th>
+                        <th>Activity Type</th>
+                        <th>Rep</th>
+                        {{ sort_th('place_id', 'Passing ID') }}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr data-passing-row data-place-id="{{ row.PlaceID }}">
+                        <td><span class="td-cell-truncate" title="{{ row.FullAddress }}">{{ row.FullAddress or '—' }}</span></td>
+                        <td>{{ row.City or '—' }}</td>
+                        <td>{{ row.State or '—' }}</td>
+                        <td>{{ row.ZipCode or '—' }}</td>
+                        <td>{{ row.EmailAddress or '—' }}</td>
+                        <td>{{ row.category_label or '—' }}</td>
+                        <td>{{ row.property_type_label or '—' }}</td>
+                        <td>{{ 'Yes' if row.is_prequal_business else 'No' }}</td>
+                        <td>{{ row.availability_label }}</td>
+                        <td>{{ row.AddressUnits if row.AddressUnits is not none else '—' }}</td>
+                        <td>{{ row.BecameAvailable.strftime('%m/%d/%Y') if row.BecameAvailable else '—' }}</td>
+                        <td data-last-activity-cell>{{ row.last_activity.activity_at_display if row.last_activity else 'No Activity' }}</td>
+                        <td data-activity-type-cell>{{ row.last_activity.activity_type if row.last_activity else '—' }}</td>
+                        <td data-activity-rep-cell>{{ row.last_activity.rep_display_name if row.last_activity else '—' }}</td>
+                        <td>{{ row.PlaceID }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if page_result.total_pages > 1 %}
+<div class="td-marketing-pagination">
+    <span class="td-muted-inline">Page {{ page_result.page }} of {{ page_result.total_pages }}</span>
+    <div class="td-marketing-pagination-btns">
+        {% if page_result.page > 1 %}
+        <a class="td-btn td-btn-ghost" href="{{ url_for('passings_page', **dict(request.args.to_dict(), page=page_result.page - 1)) }}">&larr; Prev</a>
+        {% else %}
+        <span class="td-btn td-btn-ghost td-btn-disabled">&larr; Prev</span>
+        {% endif %}
+        {% if page_result.page < page_result.total_pages %}
+        <a class="td-btn td-btn-ghost" href="{{ url_for('passings_page', **dict(request.args.to_dict(), page=page_result.page + 1)) }}">Next &rarr;</a>
+        {% else %}
+        <span class="td-btn td-btn-ghost td-btn-disabled">Next &rarr;</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<p class="td-empty">No Passings match the current filters.</p>
+{% endif %}

@@ -22,6 +22,18 @@ function getChartTokens() {
         accentBlue: read("--td-accent-blue"),
         accentBlueBg: read("--td-accent-blue-bg"),
         accentLime: read("--td-accent-lime"),
+        accentMagenta: read("--td-accent-magenta"),
+        accentMagentaBg: read("--td-accent-magenta-bg"),
+        green: read("--td-green"),
+        greenBg: read("--td-green-bg"),
+        yellow: read("--td-yellow"),
+        yellowBg: read("--td-yellow-bg"),
+        orange: read("--td-orange"),
+        orangeBg: read("--td-orange-bg"),
+        purple: read("--td-purple"),
+        purpleBg: read("--td-purple-bg"),
+        cyan: read("--td-cyan"),
+        cyanBg: read("--td-cyan-bg"),
         channelPalette: [
             read("--td-chart-channel-1"),
             read("--td-chart-channel-2"),
@@ -584,6 +596,194 @@ function wireCalendarToggle(root) {
     });
 }
 
+// ================================================================
+// Passings & Leads chart factories -- 4 generic factories reused across
+// the page's 8 chart cards (see templates/passings.html) rather than one
+// bespoke function per card, since every card is one of: a single time
+// series, two time series overlaid, a small category breakdown, or a
+// ranked bar list. Each reads its data from data-* attributes on its
+// <canvas>, same |tojson convention every other chart in this file uses.
+// ================================================================
+
+function createBucketSeriesChart(canvasEl, tokens) {
+    const buckets = JSON.parse(canvasEl.dataset.buckets || "[]");
+    const style = canvasEl.dataset.chartStyle === "line" ? "line" : "bar";
+    const color = tokens[canvasEl.dataset.color] || tokens.accentBlue;
+    const colorBg = tokens[canvasEl.dataset.color + "Bg"] || tokens.accentBlueBg;
+    const label = canvasEl.dataset.seriesLabel || "Value";
+
+    const chart = new Chart(canvasEl, {
+        type: style,
+        data: {
+            labels: buckets.map((b) => b.label),
+            datasets: [{
+                label,
+                data: buckets.map((b) => b.value),
+                backgroundColor: style === "bar" ? color : colorBg,
+                borderColor: color,
+                borderRadius: style === "bar" ? tokens.barRadius : undefined,
+                borderSkipped: false,
+                maxBarThickness: 22,
+                borderWidth: style === "line" ? tokens.lineWidth + 1 : undefined,
+                fill: style === "line",
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ...baseScaleOptions(tokens), grid: { display: false } },
+                y: { ...baseScaleOptions(tokens), beginAtZero: true },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: buildTooltipConfig(tokens, {
+                    label: (item) => `${label}: ${item.formattedValue}`,
+                }),
+            },
+        },
+    });
+    return chart;
+}
+
+function createDualBucketChart(canvasEl, tokens) {
+    const buckets = JSON.parse(canvasEl.dataset.buckets || "[]");
+    const labelA = canvasEl.dataset.labelA || "Series A";
+    const labelB = canvasEl.dataset.labelB || "Series B";
+
+    const chart = new Chart(canvasEl, {
+        type: "bar",
+        data: {
+            labels: buckets.map((b) => b.label),
+            datasets: [
+                {
+                    label: labelA,
+                    data: buckets.map((b) => b.a),
+                    backgroundColor: tokens.accentBlue,
+                    borderRadius: tokens.barRadius,
+                    borderSkipped: false,
+                    maxBarThickness: 18,
+                    order: 2,
+                },
+                {
+                    label: labelB,
+                    data: buckets.map((b) => b.b),
+                    type: "line",
+                    borderColor: tokens.accentLime,
+                    backgroundColor: tokens.accentLime,
+                    borderWidth: tokens.lineWidth + 1,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.3,
+                    order: 1,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ...baseScaleOptions(tokens), grid: { display: false } },
+                y: { ...baseScaleOptions(tokens), beginAtZero: true },
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: { color: tokens.axisText, boxWidth: 10, font: { size: 11 } },
+                },
+                tooltip: buildTooltipConfig(tokens, {}),
+            },
+        },
+    });
+    return chart;
+}
+
+function createDonutChart(canvasEl, tokens) {
+    const labels = JSON.parse(canvasEl.dataset.labels || "[]");
+    const values = JSON.parse(canvasEl.dataset.values || "[]");
+    const colorKeys = JSON.parse(canvasEl.dataset.colors || "[]");
+    const colors = colorKeys.map((key) => tokens[key] || tokens.accentBlue);
+
+    const chart = new Chart(canvasEl, {
+        type: "doughnut",
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: colors,
+                borderColor: tokens.chartBg || "transparent",
+                borderWidth: 2,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            cutout: "62%",
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: { color: tokens.axisText, boxWidth: 10, font: { size: 11 }, padding: 12 },
+                },
+                tooltip: buildTooltipConfig(tokens, {
+                    label: (item) => {
+                        const total = values.reduce((sum, v) => sum + v, 0);
+                        const pct = total ? ((item.raw / total) * 100).toFixed(1) : "0.0";
+                        return `${item.label}: ${item.formattedValue} (${pct}%)`;
+                    },
+                }),
+            },
+        },
+    });
+    return chart;
+}
+
+function createHorizontalBarChart(canvasEl, tokens) {
+    const labels = JSON.parse(canvasEl.dataset.labels || "[]");
+    const values = JSON.parse(canvasEl.dataset.values || "[]");
+    const suffix = canvasEl.dataset.suffix || "";
+    const color = tokens[canvasEl.dataset.color] || tokens.accentBlue;
+
+    const chart = new Chart(canvasEl, {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: color,
+                borderRadius: tokens.barRadius,
+                borderSkipped: false,
+                maxBarThickness: 18,
+            }],
+        },
+        options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            scales: {
+                x: { ...baseScaleOptions(tokens), beginAtZero: true },
+                y: { ...baseScaleOptions(tokens), grid: { display: false } },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: buildTooltipConfig(tokens, {
+                    label: (item) => `${item.formattedValue}${suffix}`,
+                }),
+            },
+        },
+    });
+    return chart;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     if (typeof Chart === "undefined") return;
     const tokens = getChartTokens();
@@ -602,4 +802,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // -- not display:none -- by the time this runs, same precondition
     // team-monthly-trend-toggle already relies on).
     wireChartToggle(document.getElementById("team-sales-volume-group-toggle"), ".td-volume-group");
+
+    // Passings & Leads (templates/passings.html) -- every chart on that
+    // page is one of these 4 generic factories, looked up by a shared
+    // [data-passing-chart] marker rather than one getElementById per
+    // canvas, since there are 8 of them.
+    document.querySelectorAll("[data-passing-chart]").forEach((canvasEl) => {
+        const kind = canvasEl.dataset.passingChart;
+        if (kind === "bucket-series") createBucketSeriesChart(canvasEl, tokens);
+        else if (kind === "dual-bucket") createDualBucketChart(canvasEl, tokens);
+        else if (kind === "donut") createDonutChart(canvasEl, tokens);
+        else if (kind === "horizontal-bar") createHorizontalBarChart(canvasEl, tokens);
+    });
 });

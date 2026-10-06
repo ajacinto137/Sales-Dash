@@ -166,6 +166,49 @@ MIGRATIONS = [
         ALTER TABLE sales_reps ADD COLUMN IF NOT EXISTS team TEXT;
         """,
     ),
+    (
+        4,
+        "passing_activity (Passings & Leads outreach workflow, 2026-08-20)",
+        """
+        -- Append-only outreach history for the Passings & Leads feature
+        -- (README.md "Passings & Leads"), keyed by PlanetWeb's
+        -- View_Places.ID ("PlaceID"/AuxVar5) rather than a sale_id --
+        -- Passings are not sales, so this is deliberately a new table
+        -- rather than reusing account_attention[_notes]. No mutable
+        -- "current status" row like account_attention has: every logged
+        -- activity is a permanent fact, and Last Activity is always
+        -- derived from the latest row (see
+        -- passings_activity_store.get_last_activity_map()), never stored
+        -- redundantly. Pure workflow metadata -- see
+        -- passings_activity_store.py's module docstring: this table is
+        -- NEVER allowed to influence a Passing's classification.
+        CREATE TABLE IF NOT EXISTS passing_activity (
+            id SERIAL PRIMARY KEY,
+            place_id BIGINT NOT NULL,
+            activity_type TEXT NOT NULL,
+            activity_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            note TEXT,
+            user_id INTEGER REFERENCES users(id),
+            rep_display_name TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- Supports get_last_activity_map()/get_activity_history()'s
+        -- "latest row per place_id" queries and the Last Activity
+        -- date-range filter.
+        CREATE INDEX IF NOT EXISTS idx_passing_activity_place_id_activity_at
+            ON passing_activity (place_id, activity_at DESC);
+
+        -- Supports the Called/Visited filters (spec #15) without a full
+        -- table scan.
+        CREATE INDEX IF NOT EXISTS idx_passing_activity_activity_type
+            ON passing_activity (activity_type);
+
+        -- Supports the Rep filter.
+        CREATE INDEX IF NOT EXISTS idx_passing_activity_rep_display_name
+            ON passing_activity (rep_display_name);
+        """,
+    ),
 ]
 
 _schema_ready = False

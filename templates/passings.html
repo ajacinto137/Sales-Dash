@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Passings & Leads — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/passings.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Passings & Leads</h1>
+            <p class="td-subtitle">
+                {{ "{:,}".format(kpis.total_passings) }} Passing{{ '' if kpis.total_passings == 1 else 's' }} in the current footprint &middot;
+                {{ "{:,}".format(kpis.total_leads) }} with a Lead email.
+            </p>
+        </div>
+
+        <form class="td-period-form" method="get" action="{{ url_for('passings_page') }}" id="passings-time-range-select-form">
+            {% for key, value in request.args.items() %}{% if key not in ('time_range', 'start', 'end', 'page') %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+            <select name="time_range" id="passings-time-range-select" class="td-select">
+                {% for key, label in time_range_options %}
+                <option value="{{ key }}" {{ 'selected' if selected.time_range == key else '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <span class="td-custom-dates" id="passings-custom-dates" style="display: {{ 'flex' if selected.time_range == 'custom' else 'none' }};">
+                <input type="date" name="start" class="td-date-input" value="{{ selected.start }}">
+                <input type="date" name="end" class="td-date-input" value="{{ selected.end }}">
+            </span>
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+        </form>
+    </header>
+
+    <!-- ================= KPI bar (spec #10) =================
+         Total Passings/Total Leads/Lead Penetration/Residential Leads/
+         Commercial Hot Leads/Commercial Field Targets/Outreach Coverage
+         reflect every active filter EXCEPT the Global Time Range above
+         (independent of it, same convention dashboard.html's Records/
+         Calendar sections use); New Passings is the one KPI that IS
+         scoped to the Global Time Range -- see passings_data.get_kpis()'s
+         docstring. Category KPI cards link into the matching quick-tab
+         (spec: "clicking a KPI should filter/drill into the relevant
+         records"). -->
+    {% if not kpis.ok %}
+    <section class="td-error-panel">
+        <div class="td-error-panel-title">Could not load Passings & Leads</div>
+        <p class="td-error-panel-message">{{ kpis.error or "The query against PlanetWeb SQL Server failed. See the container logs for the full driver error." }}</p>
+    </section>
+    {% endif %}
+
+    <section class="td-kpi-bar">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Total Passings</span>
+            <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(kpis.total_passings) }}</span>
+            <span class="td-kpi-note">unique qualifying PlaceIDs</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Total Leads</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(kpis.total_leads) }}</span>
+            <span class="td-kpi-note">Passings with a valid email</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Lead Penetration</span>
+            <span class="td-kpi-value td-purple">{{ "%.1f"|format(kpis.lead_penetration_pct) }}%</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">New Passings</span>
+            <span class="td-kpi-value td-green">{{ "{:,}".format(kpis.new_passings) }}</span>
+            <span class="td-kpi-note">became available in the selected range</span>
+        </div>
+        <a class="td-kpi" href="{{ url_for('passings_page', **dict(request.args.to_dict(), category='residential_lead', page=1)) }}" style="text-decoration:none;">
+            <span class="td-kpi-label">Residential Leads</span>
+            <span class="td-kpi-value" style="color: var(--td-accent-blue);">{{ "{:,}".format(kpis.residential_leads) }}</span>
+            <span class="td-kpi-note">Call</span>
+        </a>
+        <a class="td-kpi" href="{{ url_for('passings_page', **dict(request.args.to_dict(), category='commercial_hot_lead', page=1)) }}" style="text-decoration:none;">
+            <span class="td-kpi-label">Commercial Hot Leads</span>
+            <span class="td-kpi-value td-magenta">{{ "{:,}".format(kpis.commercial_hot_leads) }}</span>
+            <span class="td-kpi-note">Call / Email / Visit</span>
+        </a>
+        <a class="td-kpi" href="{{ url_for('passings_page', **dict(request.args.to_dict(), category='commercial_field_target', page=1)) }}" style="text-decoration:none;">
+            <span class="td-kpi-label">Commercial Field Targets</span>
+            <span class="td-kpi-value td-orange">{{ "{:,}".format(kpis.commercial_field_targets) }}</span>
+            <span class="td-kpi-note">Field Canvas / Visit</span>
+        </a>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Outreach Coverage</span>
+            <span class="td-kpi-value td-green">{{ "%.1f"|format(kpis.outreach_coverage_pct) }}%</span>
+            <span class="td-kpi-note">{{ "{:,}".format(kpis.actionable_with_activity) }} of {{ "{:,}".format(kpis.actionable_total) }} actionable records worked</span>
+        </div>
+    </section>
+
+    <!-- ================= Category quick-tabs (spec #7/#22/#23) ================= -->
+    <div class="td-category-tabs">
+        {% for key, label in category_options %}
+        <a class="td-category-tab{{ ' td-category-tab-active' if selected.category == key else '' }}" href="{{ url_for('passings_page', **dict(request.args.to_dict(), category=key, page=1)) }}">{{ label }}</a>
+        {% endfor %}
+    </div>
+
+    <!-- ================= Charts (spec #12/#13/#14) =================
+         Every data-* attribute below is built server-side in app.py
+         (passings_page()) as a plain Python list/dict, then serialized
+         with |tojson right here -- no zip()/map(attribute=...) filter
+         chains in the template itself. chart_canvas_attrs is only ever
+         set when chart_empty is False, so _chart_card.html never renders
+         a canvas with missing data.
+
+         IMPORTANT: chart_canvas_attrs must be built with Jinja's
+         "set ... endset" BLOCK tag form (as below) -- never a `set`
+         statement that concatenates a plain string literal with a
+         |tojson result via the `~` operator and pipes the WHOLE
+         expression through |safe afterward. With autoescaping on, that
+         `~` concatenation escapes the plain string literal's own quote
+         characters into &#34;/&#39; entities -- the trailing |safe
+         can't undo that, since the escaping already happened during the
+         `~` concatenation itself, before |safe ever runs. That bug
+         (fixed 2026-08-21) broke every chart's data-* attributes on this
+         page: the browser's HTML parser had no real quote characters
+         left to find, so it read a mangled, incorrectly-bounded
+         attribute value instead of the intended JSON. The block-tag form
+         doesn't have this problem -- each inline expression inside it is
+         escaped/marked-safe individually and correctly, exactly the way
+         a normal template renders, and rep_profile.html's own
+         chart_canvas_attrs (MonthlySalesChart) already uses this same
+         safe pattern. -->
+    <section class="td-charts-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin: 16px 0;">
+        {% set chart_id = "passings-new-over-time" %}
+        {% set chart_title = "New Passings Over Time" %}
+        {% set chart_subtitle = "Became available, by " + over_time_granularity %}
+        {% set chart_empty = not over_time.ok or not new_passings_series %}
+        {% set chart_empty_message = over_time.error or "No Passings became available in the selected range." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="bucket-series" data-chart-style="bar" data-color="accentBlue" data-series-label="New Passings" data-buckets='{{ new_passings_series|tojson }}'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+
+        {% set chart_id = "passings-cumulative-over-time" %}
+        {% set chart_title = "Total Serviceable Passings Over Time" %}
+        {% set chart_subtitle = "Cumulative footprint growth" %}
+        {% set chart_empty = not over_time.ok or not cumulative_passings_series %}
+        {% set chart_empty_message = over_time.error or "No data in the selected range." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="bucket-series" data-chart-style="line" data-color="green" data-series-label="Total Passings" data-buckets='{{ cumulative_passings_series|tojson }}'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+
+        {% set chart_id = "passings-new-vs-leads" %}
+        {% set chart_title = "New Passings vs New Leads Over Time" %}
+        {% set chart_subtitle = "Is lead generation keeping pace with footprint growth?" %}
+        {% set chart_empty = not over_time.ok or not new_vs_leads_series %}
+        {% set chart_empty_message = over_time.error or "No data in the selected range." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="dual-bucket" data-label-a="New Passings" data-label-b="New Leads" data-buckets='{{ new_vs_leads_series|tojson }}'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+
+        {% set chart_id = "passings-availability" %}
+        {% set chart_title = "Passings by Availability" %}
+        {% set chart_subtitle = "" %}
+        {% set chart_empty = not kpis.ok or kpis.total_passings == 0 %}
+        {% set chart_empty_message = "No Passings match the current filters." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="donut" data-labels='{{ ["Available Now", "Pre-Order"]|tojson }}' data-values='{{ [kpis.available_now, kpis.pre_order]|tojson }}' data-colors='["green", "yellow"]'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+
+        {% set chart_id = "passings-prospecting-mix" %}
+        {% set chart_title = "Prospecting Opportunity Mix" %}
+        {% set chart_subtitle = "" %}
+        {% set chart_empty = not kpis.ok or (kpis.residential_leads + kpis.commercial_hot_leads + kpis.commercial_field_targets) == 0 %}
+        {% set chart_empty_message = "No Residential Leads, Commercial Hot Leads, or Commercial Field Targets in the current filters." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="donut" data-labels='{{ ["Residential Leads", "Commercial Hot Leads", "Commercial Field Targets"]|tojson }}' data-values='{{ [kpis.residential_leads, kpis.commercial_hot_leads, kpis.commercial_field_targets]|tojson }}' data-colors='["accentBlue", "accentMagenta", "orange"]'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+
+        {% set chart_id = "passings-outreach-coverage" %}
+        {% set chart_title = "Outreach Coverage" %}
+        {% set chart_subtitle = "Actionable records worked vs untouched" %}
+        {% set chart_empty = not kpis.ok or kpis.actionable_total == 0 %}
+        {% set chart_empty_message = "No actionable Leads/Targets in the current filters." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="donut" data-labels='{{ ["Worked", "Untouched"]|tojson }}' data-values='{{ [kpis.actionable_with_activity, kpis.actionable_total - kpis.actionable_with_activity]|tojson }}' data-colors='["green", "purple"]'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+
+        {% set chart_id = "passings-by-market" %}
+        {% set chart_title = "Passings by Market" %}
+        {% set chart_subtitle = "Top cities by Passing count" %}
+        {% set chart_empty = not market_by_city.ok or not market_labels %}
+        {% set chart_empty_message = market_by_city.error or "No market data in the current filters." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="horizontal-bar" data-color="accentBlue" data-labels='{{ market_labels|tojson }}' data-values='{{ market_values|tojson }}'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+
+        {% set chart_id = "passings-lead-penetration-by-market" %}
+        {% set chart_title = "Lead Penetration by Market" %}
+        {% set chart_subtitle = "Lowest first -- high Passings + low penetration = marketing opportunity" %}
+        {% set chart_empty = not market_by_city.ok or not low_penetration_labels %}
+        {% set chart_empty_message = market_by_city.error or "No market data in the current filters." %}
+        {% if not chart_empty %}
+        {% set chart_canvas_attrs %}data-passing-chart="horizontal-bar" data-color="purple" data-suffix="%" data-labels='{{ low_penetration_labels|tojson }}' data-values='{{ low_penetration_values|tojson }}'{% endset %}
+        {% endif %}
+        {% include "_chart_card.html" %}
+    </section>
+
+    <!-- ================= Filters + Search (spec #15/#16) ================= -->
+    <form class="td-marketing-filters" method="get" action="{{ url_for('passings_page') }}">
+        <input type="hidden" name="time_range" value="{{ selected.time_range }}">
+        <input type="hidden" name="start" value="{{ selected.start }}">
+        <input type="hidden" name="end" value="{{ selected.end }}">
+        <input type="hidden" name="category" value="{{ selected.category }}">
+
+        <div class="td-marketing-filter-field td-marketing-filter-search">
+            <label for="passings-search">Search</label>
+            <input type="search" id="passings-search" name="search" class="td-search-input" value="{{ selected.search }}"
+                   placeholder="Address, email, Passing ID, city, ZIP…">
+        </div>
+
+        <div class="td-marketing-filter-field">
+            <label for="passings-sort">Sort By</label>
+            <select id="passings-sort" name="sort" class="td-admin-inline-select">
+                {% for key, label in sort_options %}
+                <option value="{{ key }}" {{ 'selected' if selected.sort == key else '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-dir">Direction</label>
+            <select id="passings-dir" name="dir" class="td-admin-inline-select">
+                <option value="desc" {{ 'selected' if selected.dir == 'desc' else '' }}>Descending</option>
+                <option value="asc" {{ 'selected' if selected.dir == 'asc' else '' }}>Ascending</option>
+            </select>
+        </div>
+
+        <div class="td-marketing-filter-field">
+            <label for="passings-property-type">Property Type</label>
+            <select id="passings-property-type" name="property_type" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.property_type %}
+                <option value="{{ val }}" {{ 'selected' if val == selected.property_type else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-prequal">Prequal as Business</label>
+            <select id="passings-prequal" name="prequal_only" class="td-admin-inline-select">
+                <option value="" {{ 'selected' if selected.prequal_only != '1' else '' }}>Any</option>
+                <option value="1" {{ 'selected' if selected.prequal_only == '1' else '' }}>Only Prequal as Business</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-availability">Availability</label>
+            <select id="passings-availability" name="availability" class="td-admin-inline-select">
+                <option value="">All</option>
+                <option value="1" {{ 'selected' if selected.availability == '1' else '' }}>Available Now</option>
+                <option value="3" {{ 'selected' if selected.availability == '3' else '' }}>Pre-Order</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-has-lead">Lead Email</label>
+            <select id="passings-has-lead" name="has_lead" class="td-admin-inline-select">
+                <option value="" {{ 'selected' if selected.has_lead == '' else '' }}>Any</option>
+                <option value="yes" {{ 'selected' if selected.has_lead == 'yes' else '' }}>Has Lead</option>
+                <option value="no" {{ 'selected' if selected.has_lead == 'no' else '' }}>No Lead</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-has-activity">Activity</label>
+            <select id="passings-has-activity" name="has_activity" class="td-admin-inline-select">
+                <option value="" {{ 'selected' if selected.has_activity == '' else '' }}>Any</option>
+                <option value="yes" {{ 'selected' if selected.has_activity == 'yes' else '' }}>Has Activity</option>
+                <option value="no" {{ 'selected' if selected.has_activity == 'no' else '' }}>No Activity</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-called">Called</label>
+            <select id="passings-called" name="called" class="td-admin-inline-select">
+                <option value="" {{ 'selected' if selected.called == '' else '' }}>Any</option>
+                <option value="yes" {{ 'selected' if selected.called == 'yes' else '' }}>Called</option>
+                <option value="no" {{ 'selected' if selected.called == 'no' else '' }}>Not Called</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-visited">Visited</label>
+            <select id="passings-visited" name="visited" class="td-admin-inline-select">
+                <option value="" {{ 'selected' if selected.visited == '' else '' }}>Any</option>
+                <option value="yes" {{ 'selected' if selected.visited == 'yes' else '' }}>Visited</option>
+                <option value="no" {{ 'selected' if selected.visited == 'no' else '' }}>Not Visited</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-city">City</label>
+            <select id="passings-city" name="city" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.city %}
+                <option value="{{ val }}" {{ 'selected' if val == selected.city else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-state">State</label>
+            <select id="passings-state" name="state" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.state %}
+                <option value="{{ val }}" {{ 'selected' if val == selected.state else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-zip">ZIP</label>
+            <input type="text" id="passings-zip" name="zip" class="td-search-input" value="{{ selected.zip }}" placeholder="e.g. 07052">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-rep">Rep</label>
+            <select id="passings-rep" name="rep" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in reps_with_activity %}
+                <option value="{{ val }}" {{ 'selected' if val == selected.rep else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-last-activity-from">Last Activity From</label>
+            <input type="date" id="passings-last-activity-from" name="last_activity_from" class="td-date-input" value="{{ selected.last_activity_from }}">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-last-activity-to">Last Activity To</label>
+            <input type="date" id="passings-last-activity-to" name="last_activity_to" class="td-date-input" value="{{ selected.last_activity_to }}">
+        </div>
+
+        <div class="td-marketing-filter-actions">
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+            <a class="td-btn td-btn-ghost" href="{{ url_for('passings_page') }}">Clear Filters</a>
+        </div>
+    </form>
+
+    {% if not last_activity_available %}
+    <p class="td-muted-inline">Activity status is temporarily unavailable -- every record below shows as No Activity until this is restored.</p>
+    {% endif %}
+
+    <!-- ================= Results (spec #17/#18) ================= -->
+    {% include "_passings_list.html" %}
+</div>
+</body>
+</html>

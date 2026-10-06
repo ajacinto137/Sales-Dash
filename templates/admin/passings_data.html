@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Passings & Leads Data — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    {% include "_admin_nav.html" %}
+
+    <!-- Passings & Leads Data (added 2026-08-20) -- raw-data verification
+         tool for the Passings & Leads feature (spec #25/#26). Reads
+         directly from PlanetWeb's View_Places/FTTPFormData
+         (passings_data.py), server-side paginated/filtered/searched --
+         never loaded whole into memory, same convention Marketing Form
+         Data already established. Shows the raw source columns next to
+         this app's field-name interpretation (AuxVar1 -> Became
+         Available, etc.) so an admin can verify the dashboard is pulling
+         and interpreting the source data correctly. -->
+    <div class="td-section-heading">
+        <h2>Passings & Leads Data</h2>
+        <span class="td-muted-inline">Raw rows from PlanetWeb.dbo.View_Places (+ FTTPFormData) &middot; mirrors dbo.SP_CampaignEmailListBuilder_24</span>
+    </div>
+
+    {% if not metrics.ok %}
+    <section class="td-error-panel">
+        <div class="td-error-panel-title">Could not load Passings & Leads validation metrics</div>
+        <p class="td-error-panel-message">{{ metrics.error or "The query against PlanetWeb SQL Server failed. See the container logs for the full driver error." }}</p>
+    </section>
+    {% else %}
+    <!-- ================= Validation metrics (spec #26) =================
+         Always the FULL unfiltered qualifying-Passing population,
+         independent of the search/filter controls below -- this is a
+         data-integrity check, not something that should be filterable
+         away by accident. -->
+    <section class="td-kpi-bar">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Rows Imported</span>
+            <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(metrics.rows_imported) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Unique PlaceIDs</span>
+            <span class="td-kpi-value td-green">{{ "{:,}".format(metrics.unique_place_ids) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Duplicate PlaceIDs</span>
+            <span class="td-kpi-value {{ 'td-magenta' if metrics.duplicate_place_ids else 'td-green' }}">{{ "{:,}".format(metrics.duplicate_place_ids) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Valid Emails</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(metrics.valid_emails) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Missing Emails</span>
+            <span class="td-kpi-value td-yellow">{{ "{:,}".format(metrics.missing_emails) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Prequal as Business</span>
+            <span class="td-kpi-value td-magenta">{{ "{:,}".format(metrics.prequal_as_business_count) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Commercial</span>
+            <span class="td-kpi-value td-orange">{{ "{:,}".format(metrics.commercial_count) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Industrial</span>
+            <span class="td-kpi-value td-orange">{{ "{:,}".format(metrics.industrial_count) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Church / Religious</span>
+            <span class="td-kpi-value td-orange">{{ "{:,}".format(metrics.church_religious_count) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Missing AuxVar1</span>
+            <span class="td-kpi-value {{ 'td-magenta' if metrics.missing_auxvar1 else 'td-green' }}">{{ "{:,}".format(metrics.missing_auxvar1) }}</span>
+            <span class="td-kpi-note">Became Available</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Missing AuxVar4</span>
+            <span class="td-kpi-value {{ 'td-yellow' if metrics.missing_auxvar4 else 'td-green' }}">{{ "{:,}".format(metrics.missing_auxvar4) }}</span>
+            <span class="td-kpi-note">Property Type / ClassName</span>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if not result.ok %}
+    <section class="td-error-panel">
+        <div class="td-error-panel-title">Could not load Passings & Leads Data</div>
+        <p class="td-error-panel-message">{{ result.error or "The query against PlanetWeb SQL Server failed. See the container logs for the full driver error." }}</p>
+        <p class="td-error-panel-message">Click <strong>Refresh Data</strong> above to retry once the connection issue is resolved.</p>
+    </section>
+    {% endif %}
+
+    <form class="td-marketing-filters" method="get" action="{{ url_for('admin_passings_data') }}">
+        <div class="td-marketing-filter-field td-marketing-filter-search">
+            <label for="apd-search">Search</label>
+            <input type="search" id="apd-search" name="search" class="td-search-input" value="{{ search }}"
+                   placeholder="Address, email, Passing ID, city, ZIP…">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="apd-city">City</label>
+            <select id="apd-city" name="city" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.city %}
+                <option value="{{ val }}" {{ 'selected' if val == filters.city else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="apd-state">State</label>
+            <select id="apd-state" name="state" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for val in filter_options.state %}
+                <option value="{{ val }}" {{ 'selected' if val == filters.state else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="apd-zip">Zip</label>
+            <input type="text" id="apd-zip" name="zip" class="td-search-input" value="{{ filters.zip }}" placeholder="e.g. 07052">
+        </div>
+        <div class="td-marketing-filter-actions">
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_passings_data') }}">Clear Filters</a>
+        </div>
+    </form>
+
+    <section class="td-table-card">
+        <div class="td-table-scroll td-table-scroll--tall">
+            <table class="td-table td-admin-table td-marketing-table">
+                <thead>
+                    <tr>
+                        {% for col, label in columns %}
+                        <th>{{ label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if result.ok %}
+                        {% for row in result.rows %}
+                        <tr>
+                            {% for col, label in columns %}
+                            {% set value = row[col] %}
+                            <td>
+                                {% if value is none or value == '' %}
+                                <span class="td-admin-muted">—</span>
+                                {% elif col == 'BecameAvailable' %}
+                                <span class="td-cell-truncate" title="{{ value }}">{{ value.strftime('%m/%d/%Y %I:%M %p') if value.strftime is defined else value }}</span>
+                                {% elif col == 'AvailabilityID' %}
+                                <span class="td-cell-truncate" title="{{ availability_labels_full.get(value, 'Unknown') }}">{{ value }} ({{ availability_labels_full.get(value, 'Unknown') }})</span>
+                                {% elif col == 'PrequalAsBusiness' %}
+                                {{ 'Yes' if value else 'No' }}
+                                {% else %}
+                                <span class="td-cell-truncate" title="{{ value }}">{{ value }}</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="{{ columns|length }}" class="td-empty-row">No records match the current search/filters.</td></tr>
+                        {% endfor %}
+                    {% else %}
+                    <tr><td colspan="{{ columns|length }}" class="td-empty-row">Data unavailable — see the connection error above.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% if result.ok and result.rows %}
+    <div class="td-marketing-pagination">
+        <span class="td-muted-inline">Page {{ result.page }} of {{ result.total_pages }} &middot; {{ "{:,}".format(result.total) }} total row{{ '' if result.total == 1 else 's' }}</span>
+        <div class="td-marketing-pagination-btns">
+            {% if result.page > 1 %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_passings_data', page=result.page - 1, search=search, city=filters.city, state=filters.state, zip=filters.zip) }}">&larr; Prev</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">&larr; Prev</span>
+            {% endif %}
+            {% if result.page < result.total_pages %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_passings_data', page=result.page + 1, search=search, city=filters.city, state=filters.state, zip=filters.zip) }}">Next &rarr;</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">Next &rarr;</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <p class="td-muted-inline">Last queried: {{ passings_last_refreshed }}</p>
+</div>
+</body>
+</html>

@@ -321,6 +321,30 @@ html, body.td-body {
     gap: 8px;
 }
 
+/* ---------------- Auto-update toggle (dashboard.html header) ---------------- */
+
+.td-auto-refresh {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.td-auto-refresh-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--td-text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.td-auto-refresh-status {
+    font-size: 11.5px;
+    color: var(--td-text-secondary);
+    min-width: 72px;
+}
+
 /* ---------------- KPI bar ---------------- */
 
 .td-kpi-bar {
@@ -1446,6 +1470,150 @@ a.td-record-rep:hover {
 
 .td-attention-link:hover {
     text-decoration: underline;
+}
+
+/* ---------------- Passings & Leads ----------------
+   Badges reuse .td-attention-badge's pill shape (padding/radius/weight)
+   under a new class name -- kept separate from .td-attention-badge*
+   since these are a materially different badge set (spec #17) shown on a
+   different page, not a Needs Attention status. Colors reuse the
+   existing --td-*/--td-accent-* tokens only, no new palette. */
+
+.td-passing-badge {
+    flex-shrink: 0;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.td-passing-badge-residential-lead { color: var(--td-accent-blue); background: var(--td-accent-blue-bg); }
+.td-passing-badge-commercial-hot-lead { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
+.td-passing-badge-commercial-field-target { color: var(--td-orange); background: var(--td-orange-bg); }
+.td-passing-badge-prequal-business { color: var(--td-purple); background: var(--td-purple-bg); }
+.td-passing-badge-available-now { color: var(--td-green); background: var(--td-green-bg); }
+.td-passing-badge-pre-order { color: var(--td-yellow); background: var(--td-yellow-bg); }
+.td-passing-badge-called { color: var(--td-cyan); background: var(--td-cyan-bg); }
+.td-passing-badge-visited { color: var(--td-accent-lime); background: var(--td-accent-lime-bg); }
+.td-passing-badge-no-activity { color: var(--td-text-secondary); background: var(--td-panel-alt); }
+
+/* Category quick-tabs (All / Residential Leads / Commercial Hot Leads /
+   Commercial Field Targets) -- plain server-rendered links (a GET-param
+   reload, like every other filter on this page), styled identically to
+   .td-attention-filter-btn but kept as its own class since these are
+   <a> navigation, not attention.js's client-side JS toggle buttons. */
+.td-category-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.td-category-tab {
+    display: inline-block;
+    border: 1px solid var(--td-border);
+    background: var(--td-panel-alt);
+    color: var(--td-text-secondary);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.td-category-tab:hover {
+    color: var(--td-text-primary);
+}
+
+.td-category-tab.td-category-tab-active {
+    background: var(--td-panel);
+    color: var(--td-text-primary);
+    border-color: var(--td-accent-blue);
+    box-shadow: 0 0 10px var(--td-accent-blue-bg);
+}
+
+/* Quick Actions (Log Call/Email/Visit, spec #21) -- small button row on
+   each card/row, deliberately terser than .td-attention-actions' link
+   buttons since there are more of them per card here. */
+.td-quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--td-border-soft);
+}
+
+.td-quick-action-btn {
+    border: 1px solid var(--td-border);
+    background: var(--td-panel-alt);
+    color: var(--td-text-secondary);
+    border-radius: var(--td-radius-sm);
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.td-quick-action-btn:hover {
+    color: var(--td-text-primary);
+    border-color: var(--td-accent-blue);
+}
+
+.td-quick-action-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.td-passing-card {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.td-passing-card--hot {
+    border-color: var(--td-accent-magenta);
+    box-shadow: 0 0 var(--td-chart-glow-blur) var(--td-accent-magenta-bg);
+}
+
+.td-passing-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.td-passing-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.td-passing-address {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--td-text-primary);
+}
+
+.td-passing-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 12px;
+    color: var(--td-text-secondary);
+}
+
+.td-passing-meta-label {
+    color: var(--td-text-muted);
+    margin-right: 4px;
 }
 
 .td-attention-locked {

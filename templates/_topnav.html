@@ -34,6 +34,13 @@
              current_user-exists guard the rest of this nav already
              assumes. -->
         <a class="{{ 'td-topnav-active' if active_page == 'marketing' else '' }}" href="{{ url_for('marketing_dashboard_page') }}">Marketing Dashboard</a>
+        <!-- Passings & Leads (added 2026-08-20) -- footprint/lead
+             analytics + Residential Leads/Commercial Hot Leads/Commercial
+             Field Targets prospecting workflows. Login-gated only
+             (@auth.login_required on passings_page()), same tier as
+             Dashboard/Marketing Dashboard above -- see README.md
+             "Passings & Leads" for the permissions extension point. -->
+        <a class="{{ 'td-topnav-active' if active_page == 'passings' else '' }}" href="{{ url_for('passings_page') }}">Passings &amp; Leads</a>
     </nav>
 
     <!-- Global search: reps + customer accounts, debounced fetch to

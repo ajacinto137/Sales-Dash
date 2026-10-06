@@ -9,6 +9,7 @@
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/auto_refresh.js') }}" defer></script>
 </head>
 <body class="td-body">
 {% include "_topnav.html" %}
@@ -43,6 +44,29 @@
             </span>
             <button type="submit" class="td-btn td-btn-primary">Apply</button>
         </form>
+
+        <!-- Auto-update: reloads this page on a timer instead of making
+             someone come back and click Refresh Data (_topnav.html) --
+             every full-page GET already re-queries both source databases
+             live (see app.py's ensure_data_loaded()), so a plain reload
+             is already a real data refresh, not just a cache-buster.
+             Preference (on/off + interval) is per-browser, via
+             localStorage, not a server setting -- see auto_refresh.js.
+             Skips a tick instead of firing it whenever that would yank
+             focus away from someone mid-search or mid-edit of a Needs
+             Attention note (see that file's shouldSkipTick()). -->
+        <div class="td-auto-refresh" data-auto-refresh>
+            <label class="td-auto-refresh-label">
+                <input type="checkbox" data-auto-refresh-toggle>
+                Auto-update
+            </label>
+            <select class="td-select" data-auto-refresh-interval aria-label="Auto-update interval">
+                <option value="30">Every 30s</option>
+                <option value="60">Every 1 min</option>
+                <option value="300">Every 5 min</option>
+            </select>
+            <span class="td-auto-refresh-status" data-auto-refresh-status></span>
+        </div>
     </header>
 
     <!-- ================= Team Overview =================
