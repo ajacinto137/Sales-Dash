@@ -27,6 +27,7 @@
                 <span class="td-bulk-name">{{ account.first_name }} {{ account.last_name }}</span>
                 <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span>
             </div>
+            {% if account.sales_rep %}<a class="td-bulk-rep" href="{{ url_for('rep_profile', rep_name=account.sales_rep, period=period, start=custom_start, end=custom_end) }}">Rep: {{ account.sales_rep }}</a>{% endif %}
             {% if account.sales_channel %}<span class="td-bulk-channel">{{ account.sales_channel }}</span>{% endif %}
             {% if account.address %}<span class="td-bulk-address">{{ account.address }}</span>{% endif %}
             {% if account.city_state_zip %}<span class="td-bulk-address">{{ account.city_state_zip }}</span>{% endif %}
