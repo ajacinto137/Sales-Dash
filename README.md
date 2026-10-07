@@ -1686,7 +1686,7 @@ than just unlinked: the route, the PII lookup against `FTTPFormData`
 `ACCOUNTS_BASE_URL`/`accountsUrl()` JS are all gone, not just hidden —
 see git history if this drill-down needs to come back.
 
-**For the SQL query, the cleaning rules, and the 5-tier channel
+**For the SQL query, the cleaning rules, and the channel
 attribution model in full detail, see `MARKETING_DASHBOARD.md`** — that
 file is the authoritative data-pipeline reference; this section only
 covers how the page fits into the rest of the app.
@@ -1717,7 +1717,8 @@ the raw browser's own base date window
 
 Unit tests for this older model: `tests/test_marketing_attribution.py`
 (21 cases). For the Marketing Channel Report's own pipeline, see
-`tests/test_marketing_cleaning.py` (28 cases) and `MARKETING_DASHBOARD.md`.
+`tests/test_marketing_cleaning.py`, `tests/test_planet_cleaning_pipeline.py`
+and `MARKETING_DASHBOARD.md`.
 
 ### Prepare for Marketing V2
 
@@ -1726,7 +1727,7 @@ channel, campaign-adjacent MarketingToken) — the same dimensions a future
 Lead → Sale → Install join will need to group by. Not built yet: any join
 to `main_sales`/`vision_packages`/`service_cancellations`, a real ad-spend
 data source, cost per lead/sale, CAC, MRR, or ROI — see
-`MARKETING_DASHBOARD.md` §6 "Known limitations".
+`MARKETING_DASHBOARD.md` §5 "Known limitations".
 
 ## Marketing Channel Report
 
@@ -1750,8 +1751,10 @@ no login). **This is a deliberately different, more detailed data model
 than `marketing_attribution.py`/`marketing_metrics.py`** (the Admin
 Portal's older, simpler Paid/Not-Paid + platform model — see "Attribution
 Quality" above) — a 5-way channel taxonomy (Paid / Email /
-Offline-Referral / AI-Referral / Organic-Direct) with MarketingToken-based
-offline/referral sub-classification and click-ID reuse dedup. The two are
+Offline-Referral / AI-Referral / Organic-Direct) from the vendored
+`planet_cleaning/` pipeline (v2.1.0 handoff: every `MP-` MarketingToken is
+Paid, `fbclid`/source-only tags don't prove Paid, unconfirmed tokens are
+never guessed, click-ID reuse checks, review flags). The two are
 intentionally not merged; see `marketing_cleaning.py`'s module docstring
 if they ever need to converge. **For the full SQL query and every
 cleaning/attribution rule, see `MARKETING_DASHBOARD.md`.**
@@ -1770,20 +1773,17 @@ attribution — lives in `MARKETING_DASHBOARD.md`):
   once in the full-period view — month slices will not sum to the
   full-period total; this is correct (same semantics as unique-visitor
   metrics in any analytics tool), not a bug.
-- **CPA is directional, not exact.** Blended CPA (spend ÷ Available Now
-  ad entries) needs no assumption. Every other CPA (by channel/state/zip)
-  apportions spend by that segment's share of ad entries, since ad
-  platforms don't report spend by geography — the report labels this
-  explicitly. No real ad-spend source is wired in yet, so `spend_total`
-  is always 0 in the generated payload; the report's own spend input
-  prompts the viewer to supply it per range rather than showing a
-  misleading `$0.00`.
-- Unit tests: `tests/test_marketing_cleaning.py` (28 cases — zip/state
-  cleaning, AvailabilityID validation, every channel tier and the
-  `utm_medium=social` exclusion, MarketingToken sub-classification
-  including the real "Jberg"-vs-short-code collision found during
-  development, click-ID reuse dedup incl. the `gbraid`-is-exempt rule,
-  and the dashboard payload shape).
+- **CPA only for spend entered for the exact range.** No spend is
+  stored or assumed (`spend_total` is always `null`); the viewer enters
+  actual Paid spend for the selected dates, and it's cleared whenever the
+  range changes. Only the blended figure (spend ÷ paid Available Now) and
+  the Paid group row get a CPA — platform, state and zip CPA show "n/a",
+  since spend is never apportioned by platform, geography or day.
+- Unit tests: `tests/test_planet_cleaning_pipeline.py` (the handoff's own
+  51 synthetic cases — every attribution rule) and
+  `tests/test_marketing_cleaning.py` (the integration: MP- end to end,
+  rejection reporting, payload shape, the hourly cache, and a check that
+  the report's in-browser dedupe matches the pipeline's `select_period()`).
 
 ## Passings & Leads
 
@@ -1851,7 +1851,7 @@ is never the date the dashboard imported a record — see
 `passings_data.py`'s module docstring.
 
 `As_AvailabilityID` 1/3 labels reuse the exact wording already
-established in `marketing_cleaning.py`'s `VALID_AVAILABILITY_IDS`
+established in `planet_cleaning/pipeline.py`'s `STATUSES`
 (`1` = "Available Now", `3` = "Coming soon (preorder)", shown as
 **"Pre-Order"** in badges/charts per this feature's own terminology).
 
@@ -2025,4 +2025,4 @@ Dashboard" / "Marketing Channel Report" / `MARKETING_DASHBOARD.md` above
 attribution, with directional CPA math once a spend figure is entered.
 It is NOT yet joined to `main_sales`/`vision_packages`/
 `service_cancellations`, and has no real ad-spend data source, CAC, MRR,
-or ROI metric — see `MARKETING_DASHBOARD.md` §6.
+or ROI metric — see `MARKETING_DASHBOARD.md` §5.

@@ -1,0 +1,66 @@
+{
+  "pipeline_version": "2.1.0",
+  "source": "Results 9-11-26.csv",
+  "periods": [
+    {
+      "period": "August",
+      "start": "2026-08-01",
+      "end": "2026-08-31",
+      "unique_people": 3642,
+      "raw_period_rows": 4165,
+      "duplicates_removed": 523,
+      "available_now_all_channels": 1750,
+      "paid_available_now": 201,
+      "paid_available_needs_review": 200,
+      "channel_counts": {
+        "Paid": 917,
+        "Email": 38,
+        "Offline-Referral": 1130,
+        "AI-Referral": 18,
+        "Organic-Direct": 1539
+      },
+      "cost_per_paid_available_lead": null
+    },
+    {
+      "period": "September to date",
+      "start": "2026-09-01",
+      "end": "2026-09-10",
+      "unique_people": 1214,
+      "raw_period_rows": 1365,
+      "duplicates_removed": 151,
+      "available_now_all_channels": 501,
+      "paid_available_now": 65,
+      "paid_available_needs_review": 65,
+      "channel_counts": {
+        "Paid": 403,
+        "Email": 9,
+        "Offline-Referral": 340,
+        "AI-Referral": 2,
+        "Organic-Direct": 460
+      },
+      "cost_per_paid_available_lead": null
+    },
+    {
+      "period": "Last seven complete days",
+      "start": "2026-09-04",
+      "end": "2026-09-10",
+      "unique_people": 836,
+      "raw_period_rows": 934,
+      "duplicates_removed": 98,
+      "available_now_all_channels": 339,
+      "paid_available_now": 46,
+      "paid_available_needs_review": 46,
+      "channel_counts": {
+        "Paid": 287,
+        "Email": 3,
+        "Offline-Referral": 250,
+        "AI-Referral": 1,
+        "Organic-Direct": 295
+      },
+      "cost_per_paid_available_lead": null
+    }
+  ],
+  "source_sha256": "25823ce64ea1dd8cb63afed64b562f39abe9b25378914b9d6c995489c668b9dd",
+  "rule": "All trimmed MarketingToken values beginning MP- (case-insensitive) are Paid.",
+  "qualification": "AvailabilityID=1 on earliest email_id submission within each reporting period."
+}

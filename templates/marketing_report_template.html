@@ -321,7 +321,7 @@ table.mr-table tr.group-row td:first-child { font-weight: 600; }
       <span style="color:var(--text-muted);">&rarr;</span>
       <input type="date" class="mr-date-input" id="mr-to-date">
       <div class="mr-spend-wrap">
-        <span class="mr-control-label">Spend (range)</span>
+        <span class="mr-control-label" title="Actual paid spend covering exactly the selected dates and the Paid channel scope. Cleared whenever the range changes.">Paid spend (exact range)</span>
         <input type="text" class="mr-spend-input mr-num" id="mr-spend-input" placeholder="Enter spend&hellip;">
         <span class="mr-spend-tag est" id="mr-spend-tag">unset</span>
       </div>
@@ -367,7 +367,7 @@ table.mr-table tr.group-row td:first-child { font-weight: 600; }
     </div>
     <div class="mr-card">
       <div class="mr-table-scroll"><table class="mr-table" id="mr-channel-table"></table></div>
-      <p class="mr-footnote">Only paid channels receive a CPA. CTV and radio cannot set a click ID, so that spend surfaces in Organic/Direct. Offline/Referral is attributed via MarketingToken, and some code meanings remain unconfirmed (see &ldquo;&mdash; confirm&rdquo; labels).</p>
+      <p class="mr-footnote">CPA is shown only for the Paid group as a whole &mdash; platform CPA needs that platform&rsquo;s own spend, so it reads n/a. Every MarketingToken starting MP- is Paid; when no independent evidence names the platform it shows as &ldquo;Paid (other)&rdquo;. &ldquo;Unconfirmed token&rdquo; is a provisional bucket for codes nobody has confirmed yet, not proof the lead was offline. &ldquo;Unattributed / review&rdquo; and &ldquo;Direct / unknown&rdquo; are not claims of organic acquisition, and CTV/radio influence lands there too.</p>
     </div>
   </section>
 
@@ -379,7 +379,7 @@ table.mr-table tr.group-row td:first-child { font-weight: 600; }
     </div>
     <div class="mr-card">
       <div class="mr-table-scroll"><table class="mr-table" id="mr-state-table"></table></div>
-      <p class="mr-footnote">Platforms do not report spend by geography, so spend is apportioned by each area&rsquo;s share of ad entries and divided by its Available Now count &mdash; a directional ranking, not an exact cost. The Blended CPA above requires no such assumption.</p>
+      <p class="mr-footnote">Platforms do not report spend by geography, so state and zip CPA is not calculated (n/a) &mdash; spend is never allocated by area. State is a NJ/NY/PA/VA zip-prefix estimate; anything else is Outside footprint.</p>
     </div>
   </section>
 
@@ -468,6 +468,8 @@ var DAY0 = (function () {
   var parts = D.day0.split("-").map(Number);
   return Date.UTC(parts[0], parts[1] - 1, parts[2]);
 })();
+// Today is a partial day: presets and the initial view end the day before.
+var LAST_COMPLETE_DAY = Math.max(0, Math.min(D.maxday, D.today_day - 1));
 function dateFromDay(dayIndex) { return new Date(DAY0 + dayIndex * 86400000); }
 function dayFromDate(dt) { return Math.round((Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) - DAY0) / 86400000); }
 function fmtDateShort(dayIndex) {
@@ -494,7 +496,7 @@ function isoToDay(iso) {
 ====================================================================== */
 var state = {
   fromDay: 0,
-  toDay: D.maxday,
+  toDay: LAST_COMPLETE_DAY,
   activePreset: "full",
   spend: null,       // null = unset (prompt); number once set
   spendManual: false,
@@ -561,7 +563,7 @@ function countRawInRange(fromDay, toDay) {
 // `indices` is assumed already deduped for the caller's range.
 function aggregate(indices) {
   var totalCount = indices.length;
-  var adCount = 0, adAvailNowCount = 0, allAvailNowCount = 0;
+  var adCount = 0, adAvailNowCount = 0, allAvailNowCount = 0, adAvailNowReview = 0;
   var statusAllCounts = [0, 0, 0, 0, 0, 0, 0];
   var statusAdCounts = [0, 0, 0, 0, 0, 0, 0];
 
@@ -582,7 +584,7 @@ function aggregate(indices) {
     var stKey = FOOTPRINT_STATES.indexOf(st) >= 0 ? st : "Outside footprint";
 
     statusAllCounts[s]++;
-    if (isPaid) { adCount++; statusAdCounts[s]++; if (s === 1) adAvailNowCount++; }
+    if (isPaid) { adCount++; statusAdCounts[s]++; if (s === 1) { adAvailNowCount++; if (D.r[i] === 1) adAvailNowReview++; } }
     if (s === 1) allAvailNowCount++;
 
     var chanKey = chan.g + "||" + chan.d;
@@ -621,22 +623,20 @@ function aggregate(indices) {
   var zips = Array.from(zipMap.values());
 
   return {
-    totalCount: totalCount, adCount: adCount, adAvailNowCount: adAvailNowCount, allAvailNowCount: allAvailNowCount,
+    totalCount: totalCount, adCount: adCount, adAvailNowCount: adAvailNowCount, allAvailNowCount: allAvailNowCount, adAvailNowReview: adAvailNowReview,
     statusAllCounts: statusAllCounts, statusAdCounts: statusAdCounts,
     channels: channels, states: states, zips: zips,
   };
 }
 
-// Generic CPA formula used everywhere below KPI-level: spend apportioned
-// by this segment's share of ALL paid (ad) entries in the current range,
-// divided by the segment's OWN Available-Now-among-ads count. Returns
-// null (unset spend), or a number, or NaN-safe "no denominator" via the
-// caller checking availNowCount === 0 first.
+// CPA for a segment below KPI level. The entered spend covers the whole
+// Paid scope only, so a CPA exists only for a segment that IS the whole
+// Paid scope (the Paid group row, or a state/zip/platform that happens to
+// hold every paid entry). Anything smaller returns undefined -> "n/a":
+// spend is never apportioned by platform, geography, or day.
 function segmentCPA(spend, segmentAdEntries, segmentAdAvailNow, totalAdEntries) {
-  if (spend === null) return null;
-  if (segmentAdAvailNow === 0 || totalAdEntries === 0) return NaN; // undefined -- em dash
-  var share = segmentAdEntries / totalAdEntries;
-  return (spend * share) / segmentAdAvailNow;
+  if (segmentAdEntries !== totalAdEntries) return undefined;
+  return blendedCPA(spend, segmentAdAvailNow);
 }
 function blendedCPA(spend, adAvailNowCount) {
   if (spend === null) return null;
@@ -644,6 +644,7 @@ function blendedCPA(spend, adAvailNowCount) {
   return spend / adAvailNowCount;
 }
 function renderCPA(cpaValue) {
+  if (cpaValue === undefined) return '<span class="mr-em-dash" title="Needs spend for this exact segment; spend is never allocated">n/a</span>';
   if (cpaValue === null) return '<button type="button" class="mr-kpi-prompt" data-focus-spend>Enter spend</button>';
   if (isNaN(cpaValue)) return '<span class="mr-em-dash">—</span>';
   return fmtCurrency(cpaValue);
@@ -728,9 +729,10 @@ function renderKPIs(agg) {
   }
 
   var html = "";
+  var partial = state.toDay >= D.today_day ? ' · <strong>includes today (partial day)</strong>' : '';
   html += '<div class="mr-kpi">' + exportHead("Unique entries", "unique") +
     '<div class="mr-kpi-value mr-num">' + fmtInt(agg.totalCount) + '</div>' +
-    '<div class="mr-kpi-detail mr-num">' + fmtInt(days) + ' day' + (days === 1 ? "" : "s") + ' · ' + entriesPerDay.toFixed(1) + '/day · ' + fmtInt(duplicatesRemoved) + ' duplicate' + (duplicatesRemoved === 1 ? "" : "s") + ' removed</div></div>';
+    '<div class="mr-kpi-detail mr-num">' + fmtInt(days) + ' day' + (days === 1 ? "" : "s") + ' · ' + entriesPerDay.toFixed(1) + '/day · ' + fmtInt(duplicatesRemoved) + ' duplicate' + (duplicatesRemoved === 1 ? "" : "s") + ' removed' + partial + '</div></div>';
 
   html += '<div class="mr-kpi">' + exportHead("From ads", "ads") +
     '<div class="mr-kpi-value mr-num">' + fmtInt(agg.adCount) + '</div>' +
@@ -738,11 +740,11 @@ function renderKPIs(agg) {
 
   html += '<div class="mr-kpi">' + exportHead("Available Now (ads)", "avail") +
     '<div class="mr-kpi-value mr-num">' + fmtInt(agg.adAvailNowCount) + '</div>' +
-    '<div class="mr-kpi-detail mr-num">' + fmtPct(pctAvailOfAds) + ' of ad entries · ' + fmtPct(pctAvailOfAll) + ' of all traffic</div></div>';
+    '<div class="mr-kpi-detail mr-num">' + fmtPct(pctAvailOfAds) + ' of ad entries · ' + fmtPct(pctAvailOfAll) + ' of all traffic · ' + fmtInt(agg.adAvailNowReview) + ' with review flags</div></div>';
 
   html += '<div class="mr-kpi"><div class="mr-kpi-label">Blended CPA</div>' +
     '<div class="mr-kpi-value' + (cpa === null ? ' small' : '') + '">' + renderCPA(cpa) + '</div>' +
-    '<div class="mr-kpi-detail">cost per Available Now ad entry</div></div>';
+    '<div class="mr-kpi-detail">paid spend for this range ÷ paid Available Now</div></div>';
 
   document.getElementById("mr-kpi-grid").innerHTML = html;
 }
@@ -900,7 +902,7 @@ function statusCells(counts, prefix) {
 function channelTableHeaderHTML(sortState) {
   var cols = [["group", "Channel", true], ["entries", "Entries"], ["share", "Share"],
     ["s0", "Unavail"], ["s1", "Avail Now"], ["s2", "CS-NoOrd"], ["s3", "CS-Preord"], ["s4", "Permitting"], ["s5", "Strand"], ["s6", "Fiber"],
-    ["pctAvail", "% Avail"], ["cpa", "Est. CPA"]];
+    ["pctAvail", "% Avail"], ["cpa", "CPA"]];
   var html = "<thead><tr>";
   cols.forEach(function (c) {
     var left = c[2] ? " mr-th-left" : "";
@@ -972,7 +974,7 @@ function renderChannelTable(agg) {
 function stateTableHeaderHTML(sortState) {
   var cols = [["state", "State", true], ["entries", "Entries"],
     ["s0", "Unavail"], ["s1", "Avail Now"], ["s2", "CS-NoOrd"], ["s3", "CS-Preord"], ["s4", "Permitting"], ["s5", "Strand"], ["s6", "Fiber"],
-    ["zips", "Zips"], ["ad", "Ad entries"], ["share", "Share"], ["pctAvail", "% Avail"], ["cpa", "Est. CPA"]];
+    ["zips", "Zips"], ["ad", "Ad entries"], ["share", "Share"], ["pctAvail", "% Avail"], ["cpa", "CPA"]];
   var html = "<thead><tr>";
   cols.forEach(function (c) {
     var left = c[2] ? " mr-th-left" : "";
@@ -1063,7 +1065,7 @@ function zipTableHeaderHTML(view, sortState) {
   var cols = view === "full"
     ? [["zip", "Zip", true], ["state", "State"], ["muni", "Municipality"], ["ad", "Ad entries"],
        ["s0", "Unavail"], ["s1", "Avail Now"], ["s2", "CS-NoOrd"], ["s3", "CS-Preord"], ["s4", "Permitting"], ["s5", "Strand"], ["s6", "Fiber"]]
-    : [["zip", "Zip", true], ["state", "State"], ["muni", "Municipality"], ["ad", "Ad entries"], ["avail", "Available Now"], ["pctAvail", "% Avail"], ["cpa", "Est. CPA"]];
+    : [["zip", "Zip", true], ["state", "State"], ["muni", "Municipality"], ["ad", "Ad entries"], ["avail", "Available Now"], ["pctAvail", "% Avail"], ["cpa", "CPA"]];
   var html = "<thead><tr>";
   cols.forEach(function (c) {
     var left = c[2] ? " mr-th-left" : "";
@@ -1107,7 +1109,7 @@ function renderZipTable(agg) {
 
   document.getElementById("mr-zip-summary").textContent =
     fmtInt(filteredCount) + " zips · " + fmtInt(filteredAd) + " entries · " + fmtInt(filteredAvail) + " Available Now (" + fmtPct(filteredPct) + ") · CPA " +
-    (filteredCpaSum === null ? "unset" : (isNaN(filteredCpaSum) ? "—" : fmtCurrency(filteredCpaSum)));
+    (filteredCpaSum === undefined ? "n/a" : filteredCpaSum === null ? "unset" : (isNaN(filteredCpaSum) ? "—" : fmtCurrency(filteredCpaSum)));
 
   var visible = rows.slice(0, state.zipShowCount);
   var html = zipTableHeaderHTML(state.zipView, state.zipSort) + "<tbody>";
@@ -1142,7 +1144,7 @@ function renderFooter() {
   var span = fmtDateShort(0) + " – " + fmtDateShort(D.maxday);
   document.getElementById("mr-footer").innerHTML =
     "<span>Full data span: " + span + " (day 0–" + D.maxday + ")</span>" +
-    '<span class="mr-num">' + fmtInt(D.raw_rows) + " raw submissions loaded · duplicates removed within the selected date range only</span>";
+    '<span class="mr-num">' + fmtInt(D.raw_rows) + " valid submissions loaded · earliest submission per email kept within the selected range · cleaning pipeline v" + D.pipeline_version + "</span>";
 }
 
 /* ======================================================================
@@ -1293,7 +1295,7 @@ function applyRange(fromDay, toDay, presetKey) {
   document.getElementById("mr-from-date").value = fmtDateISO(state.fromDay);
   document.getElementById("mr-to-date").value = fmtDateISO(state.toDay);
   updatePresetButtons();
-  applySpendProration();
+  clearSpend();
   recompute();
 }
 
@@ -1315,13 +1317,13 @@ function buildPresetRow() {
     var btn = document.createElement("button");
     btn.type = "button"; btn.className = "mr-preset-btn"; btn.setAttribute("data-preset", p.key); btn.textContent = p.label;
     btn.addEventListener("click", function () {
-      if (p.key === "full") applyRange(0, D.maxday, "full");
-      else if (p.key === "last30") applyRange(D.maxday - 29, D.maxday, "last30");
-      else if (p.key === "last7") applyRange(D.maxday - 6, D.maxday, "last7");
+      if (p.key === "full") applyRange(0, LAST_COMPLETE_DAY, "full");
+      else if (p.key === "last30") applyRange(LAST_COMPLETE_DAY - 29, LAST_COMPLETE_DAY, "last30");
+      else if (p.key === "last7") applyRange(LAST_COMPLETE_DAY - 6, LAST_COMPLETE_DAY, "last7");
       else if (p.key === "mtd") {
-        var dt = dateFromDay(D.maxday);
+        var dt = dateFromDay(LAST_COMPLETE_DAY);
         var monthStartDay = dayFromDate(new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1)));
-        applyRange(monthStartDay, D.maxday, "mtd");
+        applyRange(monthStartDay, LAST_COMPLETE_DAY, "mtd");
       }
     });
     row.appendChild(btn);
@@ -1350,12 +1352,12 @@ function wireCustomDateInputs() {
 /* ======================================================================
    Controls: spend
 ====================================================================== */
-function applySpendProration() {
-  if (state.spendManual) return;
-  if (!D.spend_total) { state.spend = null; updateSpendUI(); return; }
-  var days = state.toDay - state.fromDay + 1;
-  var totalDays = D.maxday + 1;
-  state.spend = D.spend_total * (days / totalDays);
+// Spend must cover exactly the selected dates and the Paid channel scope,
+// so it is never prorated across days and is cleared whenever the range
+// changes -- a figure entered for one range is meaningless for another.
+function clearSpend() {
+  state.spendManual = false;
+  state.spend = null;
   updateSpendUI();
 }
 function updateSpendUI() {
@@ -1363,15 +1365,14 @@ function updateSpendUI() {
   var tag = document.getElementById("mr-spend-tag");
   if (state.spend === null) { input.value = ""; tag.textContent = "unset"; tag.className = "mr-spend-tag est"; return; }
   input.value = state.spend.toFixed(2);
-  if (state.spendManual) { tag.textContent = "manual"; tag.className = "mr-spend-tag manual"; }
-  else { tag.textContent = "estimated"; tag.className = "mr-spend-tag est"; }
+  tag.textContent = "this range"; tag.className = "mr-spend-tag manual";
 }
 function wireSpendInput() {
   var input = document.getElementById("mr-spend-input");
   input.addEventListener("change", function () {
     var raw = input.value.replace(/[^0-9.]/g, "");
     var val = parseFloat(raw);
-    if (isNaN(val) || raw === "") { state.spendManual = false; state.spend = null; applySpendProration(); }
+    if (isNaN(val) || raw === "") { clearSpend(); }
     else { state.spendManual = true; state.spend = val; updateSpendUI(); }
     recompute();
   });
@@ -1436,7 +1437,7 @@ wireSpendInput();
 wireControls();
 wireThemeToggle();
 wireKpiExports();
-applyRange(0, D.maxday, "full");
+applyRange(0, LAST_COMPLETE_DAY, "full");
 
 })();
 </script>

@@ -71,7 +71,7 @@ WHERE [InsertDate] >= '2026-03-01'
   constant is the one place to change.
 - **`GETDATE()`** means "through right now, on the SQL Server itself" — not a
   cached snapshot. The live `/marketing` route re-runs this exact query on
-  every page load (see §4 below); nothing about this query is memoized.
+  every page load (see §3 below); nothing about this query is memoized.
 - This is a **read-only view query with no joins to sales/installs/revenue**.
   A lead here is not yet connected to whether it became a sale — see
   `README.md`'s "Prepare for Marketing V2" for what that would take.
@@ -88,167 +88,107 @@ different date floor.
 
 ---
 
-## 2. Cleaning — before any lead gets a channel
+## 2. Cleaning and attribution — the `planet_cleaning` pipeline
 
-Every row goes through this before attribution even starts
-(`marketing_cleaning.clean_row()`):
+Since 2026-10-07, every rule in this section comes from
+**`planet_cleaning/pipeline.py`** — the version 2.1.0 cleaning handoff,
+vendored unmodified (with its own `README.md`, `DEVELOPER_HANDOFF.md`,
+`expected_counts.json` and `confirmed_tokens.json`). **`planet_cleaning/README.md`
+is the authoritative rule reference**; this is a summary. To pick up a new
+handoff version, replace the files in `planet_cleaning/` and re-run
+`tests/test_planet_cleaning_pipeline.py`.
 
-### Zipcode
+`marketing_cleaning.classify_rows()` feeds the SQL rows through the
+pipeline's `normalize_rows()` + `classify()` — "integration approach 1"
+from the handoff: keep every valid submission, and dedupe per selected
+range in the report's own JavaScript (see "Deduplication" below).
 
-- Whatever comes back (`"07461"`, `"07461-1234"`, or even a number that lost
-  its leading zero like `7461`) is normalized to a plain 5-digit string:
-  strip anything from a `-` onward, keep only digits, zero-pad to 5.
-- A value with no digits at all becomes an empty string, not an error.
+### Validation — rows that are rejected
 
-### State
+A row is rejected (excluded from every count, and reported in the
+"Data quality flags" banner with a per-reason breakdown) if it has:
 
-- Derived from the zip's **first 3 digits** against the standard USPS
-  Sectional Center Facility (SCF) prefix ranges (070–089 → NJ, 100–149 → NY,
-  150–196 → PA, 220–246 → VA, and so on for the rest of the country).
-- Anything outside a known range — or an empty zip — becomes **`"Unknown"`**,
-  never guessed.
-- **This is an approximation, not a per-zip lookup.** One deliberate
-  deviation from the textbook USPS table: `200`–`205` is nominally "DC",
-  but Planet Networks has no DC service footprint at all — every real row
-  seen with a zip3 in that range (`200`, `201`) is Northern Virginia,
-  processed through the DC postal SCF despite being physically in VA, so
-  it's mapped to **VA** instead. Verified correct for every zip3 prefix
-  actually seen in this app's real data for the four footprint states
-  (NJ/NY/PA/VA) during development; treat state assignment outside that
-  footprint as directionally right, not survey-grade.
+- a missing/invalid `InsertDate`, or an ambiguous/nonexistent DST wall time
+- an `InsertDate` in the future
+- an `AvailabilityID` that isn't an integer `0`–`6`
+- an `email_id` that isn't a 64-character hex hash
 
-### AvailabilityID
+The standalone pipeline refuses to publish at all when anything is
+rejected; the live dashboard can't go blank over one bad row, so it shows
+the warning instead.
 
-- Must be an integer `0`–`6`. Anything else (`NULL`, out of range, garbage) —
-  **the entire row is dropped**, and the drop count is reported in the
-  guardrail banner (see §5). Nothing gets a fabricated status.
-- The 7 codes: `0` Unavailable, `1` Available Now, `2` Coming soon (no
-  ordering), `3` Coming soon (preorder), `4` Permitting, `5` Strand
-  Construction, `6` Fiber Construction.
+### Time
 
-### What's deliberately **not** done here: deduplication
+Naive `InsertDate` values are treated as `America/New_York`, and day
+boundaries are Eastern. **Today is a partial day**: the report's presets
+and default view end yesterday; picking today manually is labelled
+"includes today (partial day)".
 
-The pipeline does **not** deduplicate by `email_id` at this stage, and never
-will at this stage. Every cleaned, tagged row from a given date-window pull
-is kept, one row per raw submission.
+### Zipcode and State
 
-Deduplication happens **client-side, in the dashboard's own JavaScript**,
-scoped to whatever date range you currently have selected — because
-deduplicating once globally and then filtering by date would drop anyone
-whose very first submission happened to fall outside that window. Change the
-date range, and dedup re-runs from scratch against just that window. This is
-why a person active in both May and August shows up once in each month's
-numbers and once in the full-period total — that's correct, not a bug (same
-semantics as "unique visitors" in any analytics tool).
+- Accepts 1–5 digits (leading zeros restored), integer-style `.0`
+  suffixes, ZIP+4, or 9 digits. Anything else is blank and flagged — digits
+  are never pulled out of arbitrary text.
+- State is a **NJ/NY/PA/VA zip3-prefix estimate** (070–089, 100–149,
+  150–196, 220–246) or `Unknown`. The report shows everything else as
+  "Outside footprint". The old `200`–`205` → VA remap is gone (the handoff
+  deliberately has no DC→VA mapping).
+- Municipality is kept per submission, never replaced by a ZIP-wide label.
 
----
+### Channel assignment — one lead, one channel
 
-## 3. Assigning a channel — one lead, one channel, first match wins
+| Priority | Evidence | Channel |
+| --- | --- | --- |
+| 0 | `MarketingToken` starts with `MP-` (trimmed, any case) | **Paid** — confirmed business rule; covers MP-AUG-26, MP-SEP-26 and every future MP- code. Platform comes from independent evidence (e.g. a `gclid` → Google), else "Paid (other)". |
+| 1 | `utm_medium=email`, email source (`sfmc`, `hs_email`, …), or `EM` + digit token | Email |
+| 2 | ChatGPT / Copilot / Perplexity source | AI-Referral |
+| 3 | `utm_medium` of `social`, `organic`, `organic-social`, `referral` | Organic-Direct ("Organic social" / "Organic / referral") |
+| 4 | Paid medium (`cpc`, `ppc`, `paid`, `paid-social`, `display`, …), `gclid`/`msclkid`/`ndclid`/`gbraid`/`wbraid`/`gad_source`, or a `_gcl_aw` cookie under an hour old with no other tracking | Paid, with a platform when the evidence supports one |
+| 5 | Exact token listed in `planet_cleaning/confirmed_tokens.json` | Its confirmed channel |
+| 6 | Any other `MarketingToken` | Offline-Referral / "Unconfirmed token" — a provisional bucket, not proof the lead was offline |
+| 7 | Nothing usable | Organic-Direct / "Unattributed / review" or "Direct / unknown" — not a claim of organic acquisition |
 
-Every cleaned row gets checked against 5 tiers, **in this order**. The first
-one that matches wins; nothing is double-counted.
+What changed from the old homegrown classifier:
 
-### Tier 1 — Paid
+- **`MP-` tokens are Paid** (they used to be Offline-Referral "Agency campaign").
+- **These no longer prove Paid on their own:** `fbclid`, `utm_source`
+  `meta_*`/`adwords`/`bing`/`reddit`/`next-door`, `unbounce`/`leadpages`, or
+  `tw_source=google`. Each needs independent ad evidence.
+- **Tokens aren't guessed from their shape.** "Direct mail — confirm",
+  "Sales rep / referral — confirm", "Event / one-off" and the rest are gone.
+  When the team confirms a code, add it to `planet_cleaning/confirmed_tokens.json`.
+- **Click-ID reuse** (`gclid`, `fbclid`, `msclkid`, `ndclid`): the first
+  email hash owns the ID; another hash within 60 minutes keeps it with a
+  flag, and later reuse loses that ID as evidence. `gbraid`/`wbraid` are
+  exempt.
 
-A row is Paid if **any** of these are true:
+Every row keeps a `match_tier` and `review_flags` (conflicts, missing
+`utm_campaign`, unconfirmed token, inferred cookie, …). Flags are
+informational, not exclusions. The report's "Available Now (ads)" card
+shows how many have flags.
 
-| Signal | Platform |
-|---|---|
-| `utm_source = adwords`, or `gclid`/`gad_source`/`gbraid` populated, or `tw_source = google` | **Google** |
-| `utm_source` starts with `meta` (catches `meta_fb`, `meta_ig`, `meta_an`, `meta_th`, and even an unresolved template value like `meta_{{site_source_name}}`), or `fbclid` populated | **Meta** |
-| `utm_source = bing`, or `msclkid` populated | **Bing** |
-| `utm_source = next-door`, or `ndclid` populated | **Nextdoor** |
-| `utm_source = reddit` | **Reddit** |
-| `utm_source` in `unbounce`, `leadpages` | **Paid (LP)** — a landing-page host is reliably paid traffic, but doesn't identify a specific ad platform, so it's never guessed as Google or Meta |
-| `utm_medium` in `paid-social`, `ppc`, `paid` (source doesn't matter) | **Other Paid** |
+### Deduplication
 
-**Exclusion:** `utm_medium = social` (exact — *not* `paid-social`) always
-wins over everything else, even a populated `fbclid`. This matters in
-practice: in this app's real data, every row with `utm_source = ig` pairs
-with `utm_medium = social` and often carries a real Facebook click ID — that's
-an organic Instagram bio-link click, not a paid ad, and is correctly kept out
-of Paid.
+The pipeline does **not** dedupe — every valid submission is kept, in
+earliest-first order. The report's JavaScript dedupes **within whatever
+range is selected**: it filters dates first, keeps the earliest submission
+per `email_id`, *then* counts channel and availability. A person whose
+first in-range submission is Unavailable/organic stays that way, even if a
+later one is Available Now/paid. Weekly or monthly unique counts are not
+additive. `tests/test_marketing_cleaning.py` checks that this matches the
+pipeline's own `select_period()`.
 
-**Last-resort fallback — Google's `_gcl_aw` cookie:** only tried if a row has
-*no* qualifying UTM signal and *no* click ID at all. The pipeline looks for a
-`_gcl_aw` value in the landing URL (`uniqueURL` — never `_gcl_au`, a
-different cookie set on nearly every visit that carries no ad signal),
-base64-decodes it, and only trusts the recovered click if it happened within
-one hour of the submission.
-
-**Real format, confirmed against production data (fixed 2026-08-20):**
-Google does not send `_gcl_aw` as its own `_gcl_aw=<value>` query parameter.
-It packs it inside a single `_gl=` linker parameter, asterisk-delimited
-alongside other sub-values — typically `_gcl_au` right next to it:
-
-```
-?_gl=1*<linker-id>*_gcl_aw*<VALUE>*_gcl_au*<other-value>
-```
-
-The `<VALUE>` itself is also non-standard: Google terminates it with one or
-more literal `.` characters instead of standard base64 `=` padding. An
-earlier version of this pipeline assumed the textbook `_gcl_aw=<value>`
-shape with `=` padding, which matched **zero** of this app's real rows — the
-extraction pattern and the padding step were both silently failing on every
-one of the ~1,069 real rows that actually carry a `_gcl_aw` value. Fixed by
-matching the real `_gcl_aw*` delimiter and stripping trailing `.` before
-padding; verified against a real captured value and covered by a regression
-test in both `tests/test_marketing_cleaning.py` and
-`tests/test_marketing_attribution.py`. With the fix, Tier 3 recovers
-roughly 200+ additional Google-paid leads that were previously falling
-through to Organic-Direct.
-
-**Click IDs belong to one person.** If the same `gclid`/`fbclid`/`msclkid`/
-`ndclid` value shows up on more than one submission, only the earliest one
-(plus anything within 60 minutes of it) is credited as Paid via that click;
-later reuses are re-evaluated on whatever other signal they have, with the
-reused click id itself ignored. `gbraid` is the one exception — it's shared
-by design (Google's privacy-preserving attribution), so it's never subject to
-this reuse check.
-
-### Tier 2 — Email
-
-`utm_medium = email`, or `utm_source` in `sfmc`, `hs_email`, `hs_automation`,
-`newsletter`, `Community Newsletter`, or a `MarketingToken` matching `^EM\d`
-(e.g. `EM1208B`).
-
-### Tier 3 — Offline / Referral
-
-Attributed via **`MarketingToken`** only (not the URL's `token=` parameter —
-some tokens are stored server-side only, and `MarketingToken` is the
-authoritative field). The token gets sub-classified by pattern:
-
-| Pattern | Example | Label |
-|---|---|---|
-| `^PC\d` | `PC1`, `PC2` | Direct mail — confirm |
-| `^MP-` | `MP-AUG-26` | Agency campaign |
-| `^SFED` or a short mostly-uppercase code | `SFEDa`, `PVA1`, `LOB7`, `NSW`, `PN25` | Unknown — confirm |
-| contains `facebook`, `instagram`, `gaming`, or `strausnews` | — | Organic social / press |
-| ends in a 4-digit year (optionally + more digits) | `NJFAIR2025`, `LMM20260803` | Event / one-off |
-| looks like an initial + surname | `MRitchie`, `jmortensen` | Sales rep / referral — confirm |
-| anything else | — | Unknown — confirm |
-
-**This is pattern-based against real values, not a maintained lookup table.**
-It was calibrated against the ~90 distinct `MarketingToken` values actually
-seen in production during development — new codes will still resolve through
-these same patterns (or land safely in "Unknown — confirm"), but a handful of
-short, ambiguous tokens can land in the wrong "— confirm" bucket. Every label
-with "— confirm" in it is explicitly flagged as needing a human to verify —
-that's by design, not an oversight.
-
-### Tier 4 — AI Referral
-
-`utm_source` in `chatgpt.com`, `chatgpt`, `copilot.com`, `perplexity`.
-
-### Tier 5 — Organic / Direct
-
-Everything left over. Includes CTV and radio, which can't set a click ID —
-don't read a spike in this bucket as purely organic if brand media is
-running.
+**Verifying against the handoff:** `planet_cleaning/expected_counts.json`
+lists the counts from the 2026-09-11 export (e.g. Paid Available Now:
+Aug 1–31 = 201, Sep 1–10 = 65, Sep 4–10 = 46). The live dashboard reads
+today's view, which has more and newer rows, so its numbers for those
+dates will differ somewhat. To reconcile exactly, run
+`python planet_cleaning/pipeline.py "Results 9-11-26.csv" out.json --start … --end …`
+on that original export.
 
 ---
 
-## 4. Where this runs, and when
+## 3. Where this runs, and when
 
 - **Live, cached for one hour** — `app.py`'s `/marketing` route calls
   `marketing_cleaning.generate_report()`, which runs the entire pipeline
@@ -274,22 +214,20 @@ cleaning pipeline and one template, not two copies that can drift apart.
 
 ---
 
-## 5. Guardrails — flagged, never hidden
+## 4. Guardrails — flagged, never hidden
 
 Every report run shows a **"Data quality flags"** banner (or nothing, if
 there's nothing to flag) built from `marketing_cleaning.build_guardrail_report()`:
 
-- Rows dropped for an invalid/missing `AvailabilityID`
-- Rows with an unresolved State (zip3 outside any known range)
+- Rows rejected by the pipeline, broken down by reason (see §2)
 - Day-over-day submission counts vs. the previous run — flags a drop of 20%+
   on any of the last 14 days (a past pull once silently dropped ~30% of
   recent rows; this is meant to catch a repeat of that)
 - A suspiciously round total row count, or a most-recent date well short of
   "today" (a past pull once silently truncated at exactly 10,000 rows)
-- MarketingToken "— confirm" bucket sizes, so the volume of
-  pattern-classified-but-unverified Offline/Referral leads is always visible
-- A note that the most recent day is very likely a partial day — exclude or
-  label it in any per-day average
+
+The returned report's `info` list also records Unknown-state rows,
+unconfirmed-token rows, review-flag counts and the partial-day note.
 
 Day-over-day comparison needs a previous run to compare against
 (`marketing_cleaning_snapshot.json`, written after every run, gitignored —
@@ -298,22 +236,24 @@ rather than silently skipping the check.
 
 ---
 
-## 6. Known limitations, in one place
+## 5. Known limitations, in one place
 
-- **CPA is directional except the blended figure.** Blended CPA (spend ÷
-  Available Now ad entries) needs no assumption. Every other CPA — by
-  channel, state, or zip — apportions spend by that segment's share of ad
-  entries, because ad platforms don't report spend by geography. The
-  dashboard labels this explicitly wherever it appears.
-- **`spend_total` is a manually-maintained figure**
-  (`marketing_cleaning.TOTAL_AD_SPEND_USD`), confirmed real by the
-  marketing team 2026-08-20 — not a live ad-spend data source. It does not
-  auto-update as new days of data arrive, so CPA accuracy will drift the
-  longer this constant goes un-refreshed; update it whenever a current
-  total is available.
-- **MarketingToken sub-classification is a calibrated heuristic**, not a
-  maintained lookup — see Tier 3 above.
-- **State is a zip3-prefix approximation**, not a per-zip lookup — see §2
-  above.
+- **No spend is stored or assumed.** The old hard-coded $195,675 total and
+  its day-count proration are gone. Enter actual Paid spend for exactly
+  the selected dates; it clears whenever the range changes. CPA = spend ÷
+  paid Available Now, for the blended figure and the Paid group row only.
+  Platform, state and zip CPA show "n/a": a period-wide spend figure
+  can't be split by platform, geography or day. The app can't verify a
+  spend figure someone types in.
+- **Attribution is recorded form evidence**, not causal lift, view-through
+  CTV/radio impact, or cross-device attribution.
+- **Unconfirmed tokens** sit in Offline-Referral / "Unconfirmed token" until
+  someone adds them to `planet_cleaning/confirmed_tokens.json`.
+- **State is a zip3-prefix estimate** for NJ/NY/PA/VA only.
+- **Counts are unique email hashes**, not verified people, households,
+  sales or installs. Available Now is serviceability, not a qualified lead.
 - **Not joined to sales/installs/revenue.** A lead here isn't yet connected
   to whether it converted — see `README.md`'s "Prepare for Marketing V2".
+- **The Admin Portal's Attribution Quality panel** (`marketing_attribution.py`)
+  still uses the older, separate Paid/Not-Paid model, so its numbers won't
+  match this report's.

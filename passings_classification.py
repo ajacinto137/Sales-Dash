@@ -43,7 +43,7 @@ def is_valid_email(value):
 # Availability (As_AvailabilityID) -- this feature only ever sees 1/3
 # (the SP's own WHERE p.As_AvailabilityID IN (1,3)). Labels reuse the
 # exact wording already established for these IDs in
-# marketing_cleaning.py's clean_availability_id()/the Marketing Channel
+# planet_cleaning/pipeline.py's STATUSES/the Marketing Channel
 # Report template's STATUS_FULL array, so this app never shows two
 # different names for the same AvailabilityID.
 # ============================================================
