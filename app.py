@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 import threading
+import time
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -27,6 +28,7 @@ from queries import (
 )
 from sales_metrics import (
     BULK_ACCOUNT_VIEWS,
+    _today,
     REP_SORT_KEYS,
     REP_TABLE_COLUMNS,
     build_sales_dataset,
@@ -90,7 +92,16 @@ def inject_auth_context():
 # before Eastern does).
 EASTERN_TZ = ZoneInfo("America/New_York")
 
+# Source data is refreshed by ONE background thread on a fixed timer
+# (_refresh_loop() below), never by page requests -- see
+# ensure_data_loaded() for why. _lock only serializes refreshes against
+# each other (timer vs. the "Refresh Data" button); readers never take it.
+DATA_REFRESH_SECONDS = int(os.environ.get("DATA_REFRESH_SECONDS", "60"))
 _lock = threading.Lock()
+_normalize_lock = threading.Lock()
+_refresher_lock = threading.Lock()
+_refresher_started = False
+_initial_load_done = False
 
 data_store = {
     "planetweb_connected": None,
@@ -109,6 +120,10 @@ data_store = {
     "last_refreshed": None,
     "install_validation": None,
     "install_error": None,
+    # build_sales_dataset() output, computed once per refresh instead of
+    # once per request -- see get_normalized_sales().
+    "normalized_sales": None,
+    "normalized_for_date": None,
 }
 
 # Excel "Main" worksheet column order, left to right, with Install Date/Status
@@ -139,42 +154,42 @@ MAIN_SALES_COLUMN_ORDER = [
 # DATA LOADING
 # ================================================================
 
-def _load_planetweb():
+def _load_planetweb(store):
     connected, error = db.test_planetweb_connection()
-    data_store["planetweb_connected"] = connected
-    data_store["planetweb_error"] = error
+    store["planetweb_connected"] = connected
+    store["planetweb_error"] = error
 
     if not connected:
-        data_store["main_sales"] = None
-        data_store["main_sales_status"] = "FAILED"
-        data_store["main_sales_error"] = "Skipped: PlanetWeb SQL Server connection failed."
+        store["main_sales"] = None
+        store["main_sales_status"] = "FAILED"
+        store["main_sales_error"] = "Skipped: PlanetWeb SQL Server connection failed."
         return
 
     conn = None
     try:
         conn = db.get_planetweb_connection()
-        data_store["main_sales"] = pd.read_sql(MAIN_SALES_QUERY, conn)
-        data_store["main_sales_status"] = "SUCCESS"
-        data_store["main_sales_error"] = None
+        store["main_sales"] = pd.read_sql(MAIN_SALES_QUERY, conn)
+        store["main_sales_status"] = "SUCCESS"
+        store["main_sales_error"] = None
     except Exception as exc:
-        data_store["main_sales"] = None
-        data_store["main_sales_status"] = "FAILED"
-        data_store["main_sales_error"] = db.sanitize_error(exc)
+        store["main_sales"] = None
+        store["main_sales_status"] = "FAILED"
+        store["main_sales_error"] = db.sanitize_error(exc)
     finally:
         if conn is not None:
             conn.close()
 
 
-def _load_kpi():
+def _load_kpi(store):
     connected, error = db.test_kpi_connection()
-    data_store["kpi_connected"] = connected
-    data_store["kpi_error"] = error
+    store["kpi_connected"] = connected
+    store["kpi_error"] = error
 
     if not connected:
         for key in ("service_cancellations", "vision_packages"):
-            data_store[key] = None
-            data_store[f"{key}_status"] = "FAILED"
-            data_store[f"{key}_error"] = "Skipped: KPI PostgreSQL connection failed."
+            store[key] = None
+            store[f"{key}_status"] = "FAILED"
+            store[f"{key}_error"] = "Skipped: KPI PostgreSQL connection failed."
         return
 
     conn = None
@@ -182,24 +197,24 @@ def _load_kpi():
         conn = db.get_kpi_connection()
 
         try:
-            data_store["service_cancellations"] = pd.read_sql(SERVICE_CANCELLATIONS_QUERY, conn)
-            data_store["service_cancellations_status"] = "SUCCESS"
-            data_store["service_cancellations_error"] = None
+            store["service_cancellations"] = pd.read_sql(SERVICE_CANCELLATIONS_QUERY, conn)
+            store["service_cancellations_status"] = "SUCCESS"
+            store["service_cancellations_error"] = None
         except Exception as exc:
             conn.rollback()
-            data_store["service_cancellations"] = None
-            data_store["service_cancellations_status"] = "FAILED"
-            data_store["service_cancellations_error"] = db.sanitize_error(exc)
+            store["service_cancellations"] = None
+            store["service_cancellations_status"] = "FAILED"
+            store["service_cancellations_error"] = db.sanitize_error(exc)
 
         try:
-            data_store["vision_packages"] = pd.read_sql(VISION_PACKAGES_QUERY, conn)
-            data_store["vision_packages_status"] = "SUCCESS"
-            data_store["vision_packages_error"] = None
+            store["vision_packages"] = pd.read_sql(VISION_PACKAGES_QUERY, conn)
+            store["vision_packages_status"] = "SUCCESS"
+            store["vision_packages_error"] = None
         except Exception as exc:
             conn.rollback()
-            data_store["vision_packages"] = None
-            data_store["vision_packages_status"] = "FAILED"
-            data_store["vision_packages_error"] = db.sanitize_error(exc)
+            store["vision_packages"] = None
+            store["vision_packages_status"] = "FAILED"
+            store["vision_packages_error"] = db.sanitize_error(exc)
     finally:
         if conn is not None:
             conn.close()
@@ -211,8 +226,8 @@ def reorder_main_sales_columns(df):
     return df[priority + remaining]
 
 
-def _print_install_validation():
-    v = data_store.get("install_validation")
+def _print_install_validation(store):
+    v = store.get("install_validation")
     if not v:
         return
     print("=" * 60)
@@ -234,7 +249,7 @@ def _print_install_validation():
     print("=" * 60)
 
 
-def _apply_install_date():
+def _apply_install_date(store):
     """Reproduces the existing Excel 'Main' worksheet Install Date formula:
 
         =IFNA(INDEX('Vision Packages'!$Y:$Y,
@@ -246,12 +261,12 @@ def _apply_install_date():
     Adds "Install Date" and "Install Status" to main_sales without ever
     changing the row count.
     """
-    main_sales = data_store["main_sales"]
-    vision_packages = data_store["vision_packages"]
+    main_sales = store["main_sales"]
+    vision_packages = store["vision_packages"]
 
     if main_sales is None:
-        data_store["install_validation"] = None
-        data_store["install_error"] = None
+        store["install_validation"] = None
+        store["install_error"] = None
         return
 
     original_count = len(main_sales)
@@ -291,13 +306,13 @@ def _apply_install_date():
         lambda v: "Not Yet Installed" if v == "Not Yet Installed" else "Installed"
     )
 
-    data_store["main_sales"] = reorder_main_sales_columns(merged)
+    store["main_sales"] = reorder_main_sales_columns(merged)
 
     installed_count = int((merged["Install Status"] == "Installed").sum())
     not_yet_count = int((merged["Install Status"] == "Not Yet Installed").sum())
     mapping_status = "SUCCESS" if duplicate_rows_created == 0 else "ERROR"
 
-    data_store["install_validation"] = {
+    store["install_validation"] = {
         "main_sales_rows": original_count,
         "vision_packages_rows": len(vision_packages) if vision_packages is not None else 0,
         "installed": installed_count,
@@ -307,7 +322,7 @@ def _apply_install_date():
         "duplicate_rows_created": duplicate_rows_created,
         "mapping_status": mapping_status,
     }
-    data_store["install_error"] = (
+    store["install_error"] = (
         None
         if duplicate_rows_created == 0
         else (
@@ -317,14 +332,14 @@ def _apply_install_date():
             "trusting Install Date/Install Status on this page."
         )
     )
-    _print_install_validation()
+    _print_install_validation(store)
 
 
-def _touch_last_refreshed():
-    data_store["last_refreshed"] = datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z")
+def _touch_last_refreshed(store):
+    store["last_refreshed"] = datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z")
 
 
-def _sync_reps_and_needs_attention():
+def _sync_reps_and_needs_attention(store):
     """Keeps sales_reps (user_store.py) and needs_attention_tracking
     (needs_attention_service.py) in lockstep with the source data on
     every refresh -- sales_reps gets any newly-seen rep name;
@@ -333,11 +348,7 @@ def _sync_reps_and_needs_attention():
     left, so a later re-entry starts a fresh 15-day clock. Silently
     no-ops on appdb failure inside each function -- must never block the
     dashboard itself from loading."""
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = store["normalized_sales"]
     if normalized is None or normalized.empty:
         return
     user_store.sync_sales_reps(normalized["sales_rep"].dropna().unique().tolist())
@@ -378,26 +389,117 @@ def _bootstrap_initial_admin():
     _admin_bootstrap_done = True
 
 
-def load_all_data():
+_SOURCE_DATASETS = {
+    "planetweb": ("main_sales",),
+    "kpi": ("service_cancellations", "vision_packages"),
+}
+
+
+def _keep_last_good(store, previous):
+    """A failed refresh shouldn't blank out the dashboard: if a dataset
+    failed to load this round but the previous round had it, keep serving
+    the previous copy (the connection pills still show the failure, and
+    "Last refreshed" stops advancing so the staleness is visible).
+    Returns True if anything had to fall back."""
+    fell_back = False
+    for keys in _SOURCE_DATASETS.values():
+        for key in keys:
+            if store[key] is None and previous[key] is not None:
+                print(f"Refresh of {key} failed ({store[f'{key}_error']}); keeping previous data.")
+                store[key] = previous[key]
+                store[f"{key}_status"] = previous[f"{key}_status"]
+                store[f"{key}_error"] = previous[f"{key}_error"]
+                fell_back = True
+    return fell_back
+
+
+def load_all_data(sources=("planetweb", "kpi")):
+    """Builds a complete new snapshot off to the side, then swaps it into
+    data_store in one dict.update() -- requests reading data_store never
+    see a half-loaded mix of old and new data and never wait on this."""
+    global _initial_load_done
     with _lock:
-        _load_planetweb()
-        _load_kpi()
-        _apply_install_date()
-        _sync_reps_and_needs_attention()
-        _touch_last_refreshed()
+        started = time.monotonic()
+        previous = dict(data_store)
+        store = dict(data_store)
+        if "planetweb" in sources:
+            _load_planetweb(store)
+        if "kpi" in sources:
+            _load_kpi(store)
+        fell_back = _keep_last_good(store, previous)
+        # Install Date depends on both main_sales and vision_packages, so
+        # recompute it after any refresh that could have touched either one.
+        _apply_install_date(store)
+        store["normalized_sales"] = build_sales_dataset(
+            store["main_sales"],
+            store["vision_packages"],
+            store["service_cancellations"],
+        )
+        store["normalized_for_date"] = _today()
+        _sync_reps_and_needs_attention(store)
+        if not fell_back:
+            _touch_last_refreshed(store)
+        data_store.update(store)
+        _initial_load_done = True
+        print(f"Data refresh finished in {time.monotonic() - started:.1f}s")
         _bootstrap_initial_admin()
 
 
+def _refresh_loop():
+    while True:
+        time.sleep(DATA_REFRESH_SECONDS)
+        try:
+            load_all_data()
+        except Exception as exc:
+            # Never let one bad refresh kill the thread -- the site would
+            # silently freeze on old data forever.
+            print(f"Background data refresh failed: {db.sanitize_error(exc)}")
+
+
+def _start_background_refresh():
+    global _refresher_started
+    if _refresher_started:
+        return
+    with _refresher_lock:
+        if _refresher_started:
+            return
+        threading.Thread(target=_refresh_loop, name="data-refresh", daemon=True).start()
+        _refresher_started = True
+
+
 def ensure_data_loaded():
-    # By request (2026-08-17): every page load re-queries both source
-    # databases, rather than lazily loading once and serving stale
-    # in-memory data until someone clicks "Refresh Data". This means
-    # every full-page GET now costs a live PlanetWeb + KPI round trip
-    # (Main Sales/Vision Packages/Service Cancellations) -- accepted
-    # trade-off for always-current data over request latency. The
-    # "Refresh Data" button (refresh() below) still works the same way,
-    # just redundant with what a plain page load now already does.
-    load_all_data()
+    # Changed 2026-10-07 after two 504 outages: pages used to re-query
+    # both source databases on EVERY request (by request, 2026-08-17),
+    # serialized behind _lock on prod's single gunicorn worker, so load
+    # scaled with traffic -- a few reps' auto-update tabs were enough to
+    # queue requests past nginx's 60s timeout for everyone. Now a single
+    # background thread refreshes every DATA_REFRESH_SECONDS (default
+    # 60s) regardless of how many people are viewing, and requests just
+    # read the latest snapshot. Data is at most ~1 refresh interval old,
+    # and auto-update reloads (static/js/auto_refresh.js) cost almost
+    # nothing. Only the very first load (process startup) is synchronous.
+    _start_background_refresh()
+    if not _initial_load_done:
+        load_all_data()
+
+
+def get_normalized_sales():
+    """The build_sales_dataset() frame cached by the last refresh. A copy,
+    so a route mutating its frame can't corrupt everyone else's. Rebuilt
+    here if Eastern "today" has rolled over since that refresh (Pending vs
+    Needs Attention is relative to today) -- e.g. a source DB was down at
+    midnight so no refresh has landed yet."""
+    if data_store["normalized_for_date"] != _today():
+        with _normalize_lock:
+            if data_store["normalized_for_date"] != _today():
+                data_store["normalized_sales"] = build_sales_dataset(
+                    data_store["main_sales"],
+                    data_store["vision_packages"],
+                    data_store["service_cancellations"],
+                )
+                data_store["normalized_for_date"] = _today()
+    normalized = data_store["normalized_sales"]
+    return None if normalized is None else normalized.copy()
 
 
 # ================================================================
@@ -678,11 +780,7 @@ def dashboard_page():
 
     # Built from the DataFrames already sitting in memory -- no extra
     # database calls happen on this request.
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = get_normalized_sales()
 
     period = request.args.get("period", "this_month")
     custom_start = request.args.get("start", "")
@@ -872,11 +970,7 @@ def dashboard_page():
 def rep_profile(rep_name):
     ensure_data_loaded()
 
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = get_normalized_sales()
 
     known_reps = (
         set(normalized["sales_rep"].unique())
@@ -973,11 +1067,7 @@ def rep_profile(rep_name):
 def bulk_account_view(rep_name):
     ensure_data_loaded()
 
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = get_normalized_sales()
 
     known_reps = (
         set(normalized["sales_rep"].unique())
@@ -1061,11 +1151,7 @@ def _lookup_account_owner(sale_id):
     changed by this module -- see permissions.py/README.md "Needs
     Attention Ownership") and feeds permissions.can_work_account()."""
     ensure_data_loaded()
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = get_normalized_sales()
     if normalized is None or normalized.empty:
         return False, None
     matches = normalized.loc[normalized["sale_id"] == sale_id, "sales_rep"]
@@ -1172,11 +1258,7 @@ def all_sales_view():
     at a glance."""
     ensure_data_loaded()
 
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = get_normalized_sales()
 
     view = request.args.get("view", "all_sales")
     period = request.args.get("period", "today")
@@ -1615,18 +1697,22 @@ def vision_packages_page():
 def refresh():
     dataset = request.args.get("dataset", "all")
 
-    with _lock:
-        if dataset == "main_sales":
-            _load_planetweb()
-        elif dataset in ("service_cancellations", "vision_packages"):
-            _load_kpi()
-        else:
-            _load_planetweb()
-            _load_kpi()
-        # Install Date depends on both main_sales and vision_packages, so
-        # recompute it after any refresh that could have touched either one.
-        _apply_install_date()
-        _touch_last_refreshed()
+    if dataset == "main_sales":
+        sources = ("planetweb",)
+    elif dataset in ("service_cancellations", "vision_packages"):
+        sources = ("kpi",)
+    else:
+        sources = ("planetweb", "kpi")
+    # If a refresh is already running (the background timer, or someone
+    # else's click), wait for it and use its result instead of queueing a
+    # second identical one behind it -- mashing the button can't pile up
+    # database work.
+    if _lock.acquire(blocking=False):
+        _lock.release()
+        load_all_data(sources)
+    else:
+        with _lock:
+            pass
 
     return redirect(request.referrer or url_for("overview"))
 
@@ -1636,21 +1722,11 @@ def refresh():
 def search():
     """Global search bar (top nav, templates/_topnav.html +
     static/js/search.js) -- reps and customer accounts by substring
-    match, JSON response. Deliberately does NOT call
-    ensure_data_loaded(): every full-page route reloads fresh from both
-    source databases on every request now (see "Data loading" in
-    README.md), but this endpoint fires on every keystroke (debounced
-    ~150ms client-side) and doing a live PlanetWeb/KPI round trip per
-    keystroke would make the search feel sluggish instead of fast -- it
-    reads whatever is already sitting in data_store from the last real
-    page load (which, given every page load now refreshes, is never more
-    than one navigation stale)."""
+    match, JSON response. Reads the same background-refreshed snapshot
+    every page does (see ensure_data_loaded()), so it never touches the
+    source databases and is at most one refresh interval stale."""
     query = request.args.get("q", "")
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = get_normalized_sales()
     rep_matches, account_matches = search_dataset(normalized, query)
 
     reps = [
@@ -1819,11 +1895,7 @@ def _needs_review_status(user, stats):
 @auth.admin_required
 def admin_users():
     ensure_data_loaded()
-    normalized = build_sales_dataset(
-        data_store["main_sales"],
-        data_store["vision_packages"],
-        data_store["service_cancellations"],
-    )
+    normalized = get_normalized_sales()
 
     users = user_store.list_users()
     activity_counts = needs_attention_service.get_activity_counts([u["id"] for u in users])
@@ -2139,8 +2211,8 @@ def health():
 
 
 # Runs once when this module is imported -- by gunicorn's worker process
-# in production, or by `python app.py` locally -- NOT lazily on first
-# request like every other ensure_data_loaded() call site. This closes a
+# in production, or by `python app.py` locally -- doing the first
+# (synchronous) load and starting the background refresh thread. This closes a
 # real deadlock: since every route that used to trigger a data load now
 # requires login (@auth.login_required), and /health deliberately stays
 # lightweight and never loads data, there was no longer any PUBLIC route

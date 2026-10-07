@@ -47,9 +47,9 @@
 
         <!-- Auto-update: reloads this page on a timer instead of making
              someone come back and click Refresh Data (_topnav.html) --
-             every full-page GET already re-queries both source databases
-             live (see app.py's ensure_data_loaded()), so a plain reload
-             is already a real data refresh, not just a cache-buster.
+             the server refreshes its data in the background every 60s
+             (see app.py's ensure_data_loaded()), so a plain reload
+             always picks up the latest copy.
              Preference (on/off + interval) is per-browser, via
              localStorage, not a server setting -- see auto_refresh.js.
              Skips a tick instead of firing it whenever that would yank

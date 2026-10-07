@@ -204,14 +204,26 @@ that has happened once.
 
 ### Data loading
 
-Every full-page request re-queries both source databases (`ensure_data_loaded()`
-in `app.py`, changed 2026-08-17, by request — previously it loaded once
-lazily and served that same in-memory snapshot until someone clicked
-"Refresh Data"). This trades request latency for always-current data:
-every page view now costs a live PlanetWeb (Main Sales) + KPI (Vision
-Packages, Service Cancellations) round trip. The "Refresh Data" button
-(`POST /refresh`) still works the same way; it's just redundant with what
-a plain page load already does now.
+A single background thread re-queries both source databases every
+`DATA_REFRESH_SECONDS` (default 60) — PlanetWeb (Main Sales) and KPI
+(Vision Packages, Service Cancellations) — builds a complete new snapshot
+off to the side, and swaps it in all at once. Page requests never touch
+the source databases; they just read the latest snapshot, so the database
+load stays at one refresh per interval no matter how many people (or
+auto-updating tabs) are viewing. Only the very first load, at process
+startup, runs synchronously.
+
+Changed 2026-10-07 after two 504 outages: previously every page request
+re-queried both databases behind one lock on prod's single gunicorn
+worker, so load scaled with traffic and a few auto-updating tabs were
+enough to back requests up past nginx's 60s timeout.
+
+- If a refresh fails, the dashboard keeps serving the last good data; the
+  connection pills show the failure and "Last refreshed" stops advancing.
+- Source queries are capped at `QUERY_TIMEOUT_SECONDS` (default 45) so a
+  hung database can't stall refreshes indefinitely.
+- "Refresh Data" (`POST /refresh`) forces an immediate refresh; if one is
+  already running it waits for that instead of starting another.
 
 ## Production Deployment
 
@@ -1036,16 +1048,12 @@ that merely contains it. Each list is capped at `SEARCH_RESULT_LIMIT`
 (8) so a broad single-letter query doesn't dump the whole dataset into a
 dropdown.
 
-**Staying fast:** every other route now reloads fresh from both source
-databases on every request (see "Data loading" above) — `/search`
-deliberately does **not**. It fires on every keystroke (debounced
-~150ms client-side, `static/js/search.js`, with in-flight requests
-aborted via `AbortController` if a newer keystroke arrives first so a
-slow, stale response can never overwrite a newer one), and reloading
-live from PlanetWeb/KPI on every character typed would make the box feel
-sluggish instead of fast. It reads whatever is already sitting in
-`data_store` from the last real page load — never more than one
-navigation stale, since every page load now refreshes it.
+**Staying fast:** like every page, `/search` reads the in-memory snapshot
+the background refresh keeps current (see "Data loading" above) and never
+queries the source databases itself. It fires on every keystroke
+(debounced ~150ms client-side, `static/js/search.js`, with in-flight
+requests aborted via `AbortController` if a newer keystroke arrives first
+so a slow, stale response can never overwrite a newer one).
 
 **Telling a rep result from an account result:** each row in the results
 dropdown carries a small colored pill — cyan **"Rep"** or purple

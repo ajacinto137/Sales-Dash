@@ -31,10 +31,15 @@ APPDB_USERNAME = os.environ.get("APPDB_USERNAME", "")
 APPDB_PASSWORD = os.environ.get("APPDB_PASSWORD", "")
 
 CONNECT_TIMEOUT_SECONDS = 10
+# Per-statement cap on the read-only source queries, so a hung PlanetWeb
+# or KPI query fails that one background refresh (the dashboard keeps
+# serving the last good data) instead of holding app.py's refresh lock
+# forever.
+QUERY_TIMEOUT_SECONDS = int(os.environ.get("QUERY_TIMEOUT_SECONDS", "45"))
 
 
 def get_planetweb_connection():
-    return pyodbc.connect(
+    conn = pyodbc.connect(
         "DRIVER={ODBC Driver 18 for SQL Server};"
         f"SERVER={PLANETWEB_HOST};"
         f"DATABASE={PLANETWEB_DATABASE};"
@@ -44,10 +49,12 @@ def get_planetweb_connection():
         "TrustServerCertificate=yes;",
         timeout=CONNECT_TIMEOUT_SECONDS,
     )
+    conn.timeout = QUERY_TIMEOUT_SECONDS
+    return conn
 
 
 def get_kpi_connection():
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=KPI_HOST,
         port=KPI_PORT,
         dbname=KPI_DATABASE,
@@ -56,6 +63,13 @@ def get_kpi_connection():
         sslmode="require",
         connect_timeout=CONNECT_TIMEOUT_SECONDS,
     )
+    # Session-level, set outside a transaction so app.py's conn.rollback()
+    # after a failed query can't undo it for the next query.
+    conn.autocommit = True
+    with conn.cursor() as cursor:
+        cursor.execute(f"SET statement_timeout = {QUERY_TIMEOUT_SECONDS * 1000}")
+    conn.autocommit = False
+    return conn
 
 
 def get_appdb_connection():
