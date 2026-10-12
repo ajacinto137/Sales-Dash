@@ -1087,6 +1087,19 @@ dropdown carries a small colored pill — cyan **"Rep"** or purple
 an account) — a plain passthrough, read by no calculation, so every
 existing Bulk Account View caller is unaffected by its presence.
 
+## Individual Sales Profile — Channel Mix
+
+The Individual Sales Profile's **Channel Performance** tab (in Channel &
+Time-of-Day Performance) shows a channel-mix strip under the bar chart
+(added 2026-10-12, by request): each channel's share of the rep's sales
+for the selected period, with its sale count, then Inbound and Outbound
+totals. Outbound Call and Door to Door lead, matching Channel Breakdown by
+State. Built from the same `channel_breakdown` the chart uses, so the two
+always agree. It's enabled by `{% set show_channel_mix = true %}` in
+`rep_profile.html` (the Team Leaderboard's copy of the partial doesn't set
+it). Colors come from `templates/_channel_colors.html`, shared with
+Channel Breakdown by State.
+
 ## Individual Sales Profile — Achievements
 
 > Small cosmetic badges (icon + hover tooltip) shown next to a rep's name

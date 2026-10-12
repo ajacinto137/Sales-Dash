@@ -1,0 +1,9 @@
+{# Per-channel text color classes (Individual Rep Leaderboard palette),
+   shared by the Team Leaderboard's Channel Breakdown by State table and
+   the Rep Profile's channel mix strip. Import with
+   {% from "_channel_colors.html" import channel_colors %}. #}
+{% set channel_colors = {
+    'Outbound Call': 'td-cyan', 'Door to Door': 'td-orange',
+    'Inbound Call': 'td-purple', 'Inbound Email': 'td-magenta',
+    'Outbound Email': 'td-yellow', 'Marketing Event': 'td-green',
+    'Texting': 'td-blue', 'Social Media': 'td-lime'} %}

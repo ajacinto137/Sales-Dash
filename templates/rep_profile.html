@@ -146,6 +146,7 @@
             {% set channel_canvas_id = "channel-chart" %}
             {% set hourly_canvas_id = "hourly-chart" %}
             {% set channel_drilldown_url = url_for('bulk_account_view', rep_name=rep_name, view='channel', period=period, start=custom_start, end=custom_end) %}
+            {% set show_channel_mix = true %}
             {% include "_channel_hourly_toggle.html" %}
         </div>
     </section>

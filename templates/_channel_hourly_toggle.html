@@ -53,4 +53,36 @@
         <canvas id="{{ channel_canvas_id }}" data-chart-type="channel" data-channels='{{ channel_breakdown|tojson }}' data-drilldown-base="{{ channel_drilldown_url }}"></canvas>
         {% endif %}
     </div>
+    {% if show_channel_mix is defined and show_channel_mix %}
+    {# Channel mix (added 2026-10-12, Rep Profile only via show_channel_mix):
+       each channel's share of this period's sales, plus Inbound/Outbound
+       totals. A second data-chart-panel="channel" element, so
+       wireChartToggle() shows/hides it with the chart above without any
+       JS change (the chart factory still finds the canvas in the first
+       one). Outbound Call and Door to Door lead, same as Channel
+       Breakdown by State. #}
+    {% from "_channel_colors.html" import channel_colors %}
+    {% set mix_total = channel_breakdown|sum(attribute='count') %}
+    {% set leading = ['Outbound Call', 'Door to Door'] %}
+    {% set mix_rows = (channel_breakdown|selectattr('channel', 'in', leading)|sort(attribute='channel', reverse=True)|list)
+                      + (channel_breakdown|rejectattr('channel', 'in', leading)|list) %}
+    {% set inbound_count = channel_breakdown|selectattr('direction', 'equalto', 'inbound')|sum(attribute='count') %}
+    {% set outbound_count = mix_total - inbound_count %}
+    <div class="td-channel-mix" data-chart-panel="channel" style="display: none;">
+        {% for row in mix_rows %}
+        <div class="td-channel-mix-item">
+            <span class="td-channel-mix-label">{{ row.channel }}</span>
+            <span class="td-channel-mix-pct {{ channel_colors.get(row.channel, 'td-text-primary') }}">{{ '%.1f'|format(row.count / mix_total * 100) ~ '%' if mix_total else '&mdash;'|safe }}</span>
+            <span class="td-channel-mix-count">{{ row.count }} sale{{ '' if row.count == 1 else 's' }}</span>
+        </div>
+        {% endfor %}
+        {% for label, count, color in [('Inbound', inbound_count, 'td-purple'), ('Outbound', outbound_count, 'td-cyan')] %}
+        <div class="td-channel-mix-item td-channel-mix-item--summary">
+            <span class="td-channel-mix-label">{{ label }}</span>
+            <span class="td-channel-mix-pct {{ color }}">{{ '%.1f'|format(count / mix_total * 100) ~ '%' if mix_total else '&mdash;'|safe }}</span>
+            <span class="td-channel-mix-count">{{ count }} sale{{ '' if count == 1 else 's' }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </div>

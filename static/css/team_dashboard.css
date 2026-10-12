@@ -1803,6 +1803,54 @@ a.td-record-rep:hover {
     height: 260px;
 }
 
+/* Rep Profile channel mix strip under the Channel Performance chart
+   (_channel_hourly_toggle.html, show_channel_mix). Labels neutral, the %
+   carries the channel's leaderboard-palette color. */
+.td-channel-mix {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--td-border-soft);
+}
+
+.td-channel-mix-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    background: var(--td-panel-alt);
+    border-radius: var(--td-radius);
+}
+
+.td-channel-mix-item--summary {
+    border: 1px solid var(--td-border);
+}
+
+.td-channel-mix-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--td-text-secondary);
+}
+
+.td-channel-mix-pct {
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.td-channel-mix-count {
+    font-size: 11.5px;
+    color: var(--td-text-muted);
+}
+
+@media (max-width: 900px) {
+    .td-channel-mix { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* ---------------- Chart toggle (Sales Volume / Channel Performance / Time of Day) ---------------- */
 
 .td-chart-toggle {
