@@ -271,13 +271,42 @@
          calculate_channel_state_breakdown() with the same channel
          vocabulary as calculate_channel_breakdown(). "Other" appears only
          when some sale's state is blank or outside NJ/NY/PA/VA. -->
-    <section class="td-section">
+    <section class="td-section" data-bulk-view>
         <div class="td-section-heading">
             <h2>Channel Breakdown by State</h2>
             <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }}</span>
         </div>
 
-        <div class="td-table-card">
+        {# Count / % toggle reuses the Bulk Account View's Cards/Table
+           switch (data-bulk-view / data-bulk-view-btn / data-bulk-view-panel,
+           wired in team_dashboard.js) -- both tables are rendered, one is
+           shown. % = each channel's share of that row's total (the
+           state's channel mix); the Total column = that state's share of
+           all sales. #}
+        <div class="td-bulk-view-toggle-row">
+            <div class="td-chart-toggle">
+                <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-bulk-view-btn="count">Count</button>
+                <button type="button" class="td-chart-toggle-btn" data-bulk-view-btn="pct">%</button>
+            </div>
+        </div>
+
+        {# One color per column from the Individual Rep Leaderboard's
+           palette; Outbound (cyan) and Inbound (purple) match that
+           table's own Outbound/Inbound columns. #}
+        {% set channel_colors = {
+            'Outbound Call': 'td-cyan', 'Door to Door': 'td-orange',
+            'Inbound Call': 'td-purple', 'Inbound Email': 'td-magenta',
+            'Outbound Email': 'td-yellow', 'Marketing Event': 'td-green',
+            'Texting': 'td-blue', 'Social Media': 'td-lime'} %}
+
+        {% macro channel_cell(value, mode) -%}
+            {%- if mode == 'count' -%}{{ value }}
+            {%- elif value is none -%}&mdash;
+            {%- else -%}{{ '%.1f'|format(value) }}%{%- endif -%}
+        {%- endmacro %}
+
+        {% for mode in ['count', 'pct'] %}
+        <div class="td-table-card" data-bulk-view-panel="{{ mode }}"{% if mode == 'pct' %} style="display: none;"{% endif %}>
             <div class="td-table-scroll">
                 <table class="td-table td-channel-state-table">
                     <thead>
@@ -288,33 +317,27 @@
                             {% endfor %}
                             <th>Inbound</th>
                             <th>Outbound</th>
-                            <th>Total</th>
+                            <th>{{ 'Share of Total' if mode == 'pct' else 'Total' }}</th>
                         </tr>
                     </thead>
-                    {# One color per column from the Individual Rep Leaderboard's
-                       palette; Outbound (cyan) and Inbound (purple) match that
-                       table's own Outbound/Inbound columns. #}
-                    {% set channel_colors = {
-                        'Outbound Call': 'td-cyan', 'Door to Door': 'td-orange',
-                        'Inbound Call': 'td-purple', 'Inbound Email': 'td-magenta',
-                        'Outbound Email': 'td-yellow', 'Marketing Event': 'td-green',
-                        'Texting': 'td-blue', 'Social Media': 'td-lime'} %}
                     <tbody>
                         {% for row in channel_state_breakdown.rows + [channel_state_breakdown.total] %}
+                        {% set v = row if mode == 'count' else row.pct %}
                         <tr class="{{ 'td-channel-state-total' if row.state == 'Total' else '' }}">
                             <td class="td-rep-cell">{{ row.state }}</td>
                             {% for channel in channel_state_breakdown.channels %}
-                            <td class="{{ channel_colors.get(channel, 'td-text-primary') }}">{{ row.channels[channel] }}</td>
+                            <td class="{{ channel_colors.get(channel, 'td-text-primary') }}">{{ channel_cell(v.channels[channel], mode) }}</td>
                             {% endfor %}
-                            <td class="td-purple">{{ row.inbound }}</td>
-                            <td class="td-cyan">{{ row.outbound }}</td>
-                            <td><span class="td-gradient-text">{{ row.total }}</span></td>
+                            <td class="td-purple">{{ channel_cell(v.inbound, mode) }}</td>
+                            <td class="td-cyan">{{ channel_cell(v.outbound, mode) }}</td>
+                            <td><span class="td-gradient-text">{{ channel_cell(v.total, mode) }}</span></td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
+        {% endfor %}
     </section>
 
     <!-- ================= Planet Networks Records =================

@@ -1045,9 +1045,14 @@ def rep_profile(rep_name):
     # to the same accounts, never a filter over them.
     attention_available, attention_progress = attach_attention_metadata(needs_attention)
 
+    # Highlight "My Profile" in the top nav when the logged-in user is
+    # viewing their own linked rep's profile; "Dashboard" otherwise.
+    viewer = auth.current_user()
+    is_own_profile = bool(viewer and viewer.get("sales_rep_name") == rep_name)
+
     return render_template(
         "rep_profile.html",
-        active_page="dashboard",
+        active_page="my_profile" if is_own_profile else "dashboard",
         rep_name=rep_name,
         period=period,
         custom_start=custom_start,

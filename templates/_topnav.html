@@ -41,6 +41,13 @@
              Dashboard/Marketing Dashboard above -- see README.md
              "Passings & Leads" for the permissions extension point. -->
         <a class="{{ 'td-topnav-active' if active_page == 'passings' else '' }}" href="{{ url_for('passings_page') }}">Passings &amp; Leads</a>
+        <!-- My Profile (added 2026-10-12) -- the logged-in user's own
+             Individual Sales Profile, via the sales rep linked to their
+             account (users.sales_rep_id -> sales_rep_name). Hidden for
+             accounts with no linked rep (e.g. an Admin who doesn't sell). -->
+        {% if current_user and current_user.sales_rep_name %}
+        <a class="{{ 'td-topnav-active' if active_page == 'my_profile' else '' }}" href="{{ url_for('rep_profile', rep_name=current_user.sales_rep_name) }}">My Profile</a>
+        {% endif %}
     </nav>
 
     <!-- Global search: reps + customer accounts, debounced fetch to

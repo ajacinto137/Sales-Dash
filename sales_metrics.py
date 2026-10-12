@@ -718,17 +718,36 @@ def calculate_channel_state_breakdown(df):
         return {"state": label, "channels": by_channel, "inbound": inbound,
                 "outbound": outbound, "total": int(len(slice_df))}
 
+    def with_pct(row, grand_total):
+        """Adds the % view: each channel/Inbound/Outbound as a share of
+        that row's own total (the state's channel mix), and the Total
+        column as that row's share of every sale in the table. None when
+        the denominator is 0 (rendered as an em dash, never 0%)."""
+        def share(n, d):
+            return round(n / d * 100, 1) if d else None
+        row["pct"] = {
+            "channels": {name: share(c, row["total"]) for name, c in row["channels"].items()},
+            "inbound": share(row["inbound"], row["total"]),
+            "outbound": share(row["outbound"], row["total"]),
+            "total": share(row["total"], grand_total),
+        }
+        return row
+
     if df is None or df.empty:
         empty = pd.DataFrame(columns=["sales_channel"])
         rows = [summarize(state, empty) for state in CHANNEL_STATE_ROWS]
-        return {"channels": channels, "rows": rows, "total": summarize("Total", empty)}
+        total = summarize("Total", empty)
+    else:
+        states = df["state"].astype(str).str.strip().str.upper() if "state" in df.columns else pd.Series("", index=df.index)
+        rows = [summarize(state, df[states == state]) for state in CHANNEL_STATE_ROWS]
+        other = df[~states.isin(CHANNEL_STATE_ROWS)]
+        if not other.empty:
+            rows.append(summarize("Other", other))
+        total = summarize("Total", df)
 
-    states = df["state"].astype(str).str.strip().str.upper() if "state" in df.columns else pd.Series("", index=df.index)
-    rows = [summarize(state, df[states == state]) for state in CHANNEL_STATE_ROWS]
-    other = df[~states.isin(CHANNEL_STATE_ROWS)]
-    if not other.empty:
-        rows.append(summarize("Other", other))
-    return {"channels": channels, "rows": rows, "total": summarize("Total", df)}
+    grand_total = total["total"]
+    rows = [with_pct(row, grand_total) for row in rows]
+    return {"channels": channels, "rows": rows, "total": with_pct(total, grand_total)}
 
 
 def calculate_hourly_breakdown(df):
