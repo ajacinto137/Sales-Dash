@@ -893,6 +893,32 @@ a.td-record-rep:hover {
     border-bottom: none;
 }
 
+/* Channel Breakdown by State (dashboard.html). 12 columns, so it gets a
+   min-width and scrolls horizontally inside .td-table-scroll on narrow
+   screens instead of crushing the channel headers. */
+.td-channel-state-table {
+    min-width: 900px;
+}
+
+.td-channel-state-table tbody td {
+    padding: 12px 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Cell colors reuse the Individual Rep Leaderboard's palette classes
+   (.td-cyan/.td-orange/.td-purple/...; State = .td-rep-cell). Texting and
+   Social Media need two more distinct hues, taken from the accent tokens. */
+.td-blue { color: var(--td-accent-blue); }
+.td-lime { color: var(--td-accent-lime); }
+
+.td-channel-state-table tbody td {
+    font-weight: 600;
+}
+.td-channel-state-total td {
+    border-top: 1px solid var(--td-border);
+    font-weight: 700;
+}
+
 .td-row-link {
     cursor: pointer;
 }

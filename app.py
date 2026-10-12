@@ -34,6 +34,7 @@ from sales_metrics import (
     build_sales_dataset,
     calculate_calendar_sales,
     calculate_channel_breakdown,
+    calculate_channel_state_breakdown,
     calculate_daily_averages,
     calculate_hourly_breakdown,
     calculate_monthly_forecast,
@@ -873,6 +874,8 @@ def dashboard_page():
     # Time-of-Day Performance sections already use.
     channel_breakdown = calculate_channel_breakdown(period_df)
     hourly_breakdown = calculate_hourly_breakdown(period_df)
+    # Channel Breakdown by State (added 2026-10-12) -- same period_df.
+    channel_state_breakdown = calculate_channel_state_breakdown(period_df)
 
     # Sales Volume tab (default tab of Channel & Time-of-Day Performance,
     # added 2026-08-18, team selector reworked 2026-08-19) -- one
@@ -957,6 +960,7 @@ def dashboard_page():
         dashboard_view_options=dashboard_view_options,
         channel_breakdown=channel_breakdown,
         hourly_breakdown=hourly_breakdown,
+        channel_state_breakdown=channel_state_breakdown,
         sales_volume_views=sales_volume_views,
         volume_view=volume_view,
         team_view_options=team_view_options,

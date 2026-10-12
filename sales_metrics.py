@@ -693,6 +693,44 @@ def calculate_channel_breakdown(df):
     ]
 
 
+CHANNEL_STATE_ROWS = ["NJ", "NY", "PA", "VA"]
+
+
+def calculate_channel_state_breakdown(df):
+    """Per-state x per-channel sale counts for whatever slice of the
+    normalized dataset is passed in (the Team Leaderboard passes
+    period_df), for the Channel Breakdown by State table. Same
+    SALES_CHANNELS / INBOUND_CHANNELS vocabulary as
+    calculate_channel_breakdown(), and the same upper-cased/stripped
+    `state` comparison app.py's _state_filtered() uses. Rows are always
+    NJ/NY/PA/VA (even at zero), then "Other" only when some sale's state
+    is blank or outside those four, then a "Total" row. Outbound Call and
+    Door to Door lead the column order (by request, 2026-10-12); the rest
+    follow SALES_CHANNELS order."""
+    leading = ["Outbound Call", "Door to Door"]
+    channels = leading + [name for name in SALES_CHANNELS.values() if name not in leading]
+
+    def summarize(label, slice_df):
+        counts = slice_df["sales_channel"].value_counts().to_dict() if not slice_df.empty else {}
+        by_channel = {name: int(counts.get(name, 0)) for name in channels}
+        inbound = sum(c for name, c in by_channel.items() if name in INBOUND_CHANNELS)
+        outbound = sum(c for name, c in by_channel.items() if name in OUTBOUND_CHANNELS)
+        return {"state": label, "channels": by_channel, "inbound": inbound,
+                "outbound": outbound, "total": int(len(slice_df))}
+
+    if df is None or df.empty:
+        empty = pd.DataFrame(columns=["sales_channel"])
+        rows = [summarize(state, empty) for state in CHANNEL_STATE_ROWS]
+        return {"channels": channels, "rows": rows, "total": summarize("Total", empty)}
+
+    states = df["state"].astype(str).str.strip().str.upper() if "state" in df.columns else pd.Series("", index=df.index)
+    rows = [summarize(state, df[states == state]) for state in CHANNEL_STATE_ROWS]
+    other = df[~states.isin(CHANNEL_STATE_ROWS)]
+    if not other.empty:
+        rows.append(summarize("Other", other))
+    return {"channels": channels, "rows": rows, "total": summarize("Total", df)}
+
+
 def calculate_hourly_breakdown(df):
     """Per-hour sale counts (0-23, every real clock hour -- never trimmed
     to a business-hours window) for whatever slice of the normalized

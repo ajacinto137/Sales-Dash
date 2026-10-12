@@ -263,6 +263,60 @@
         {% include "_channel_hourly_toggle.html" %}
     </section>
 
+    <!-- ================= Channel Breakdown by State =================
+         Canonical name: "Channel Breakdown by State" (added 2026-10-12,
+         by request). Sales per state x sales channel, plus Inbound/
+         Outbound/Total. Team-wide, period-filtered (same period_df as
+         Channel & Time-of-Day Performance above), computed by
+         calculate_channel_state_breakdown() with the same channel
+         vocabulary as calculate_channel_breakdown(). "Other" appears only
+         when some sale's state is blank or outside NJ/NY/PA/VA. -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Channel Breakdown by State</h2>
+            <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }}</span>
+        </div>
+
+        <div class="td-table-card">
+            <div class="td-table-scroll">
+                <table class="td-table td-channel-state-table">
+                    <thead>
+                        <tr>
+                            <th>State</th>
+                            {% for channel in channel_state_breakdown.channels %}
+                            <th>{{ channel }}</th>
+                            {% endfor %}
+                            <th>Inbound</th>
+                            <th>Outbound</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    {# One color per column from the Individual Rep Leaderboard's
+                       palette; Outbound (cyan) and Inbound (purple) match that
+                       table's own Outbound/Inbound columns. #}
+                    {% set channel_colors = {
+                        'Outbound Call': 'td-cyan', 'Door to Door': 'td-orange',
+                        'Inbound Call': 'td-purple', 'Inbound Email': 'td-magenta',
+                        'Outbound Email': 'td-yellow', 'Marketing Event': 'td-green',
+                        'Texting': 'td-blue', 'Social Media': 'td-lime'} %}
+                    <tbody>
+                        {% for row in channel_state_breakdown.rows + [channel_state_breakdown.total] %}
+                        <tr class="{{ 'td-channel-state-total' if row.state == 'Total' else '' }}">
+                            <td class="td-rep-cell">{{ row.state }}</td>
+                            {% for channel in channel_state_breakdown.channels %}
+                            <td class="{{ channel_colors.get(channel, 'td-text-primary') }}">{{ row.channels[channel] }}</td>
+                            {% endfor %}
+                            <td class="td-purple">{{ row.inbound }}</td>
+                            <td class="td-cyan">{{ row.outbound }}</td>
+                            <td><span class="td-gradient-text">{{ row.total }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
     <!-- ================= Planet Networks Records =================
          Canonical name: "Planet Networks Records". All-time
          single-rep bests only: Best Days Ever, Best Weeks Ever,
