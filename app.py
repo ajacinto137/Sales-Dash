@@ -803,10 +803,12 @@ def dashboard_page():
     # Sorting is a pure display-ordering concern layered on top of the
     # rows above -- applied last so it never affects total_rep_count, the
     # search filter, or which rep gets auto-selected by default.
-    sort = request.args.get("sort", "rank")
-    sort_dir = request.args.get("dir", "asc")
+    # Default: Outbound, highest first (by request, 2026-10-13). Ties keep
+    # their sales-rank order, since sort_rep_rows() is a stable sort.
+    sort = request.args.get("sort", "outbound")
+    sort_dir = request.args.get("dir", "desc")
     if sort not in REP_SORT_KEYS:
-        sort, sort_dir = "rank", "asc"
+        sort, sort_dir = "outbound", "desc"
     rep_rows = sort_rep_rows(rep_rows, sort, sort_dir)
 
     rep_table_columns = []
