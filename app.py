@@ -39,6 +39,7 @@ from sales_metrics import (
     calculate_hourly_breakdown,
     calculate_monthly_forecast,
     calculate_monthly_sales_trend,
+    calculate_month_to_date_comparison,
     calculate_needs_attention,
     calculate_records,
     calculate_rep_metrics,
@@ -869,6 +870,12 @@ def dashboard_page():
     # trend isn't meaningful squeezed into a single period-filter window,
     # same reasoning as Records/Calendar above.
     monthly_trend_views = {key: calculate_monthly_sales_trend(view_df) for key, view_df in state_filtered_normalized.items()}
+    # Month to Date mode of the same chart -- current month vs previous
+    # month vs YTD-average cumulative pace, per state view.
+    mtd_trend_views = {key: calculate_month_to_date_comparison(view_df) for key, view_df in state_filtered_normalized.items()}
+    trend_range = request.args.get("trend_range", "12m")
+    if trend_range not in ("12m", "mtd"):
+        trend_range = "12m"
 
     # Team-wide, period-filtered -- same convention as the Individual Rep
     # Leaderboard table (period_df), just not scoped to one rep. Reuses
@@ -959,6 +966,8 @@ def dashboard_page():
         monthly_forecast=monthly_forecast,
         monthly_trend_views=monthly_trend_views,
         trend_view=trend_view,
+        mtd_trend_views=mtd_trend_views,
+        trend_range=trend_range,
         dashboard_view_options=dashboard_view_options,
         channel_breakdown=channel_breakdown,
         hourly_breakdown=hourly_breakdown,

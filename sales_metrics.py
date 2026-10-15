@@ -555,6 +555,80 @@ def calculate_monthly_sales_trend(df, months=12):
     ]
 
 
+def calculate_month_to_date_comparison(df):
+    """Cumulative sales by day of month for the Monthly Sales Trend's
+    "Month to Date" mode -- three lines on one day-of-month x-axis:
+    the current month to date, the full previous month, and a
+    year-to-date average (the mean cumulative curve of every COMPLETED
+    month so far this calendar year, so a partial current month never
+    drags it down). Same all-time / period-filter-independent convention
+    as calculate_monthly_sales_trend().
+
+    The x-axis spans max(days in current month, days in previous month).
+    The current-month series stops at today (None afterwards) so future
+    days never plot a false flat line; the previous-month series is None
+    past that month's last day. For the YTD average, a shorter month
+    holds its final total for the days it doesn't have (e.g. February's
+    day-28 total counts toward the day-31 average). In January there are
+    no completed months yet, so ytd_average is all None and ytd_months
+    is 0 -- the chart just omits that line."""
+    today = _today()
+    year, month = today.year, today.month
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    current_len = calendar_module.monthrange(year, month)[1]
+    prev_len = calendar_module.monthrange(prev_year, prev_month)[1]
+    axis_len = max(current_len, prev_len)
+
+    daily = {}
+    if df is not None and not df.empty:
+        valid = df.dropna(subset=["sale_date"])
+        valid = valid[(valid["sale_date"].dt.year == year) | ((valid["sale_date"].dt.year == prev_year) & (valid["sale_date"].dt.month == prev_month))]
+        if not valid.empty:
+            grouped = valid.groupby([valid["sale_date"].dt.year, valid["sale_date"].dt.month, valid["sale_date"].dt.day]).size()
+            for (y, m, d), count in grouped.items():
+                daily[(int(y), int(m), int(d))] = int(count)
+
+    def daily_series(y, m, last_day):
+        return [daily.get((y, m, d), 0) for d in range(1, last_day + 1)]
+
+    def cumulative(counts):
+        running, out = 0, []
+        for c in counts:
+            running += c
+            out.append(running)
+        return out
+
+    def pad(values):
+        return values + [None] * (axis_len - len(values))
+
+    current_daily = daily_series(year, month, today.day)
+    previous_daily = daily_series(prev_year, prev_month, prev_len)
+
+    completed = []
+    for m in range(1, month):
+        month_cum = cumulative(daily_series(year, m, calendar_module.monthrange(year, m)[1]))
+        completed.append(month_cum + [month_cum[-1]] * (axis_len - len(month_cum)))
+    if completed:
+        ytd_average = [round(sum(series[i] for series in completed) / len(completed), 1) for i in range(axis_len)]
+    else:
+        ytd_average = [None] * axis_len
+
+    return {
+        "month_label": datetime(year, month, 1).strftime("%B %Y"),
+        "prev_month_label": datetime(prev_year, prev_month, 1).strftime("%B %Y"),
+        "month_short": datetime(year, month, 1).strftime("%b"),
+        "prev_month_short": datetime(prev_year, prev_month, 1).strftime("%b"),
+        "days": list(range(1, axis_len + 1)),
+        "current": pad(cumulative(current_daily)),
+        "current_daily": pad(current_daily),
+        "previous": pad(cumulative(previous_daily)),
+        "previous_daily": pad(previous_daily),
+        "ytd_average": ytd_average,
+        "ytd_months": len(completed),
+        "total": sum(current_daily) + sum(previous_daily),
+    }
+
+
 def calculate_sales_volume_trend(df):
     """Cumulative OUTBOUND sales volume per rep for the current calendar
     month to date, for the Channel & Time-of-Day Performance section's

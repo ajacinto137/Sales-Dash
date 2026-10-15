@@ -1789,6 +1789,13 @@ a.td-record-rep:hover {
     gap: 8px;
 }
 
+.td-trend-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
 .td-chart-card-head h3 {
     margin: 0;
     font-size: 11px;

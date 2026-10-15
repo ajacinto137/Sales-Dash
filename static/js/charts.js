@@ -206,6 +206,142 @@ function createMonthlySalesTrendChart(canvasEl, tokens) {
     return chart;
 }
 
+// Month to Date mode of the Monthly Sales card (added 2026-10-15) --
+// cumulative sales by day of month: current month to date (stops at
+// today), the full previous month, and the YTD average month (mean
+// cumulative curve of this year's completed months). Data comes from
+// calculate_month_to_date_comparison(); null entries are gaps.
+function createMonthToDateChart(canvasEl, tokens) {
+    const mtd = JSON.parse(canvasEl.dataset.mtd || "{}");
+    const datasets = [
+        {
+            label: mtd.month_label,
+            key: "current",
+            data: mtd.current,
+            borderColor: tokens.accentBlue,
+            borderWidth: tokens.lineWidth + 1,
+            backgroundColor: tokens.accentBlueBg,
+            fill: true,
+            tension: 0.25,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: tokens.accentBlue,
+            pointHoverBorderWidth: 0,
+            order: 1,
+        },
+        {
+            label: mtd.prev_month_label,
+            key: "previous",
+            data: mtd.previous,
+            borderColor: tokens.accentMagenta,
+            borderWidth: tokens.lineWidth + 0.5,
+            fill: false,
+            tension: 0.25,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: tokens.accentMagenta,
+            pointHoverBorderWidth: 0,
+            order: 2,
+        },
+    ];
+    if (mtd.ytd_months > 0) {
+        datasets.push({
+            label: `YTD Avg (${mtd.ytd_months} mo)`,
+            key: "ytd",
+            data: mtd.ytd_average,
+            borderColor: tokens.teamAverage,
+            borderWidth: tokens.lineWidth,
+            borderDash: [5, 4],
+            fill: false,
+            tension: 0.25,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            pointHoverBackgroundColor: tokens.teamAverage,
+            pointHoverBorderWidth: 0,
+            order: 3,
+        });
+    }
+
+    const chart = new Chart(canvasEl, {
+        type: "line",
+        data: { labels: mtd.days, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "index", intersect: false },
+            spanGaps: false,
+            scales: {
+                x: { ...baseScaleOptions(tokens), grid: { display: false }, ticks: { ...baseScaleOptions(tokens).ticks, maxTicksLimit: 11 } },
+                y: { ...baseScaleOptions(tokens), beginAtZero: true },
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: {
+                        color: tokens.axisText,
+                        font: { size: 11, weight: "600" },
+                        boxWidth: 10,
+                        boxHeight: 2,
+                        padding: 14,
+                    },
+                },
+                tooltip: buildTooltipConfig(tokens, {
+                    title: (items) => `Day ${mtd.days[items[0].dataIndex]}`,
+                    label: (item) => {
+                        const value = item.raw;
+                        if (value === null || value === undefined) return null;
+                        const key = item.dataset.key;
+                        if (key === "ytd") return `YTD Avg: ${value.toLocaleString("en-US")} by this day`;
+                        const daily = (key === "current" ? mtd.current_daily : mtd.previous_daily)[item.dataIndex];
+                        const name = key === "current" ? mtd.month_short : mtd.prev_month_short;
+                        return `${name}: ${value} total (+${daily} that day)`;
+                    },
+                }),
+            },
+        },
+    });
+    return chart;
+}
+
+// Wires the Monthly Sales card's two independent toggles -- range
+// (12 Months / Month to Date) and view (Team/NJ/NY/VA). One panel per
+// (view, range) pair ([data-trend-view][data-trend-range]); each chart is
+// created lazily the first time its panel is shown, same reason as
+// wireChartToggle() (a canvas created while display:none sizes to 0).
+function wireMonthlyTrendCard(card) {
+    if (!card) return;
+    const rangeRoot = card.querySelector("#team-monthly-trend-range-toggle");
+    const viewRoot = card.querySelector("#team-monthly-trend-toggle");
+    const panels = card.querySelectorAll("[data-trend-view][data-trend-range]");
+    const subtitles = card.querySelectorAll("[data-trend-subtitle]");
+    const tokens = getChartTokens();
+    const created = new Set();
+    const state = { range: null, view: null };
+
+    function render() {
+        if (!state.range || !state.view) return;
+        subtitles.forEach((el) => {
+            el.style.display = el.dataset.trendSubtitle === state.range ? "" : "none";
+        });
+        panels.forEach((panel) => {
+            const active = panel.dataset.trendView === state.view && panel.dataset.trendRange === state.range;
+            panel.style.display = active ? "" : "none";
+            const id = `${panel.dataset.trendView}:${panel.dataset.trendRange}`;
+            if (active && !created.has(id)) {
+                created.add(id);
+                const canvas = panel.querySelector(":scope > canvas");
+                const factory = canvas ? CHART_TOGGLE_FACTORIES[canvas.dataset.chartType] : null;
+                if (factory) factory(canvas, tokens);
+            }
+        });
+    }
+
+    wireToggleButtons(rangeRoot, (key) => { state.range = key; render(); });
+    wireToggleButtons(viewRoot, (key) => { state.view = key; render(); });
+}
+
 function createChannelChart(canvasEl, tokens) {
     const channels = JSON.parse(canvasEl.dataset.channels || "[]");
     const drilldownBase = canvasEl.dataset.drilldownBase;
@@ -507,6 +643,7 @@ const CHART_TOGGLE_FACTORIES = {
     channel: createChannelChart,
     hourly: createHourlyChart,
     monthlyTrend: createMonthlySalesTrendChart,
+    monthToDate: createMonthToDateChart,
     salesVolume: createSalesVolumeChart,
 };
 
@@ -794,7 +931,7 @@ document.addEventListener("DOMContentLoaded", () => {
     wireChartToggle(document.getElementById("channel-hourly-toggle"));
     wireChartToggle(document.getElementById("team-channel-hourly-toggle"));
     wireCalendarToggle(document.getElementById("team-calendar-toggle"));
-    wireChartToggle(document.getElementById("team-monthly-trend-toggle"));
+    wireMonthlyTrendCard(document.getElementById("team-monthly-trend-card"));
     // Sales Volume tab's own nested Team/NJ/NY/VA toggle -- wired
     // unconditionally like team-monthly-trend-toggle above, not lazily
     // via the outer toggle, since Sales Volume is the outer toggle's

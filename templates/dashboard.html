@@ -156,10 +156,10 @@
                 <div data-chart-panel="{{ opt.key }}" style="{{ '' if opt.key == cal_view else 'display:none;' }}">
                     <div class="td-calendar-nav">
                         <a class="td-btn td-btn-ghost"
-                           href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=cal.prev_year, cal_month=cal.prev_month, cal_view=opt.key, trend_view=trend_view) }}">&larr; Prev</a>
+                           href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=cal.prev_year, cal_month=cal.prev_month, cal_view=opt.key, trend_view=trend_view, trend_range=trend_range) }}">&larr; Prev</a>
                         <span class="td-calendar-month-label">{{ cal.month_label }} &middot; {{ cal.total }}</span>
                         <a class="td-btn td-btn-ghost"
-                           href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=cal.next_year, cal_month=cal.next_month, cal_view=opt.key, trend_view=trend_view) }}">Next &rarr;</a>
+                           href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, cal_year=cal.next_year, cal_month=cal.next_month, cal_view=opt.key, trend_view=trend_view, trend_range=trend_range) }}">Next &rarr;</a>
                     </div>
 
                     <div class="td-calendar-scroll">
@@ -194,26 +194,49 @@
                 {% endfor %}
             </div>
 
-            <div class="td-chart-card">
+            <!-- Monthly Sales -- two modes via the 12 Months / Month to Date
+                 toggle (Month to Date added 2026-10-15): the original
+                 trailing-12-month line, or cumulative sales by day of month
+                 for the current month vs the previous month vs the YTD
+                 average month (calculate_month_to_date_comparison()). The
+                 range toggle and the Team/NJ/NY/VA toggle are independent;
+                 one panel per (view, range) pair, wired by
+                 wireMonthlyTrendCard() in charts.js. -->
+            <div class="td-chart-card" id="team-monthly-trend-card">
                 <div class="td-chart-card-head">
                     <div>
                         <h3>Monthly Sales</h3>
-                        <span class="td-muted-inline">Trailing 12 months</span>
+                        <span class="td-muted-inline" data-trend-subtitle="12m"{% if trend_range != '12m' %} style="display:none;"{% endif %}>Trailing 12 months</span>
+                        <span class="td-muted-inline" data-trend-subtitle="mtd"{% if trend_range != 'mtd' %} style="display:none;"{% endif %}>Cumulative by day &middot; {{ mtd_trend_views['team'].month_short }} vs {{ mtd_trend_views['team'].prev_month_short }} vs YTD avg</span>
                     </div>
-                    <div class="td-chart-toggle" id="team-monthly-trend-toggle">
-                        {% for opt in dashboard_view_options %}
-                        <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == trend_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
-                        {% endfor %}
+                    <div class="td-trend-toggles">
+                        <div class="td-chart-toggle" id="team-monthly-trend-range-toggle">
+                            <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if trend_range == '12m' else '' }}" data-chart-toggle="12m">12 Months</button>
+                            <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if trend_range == 'mtd' else '' }}" data-chart-toggle="mtd">Month to Date</button>
+                        </div>
+                        <div class="td-chart-toggle" id="team-monthly-trend-toggle">
+                            {% for opt in dashboard_view_options %}
+                            <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == trend_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
 
                 {% for opt in dashboard_view_options %}
                 {% set trend = monthly_trend_views[opt.key] %}
-                <div class="td-chart-canvas-wrap" data-chart-panel="{{ opt.key }}" style="{{ '' if opt.key == trend_view else 'display:none;' }}">
+                <div class="td-chart-canvas-wrap" data-trend-view="{{ opt.key }}" data-trend-range="12m" style="{{ '' if opt.key == trend_view and trend_range == '12m' else 'display:none;' }}">
                     {% if trend|sum(attribute='count') == 0 %}
                     <p class="td-empty">No sales recorded yet.</p>
                     {% else %}
                     <canvas id="team-monthly-trend-chart-{{ opt.key }}" data-chart-type="monthlyTrend" data-months='{{ trend|tojson }}'></canvas>
+                    {% endif %}
+                </div>
+                {% set mtd = mtd_trend_views[opt.key] %}
+                <div class="td-chart-canvas-wrap" data-trend-view="{{ opt.key }}" data-trend-range="mtd" style="{{ '' if opt.key == trend_view and trend_range == 'mtd' else 'display:none;' }}">
+                    {% if mtd.total == 0 and mtd.ytd_months == 0 %}
+                    <p class="td-empty">No sales recorded this month or last month.</p>
+                    {% else %}
+                    <canvas id="team-mtd-trend-chart-{{ opt.key }}" data-chart-type="monthToDate" data-mtd='{{ mtd|tojson }}'></canvas>
                     {% endif %}
                 </div>
                 {% endfor %}
