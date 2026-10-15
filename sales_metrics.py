@@ -992,6 +992,18 @@ def build_bulk_account_rows(df):
 
         scheduled = scheduled_dates.loc[idx]
 
+        # When the order was created -- InsertDate incl. time, already
+        # Eastern local (see EASTERN_TZ note), same format as the Latest
+        # Sales card; falls back to the date alone if the time is missing.
+        created_dt = row.get("sale_datetime")
+        created_date = row.get("sale_date")
+        if pd.notna(created_dt):
+            created = created_dt.replace(tzinfo=EASTERN_TZ).strftime("%b %-d, %Y, %-I:%M %p %Z")
+        elif pd.notna(created_date):
+            created = created_date.strftime("%b %-d, %Y")
+        else:
+            created = None
+
         accounts.append({
             # Main Sales' own primary key (FTTPFormData.ID) -- the stable
             # identifier the Needs Attention workflow (attention_store.py)
@@ -1004,6 +1016,7 @@ def build_bulk_account_rows(df):
             "last_name": _clean_text(row["last_name"]) or "",
             "address": address,
             "city_state_zip": city_state_zip or None,
+            "created": created,
             "scheduled_date": scheduled.strftime("%m/%d/%Y") if pd.notna(scheduled) else None,
             "scheduled_date_sort": scheduled.strftime("%Y-%m-%d") if pd.notna(scheduled) else "",
             "status": row["status"],
