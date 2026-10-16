@@ -209,6 +209,144 @@ MIGRATIONS = [
             ON passing_activity (rep_display_name);
         """,
     ),
+    (
+        5,
+        "hubspot_user_mappings, hubspot_calls, hubspot_dispositions, hubspot_sync_state, hubspot_sync_runs (HubSpot Outbound Call Analytics, 2026-10-16)",
+        """
+        -- One row per HubSpot OWNER (hubspot_owner_id is the owner `id`
+        -- from /crm/v3/owners -- what a call's hubspot_owner_id points
+        -- at -- never the separate HubSpot user id, kept only for
+        -- reference in hubspot_user_id). sales_rep_id is what puts calls
+        -- on a Rep Profile (profiles are per sales_reps row, see
+        -- migration 2); dashboard_user_id records the users row an email
+        -- match came from. Both nullable: an owner can be unmatched.
+        -- mapping_method 'manual' is never overwritten by auto-matching
+        -- (see hubspot_store.refresh_owners_and_mappings()).
+        CREATE TABLE IF NOT EXISTS hubspot_user_mappings (
+            id SERIAL PRIMARY KEY,
+            hubspot_owner_id TEXT NOT NULL UNIQUE,
+            hubspot_user_id TEXT,
+            hubspot_email TEXT,
+            hubspot_name TEXT,
+            hubspot_archived BOOLEAN NOT NULL DEFAULT false,
+            dashboard_user_id INTEGER REFERENCES users(id),
+            sales_rep_id INTEGER REFERENCES sales_reps(id),
+            mapping_method TEXT NOT NULL DEFAULT 'none',
+            mapping_status TEXT NOT NULL DEFAULT 'unmatched',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_synced_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS idx_hubspot_user_mappings_sales_rep_id
+            ON hubspot_user_mappings (sales_rep_id);
+
+        -- Every call HubSpot returns, all directions (outbound filtering
+        -- happens at query time, so a direction fix in HubSpot is picked
+        -- up by the next incremental sync instead of being lost).
+        -- call_timestamp is hs_timestamp as UTC; grouping/filtering
+        -- converts to America/New_York in SQL.
+        CREATE TABLE IF NOT EXISTS hubspot_calls (
+            hubspot_call_id TEXT PRIMARY KEY,
+            hubspot_owner_id TEXT,
+            call_timestamp TIMESTAMPTZ,
+            direction TEXT,
+            duration_ms BIGINT,
+            disposition TEXT,
+            status TEXT,
+            to_number TEXT,
+            from_number TEXT,
+            title TEXT,
+            hubspot_created_at TIMESTAMPTZ,
+            hubspot_modified_at TIMESTAMPTZ,
+            synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_hubspot_calls_owner_timestamp
+            ON hubspot_calls (hubspot_owner_id, call_timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_hubspot_calls_timestamp
+            ON hubspot_calls (call_timestamp);
+
+        -- hs_call_disposition is a GUID; labels come from HubSpot's
+        -- dispositions endpoint so "Connected" is read off HubSpot's own
+        -- definition rather than guessed from a hardcoded id.
+        CREATE TABLE IF NOT EXISTS hubspot_dispositions (
+            disposition_id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- Single-row (id = 1) integration state: the incremental-sync
+        -- watermark and the last successful/attempted sync.
+        CREATE TABLE IF NOT EXISTS hubspot_sync_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            calls_modified_watermark TIMESTAMPTZ,
+            initial_sync_completed_at TIMESTAMPTZ,
+            last_success_at TIMESTAMPTZ,
+            last_attempt_at TIMESTAMPTZ,
+            last_error TEXT,
+            connection_ok BOOLEAN
+        );
+        INSERT INTO hubspot_sync_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+        CREATE TABLE IF NOT EXISTS hubspot_sync_runs (
+            id SERIAL PRIMARY KEY,
+            trigger TEXT NOT NULL,
+            kind TEXT,
+            status TEXT NOT NULL,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            finished_at TIMESTAMPTZ,
+            owners_retrieved INTEGER,
+            records_processed INTEGER NOT NULL DEFAULT 0,
+            new_calls INTEGER NOT NULL DEFAULT 0,
+            updated_calls INTEGER NOT NULL DEFAULT 0,
+            error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_hubspot_sync_runs_started_at
+            ON hubspot_sync_runs (started_at DESC);
+        """,
+    ),
+    (
+        6,
+        "app_secrets (HubSpot service key entered in the Admin Portal, 2026-10-16)",
+        """
+        -- Secrets an Admin enters in the UI instead of .env (today only
+        -- the HubSpot service key). encrypted_value is Fernet ciphertext
+        -- keyed from SECRET_KEY (see app_secrets.py) -- never plaintext.
+        CREATE TABLE IF NOT EXISTS app_secrets (
+            name TEXT PRIMARY KEY,
+            encrypted_value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_by INTEGER REFERENCES users(id)
+        );
+        """,
+    ),
+    (
+        7,
+        "hubspot_calls recording/contact, hubspot_contacts, portal info + one-time call re-read (Call History links, 2026-10-16)",
+        """
+        -- Call History's Recording + Contact links. recording_url is
+        -- hs_call_recording_url (HubSpot-hosted, opens for a signed-in
+        -- HubSpot user); contact_id is the call's associated contact
+        -- (first one, via the v4 associations API).
+        ALTER TABLE hubspot_calls ADD COLUMN IF NOT EXISTS recording_url TEXT;
+        ALTER TABLE hubspot_calls ADD COLUMN IF NOT EXISTS contact_id TEXT;
+
+        CREATE TABLE IF NOT EXISTS hubspot_contacts (
+            contact_id TEXT PRIMARY KEY,
+            name TEXT,
+            email TEXT,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- Portal id + UI domain build https://<ui_domain>/contacts/<portal_id>/record/0-1/<contact>.
+        ALTER TABLE hubspot_sync_state ADD COLUMN IF NOT EXISTS portal_id TEXT;
+        ALTER TABLE hubspot_sync_state ADD COLUMN IF NOT EXISTS ui_domain TEXT;
+
+        -- Backfill: calls already synced have no recording/contact yet.
+        -- Clearing this makes the next sync a full re-read of the sync
+        -- window (upserts only -- existing data stays visible meanwhile).
+        UPDATE hubspot_sync_state SET initial_sync_completed_at = NULL WHERE id = 1;
+        """,
+    ),
 ]
 
 _schema_ready = False

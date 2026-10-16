@@ -7,10 +7,14 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, session, url_for
 
+import app_secrets
 import attention_store
 import auth
 import db
 import email_service
+import hubspot_client
+import hubspot_logic
+import hubspot_store
 import import_service
 import marketing_cleaning
 import marketing_data
@@ -74,6 +78,12 @@ if not app.secret_key:
     )
 
 INITIAL_ADMIN_EMAIL = os.environ.get("INITIAL_ADMIN_EMAIL", "avelino@planet.net")
+
+
+@app.template_filter("eastern_ts")
+def eastern_ts_filter(dt):
+    """Aware datetime (appdb TIMESTAMPTZ) -> '10/16/2026 2:05 PM EDT'."""
+    return dt.astimezone(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z")
 
 
 @app.context_processor
@@ -469,6 +479,11 @@ def _start_background_refresh():
         _refresher_started = True
 
 
+def _debug_enabled():
+    # Same check as the __main__ block's app.run(debug=...) below.
+    return __name__ == "__main__" and os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+
+
 def ensure_data_loaded():
     # Changed 2026-10-07 after two 504 outages: pages used to re-query
     # both source databases on EVERY request (by request, 2026-08-17),
@@ -481,6 +496,14 @@ def ensure_data_loaded():
     # and auto-update reloads (static/js/auto_refresh.js) cost almost
     # nothing. Only the very first load (process startup) is synchronous.
     _start_background_refresh()
+    # HubSpot call sync runs on its own thread (every 60s by default),
+    # independent of the source-data refresh above (no-op without a
+    # service key). Under `python app.py` with FLASK_DEBUG=true, Werkzeug's
+    # reloader re-imports this module in a parent "file watcher" process
+    # that never serves requests -- skip the scheduler there so local dev
+    # doesn't run every sync twice. (gunicorn/prod never sets this up.)
+    if not (_debug_enabled() and os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
+        hubspot_store.start_scheduler()
     if not _initial_load_done:
         load_all_data()
 
@@ -1061,6 +1084,14 @@ def rep_profile(rep_name):
     viewer = auth.current_user()
     is_own_profile = bool(viewer and viewer.get("sales_rep_name") == rep_name)
 
+    # Outbound Call Performance -- only mapping/freshness here; the
+    # numbers load client-side from the /calls/* JSON routes below.
+    hubspot_context = hubspot_store.get_rep_call_context(rep_name)
+    hubspot_context["last_success_display"] = (
+        hubspot_context["last_success_at"].astimezone(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z")
+        if hubspot_context["last_success_at"] else None
+    )
+
     return render_template(
         "rep_profile.html",
         active_page="my_profile" if is_own_profile else "dashboard",
@@ -1078,8 +1109,181 @@ def rep_profile(rep_name):
         attention_progress=attention_progress,
         attention_statuses=attention_store.ATTENTION_STATUSES,
         achievements=achievements,
+        hubspot_context=hubspot_context,
+        can_view_call_history=permissions.can_view_call_history(viewer, rep_name),
+        call_date_ranges=hubspot_logic.DATE_RANGES,
+        call_default_range=hubspot_logic.DEFAULT_DATE_RANGE,
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+# ================================================================
+# OUTBOUND CALL PERFORMANCE (HubSpot) -- Rep Profile JSON endpoints
+# ================================================================
+# Read only from appdb (hubspot_store), never from HubSpot directly.
+# Same visibility as the profile page itself (login_required) for the
+# aggregate KPIs/chart; individual call records (dialed numbers) are
+# further restricted by permissions.can_view_call_history().
+
+def _require_known_rep(rep_name):
+    ensure_data_loaded()
+    normalized = get_normalized_sales()
+    if normalized is not None and not normalized.empty and rep_name not in set(normalized["sales_rep"].unique()):
+        abort(404)
+    return normalized
+
+
+def _call_range_args():
+    """(start_date, end_date, range_key) from ?range=&start=&end=, or
+    raises ValueError with a user-facing message."""
+    range_key = request.args.get("range", hubspot_logic.DEFAULT_DATE_RANGE)
+    start_date, end_date = hubspot_logic.resolve_date_range(
+        range_key, request.args.get("start"), request.args.get("end"), _today(),
+    )
+    # Nothing before HUBSPOT_SYNC_START_DATE is synced -- clamp so an
+    # older range never reports "0 calls" for days we simply don't have.
+    floor = hubspot_store.SYNC_START_DATE
+    if end_date < floor:
+        raise ValueError(f"Call data is only synced from {floor.strftime('%b %-d, %Y')} onward.")
+    return max(start_date, floor), end_date, range_key
+
+
+def _call_scale_arg(range_key, start_date, end_date):
+    """(scale, mode, allowed). ?scale= is "auto" (default -- derived from
+    the date range) or a manual grouping that must be allowed for that
+    range. Grouping only shapes the chart's X axis; it never changes which
+    calls are counted."""
+    requested = request.args.get("scale", hubspot_logic.AUTO_SCALE)
+    scale, allowed = hubspot_logic.resolve_time_scale(requested, range_key, start_date, end_date)
+    if hubspot_logic.bucket_count(start_date, end_date, scale) > hubspot_logic.MAX_BUCKETS:
+        raise ValueError("That date range has too many points for this grouping -- pick a coarser one.")
+    mode = hubspot_logic.AUTO_SCALE if requested in ("", hubspot_logic.AUTO_SCALE) else "manual"
+    return scale, mode, allowed
+
+
+def _scale_json(scale, mode, allowed, range_key, start_date, end_date):
+    return {
+        "scale": scale,
+        "scale_mode": mode,
+        "auto_scale": hubspot_logic.auto_time_scale(range_key, start_date, end_date),
+        "allowed_scales": allowed,
+    }
+
+
+def _call_api_error(exc):
+    if isinstance(exc, ValueError):
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    print(f"Outbound call analytics query failed: {db.sanitize_error(exc)}")
+    return jsonify({"ok": False, "error": "Call data is temporarily unavailable (database error)."}), 503
+
+
+def _iso(dt):
+    return dt.astimezone(EASTERN_TZ).isoformat() if dt else None
+
+
+def _last_call_display(dt):
+    """'Today, 3:25 PM' / 'Yesterday, 9:02 AM' / 'Oct 14, 4:10 PM'
+    (year added outside the current one), Eastern."""
+    if not dt:
+        return None
+    local = dt.astimezone(EASTERN_TZ)
+    days_ago = (_today() - local.date()).days
+    time_part = local.strftime("%-I:%M %p")
+    if days_ago == 0:
+        return f"Today, {time_part}"
+    if days_ago == 1:
+        return f"Yesterday, {time_part}"
+    fmt = "%b %-d" if local.year == _today().year else "%b %-d, %Y"
+    return f"{local.strftime(fmt)}, {time_part}"
+
+
+@app.route("/dashboard/reps/<rep_name>/calls/summary")
+@auth.login_required
+def rep_call_summary(rep_name):
+    normalized = _require_known_rep(rep_name)
+    try:
+        start_date, end_date, range_key = _call_range_args()
+        scale, scale_mode, allowed = _call_scale_arg(range_key, start_date, end_date)
+        summary = hubspot_store.get_call_summary(rep_name, start_date, end_date, scale)
+    except Exception as exc:
+        return _call_api_error(exc)
+
+    # Calls per Sale reuses the existing sales calculation untouched --
+    # the same calculate_rep_metrics() the profile's Total Sales uses,
+    # over the same business-timezone days as the call range.
+    period_df = filter_by_period(normalized, "custom", start_date.isoformat(), end_date.isoformat())
+    rep_row = next((r for r in calculate_rep_metrics(period_df) if r["sales_rep"] == rep_name), None)
+    sales = rep_row["sales"] if rep_row else 0
+
+    context = hubspot_store.get_rep_call_context(rep_name)
+    total = summary["total_calls"]
+    return jsonify({
+        "ok": True,
+        "range": {"key": range_key, "start": start_date.isoformat(), "end": end_date.isoformat()},
+        **_scale_json(scale, scale_mode, allowed, range_key, start_date, end_date),
+        "mapped": summary["owner_count"] > 0,
+        "ever_synced": context["ever_synced"],
+        "last_success_at": _iso(context["last_success_at"]),
+        "last_error": context["last_error"],
+        "kpis": {
+            "total_calls": total,
+            "connected_calls": summary["connected_calls"],
+            "connection_rate": summary["connection_rate"],
+            "total_talk_ms": summary["total_talk_ms"],
+            "total_talk_display": hubspot_logic.format_duration_hms(summary["total_talk_ms"]),
+            "avg_duration_ms": summary["avg_duration_ms"],
+            "avg_duration_display": hubspot_logic.format_duration_ms(summary["avg_duration_ms"]),
+            "calls_with_duration": summary["calls_with_duration"],
+            "sales": sales,
+            "calls_per_sale": (total / sales) if sales else None,
+            "calls_per_hour": summary["calls_per_hour"],
+            "working_days": summary["working_days"],
+            "working_time_display": hubspot_logic.format_hours_minutes(summary["working_seconds"])
+                if summary["working_seconds"] else None,
+            "last_call_at": _iso(summary["last_call_at"]),
+            "last_call_display": _last_call_display(summary["last_call_at"]),
+        },
+        "series": summary["series"],
+    })
+
+
+@app.route("/dashboard/reps/<rep_name>/calls/volume")
+@auth.login_required
+def rep_call_volume(rep_name):
+    _require_known_rep(rep_name)
+    try:
+        start_date, end_date, range_key = _call_range_args()
+        scale, scale_mode, allowed = _call_scale_arg(range_key, start_date, end_date)
+        series = hubspot_store.get_call_volume(rep_name, start_date, end_date, scale)
+    except Exception as exc:
+        return _call_api_error(exc)
+    return jsonify({"ok": True, **_scale_json(scale, scale_mode, allowed, range_key, start_date, end_date), "series": series})
+
+
+@app.route("/dashboard/reps/<rep_name>/calls/history")
+@auth.login_required
+def rep_call_history(rep_name):
+    _require_known_rep(rep_name)
+    if not permissions.can_view_call_history(auth.current_user(), rep_name):
+        return jsonify({"ok": False, "error": "Only Admins and this rep can view individual call records."}), 403
+    try:
+        start_date, end_date, _range_key = _call_range_args()
+        try:
+            page = int(request.args.get("page", "1"))
+        except ValueError:
+            raise ValueError("Invalid page number.") from None
+        if page < 1 or page > 100000:
+            raise ValueError("Invalid page number.")
+        order = request.args.get("order", "desc")
+        if order not in ("asc", "desc"):
+            raise ValueError("Invalid sort order.")
+        outcome = (request.args.get("outcome") or "").strip()[:100] or None
+        history = hubspot_store.get_call_history(
+            rep_name, start_date, end_date, page=page, outcome=outcome, newest_first=order == "desc",
+        )
+    except Exception as exc:
+        return _call_api_error(exc)
+    return jsonify({"ok": True, **history})
 
 
 @app.route("/dashboard/reps/<rep_name>/accounts")
@@ -2216,6 +2420,135 @@ def admin_passings_data():
         passings_last_refreshed=datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z"),
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+# ================================================================
+# ADMIN -- HubSpot Integration
+# ================================================================
+
+@app.route("/admin/hubspot")
+@auth.admin_required
+def admin_hubspot():
+    return render_template(
+        "admin/hubspot.html",
+        active_page="admin_hubspot",
+        status=hubspot_store.get_integration_status(),
+        mappings=hubspot_store.list_mappings(),
+        sales_reps=user_store.list_sales_reps(),
+        key_hint=_hubspot_key_hint(),
+        key_source=hubspot_client.key_source(),
+        sync_start_display=hubspot_store.SYNC_START_DATE.strftime("%b %-d, %Y"),
+        saved_key=app_secrets.get_secret(hubspot_client.SECRET_NAME),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+def _hubspot_key_hint():
+    """Last 4 characters only -- enough to tell which key is loaded,
+    never enough to use it."""
+    key = hubspot_client.get_service_key()
+    return f"…{key[-4:]}" if len(key) >= 12 else ("set" if key else None)
+
+
+def _status_json(status):
+    def run_json(run):
+        if not run:
+            return None
+        return {**run, "started_at": _iso(run["started_at"]), "finished_at": _iso(run["finished_at"])}
+    state = status.get("state") or {}
+    return {
+        "available": status["available"],
+        "configured": status["configured"],
+        "connection_ok": state.get("connection_ok"),
+        "last_success_at": _iso(state.get("last_success_at")),
+        "last_attempt_at": _iso(state.get("last_attempt_at")),
+        "last_error": state.get("last_error"),
+        "initial_sync_completed_at": _iso(state.get("initial_sync_completed_at")),
+        "owners_total": status["owners_total"],
+        "owners_mapped": status["owners_mapped"],
+        "owners_unmatched": status["owners_unmatched"],
+        "outbound_calls_total": status["outbound_calls_total"],
+        "calls_total": status["calls_total"],
+        "latest_run": run_json(status["latest_run"]),
+    }
+
+
+@app.route("/admin/hubspot/key", methods=["POST"])
+@auth.admin_required
+def admin_hubspot_save_key():
+    """Admin-entered service key: checked against HubSpot, then stored
+    encrypted (app_secrets.py). Never echoed back in any response."""
+    candidate = (request.form.get("service_key") or "").strip()
+    if not candidate or len(candidate) < 10 or len(candidate) > 512 or any(ch.isspace() for ch in candidate):
+        return jsonify({"ok": False, "error": "That doesn't look like a HubSpot service key."}), 400
+    usable, message = hubspot_client.validate_key(candidate)
+    if not usable:
+        return jsonify({"ok": False, "error": f"HubSpot rejected this key -- not saved. {message}"}), 400
+    ok, error = app_secrets.set_secret(hubspot_client.SECRET_NAME, candidate, auth.current_user()["id"])
+    if not ok:
+        return jsonify({"ok": False, "error": f"Could not save the key: {error}"}), 500
+    print(f"[hubspot] Service key updated in Admin Portal by {auth.current_user()['email']}")
+    hubspot_store.start_scheduler()
+    started, _ = hubspot_store.start_sync_in_background("manual")
+    return jsonify({"ok": True, "warning": message, "sync_started": started})
+
+
+@app.route("/admin/hubspot/key/delete", methods=["POST"])
+@auth.admin_required
+def admin_hubspot_delete_key():
+    ok, error = app_secrets.delete_secret(hubspot_client.SECRET_NAME)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 500
+    print(f"[hubspot] Saved service key removed in Admin Portal by {auth.current_user()['email']}")
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/hubspot/status")
+@auth.admin_required
+def admin_hubspot_status():
+    return jsonify({"ok": True, **_status_json(hubspot_store.get_integration_status())})
+
+
+@app.route("/admin/hubspot/sync", methods=["POST"])
+@auth.admin_required
+def admin_hubspot_sync():
+    started, error = hubspot_store.start_sync_in_background("manual")
+    if not started:
+        return jsonify({"ok": False, "error": error}), 409
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/hubspot/test", methods=["POST"])
+@auth.admin_required
+def admin_hubspot_test():
+    return jsonify(hubspot_store.test_connection())
+
+
+@app.route("/admin/hubspot/mappings/refresh", methods=["POST"])
+@auth.admin_required
+def admin_hubspot_refresh_mappings():
+    ok, error = hubspot_store.rematch_existing_owners()
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/hubspot/mappings/<owner_id>", methods=["POST"])
+@auth.admin_required
+def admin_hubspot_update_mapping(owner_id):
+    if not owner_id.isdigit():
+        abort(404)
+    action = request.form.get("action", "")
+    sales_rep_id = None
+    if action == "assign":
+        try:
+            sales_rep_id = int(request.form.get("sales_rep_id", ""))
+        except ValueError:
+            return jsonify({"ok": False, "error": "Choose a Sales Rep."}), 400
+    ok, error = hubspot_store.set_manual_mapping(owner_id, sales_rep_id, action)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/health")

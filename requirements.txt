@@ -7,3 +7,4 @@ gunicorn
 openpyxl
 pytest
 tzdata
+cryptography

@@ -1,0 +1,159 @@
+<!-- ================= Outbound Call Performance =================
+     Canonical name: "Outbound Call Performance" (added 2026-10-16).
+     HubSpot outbound calls for whichever HubSpot owner(s) are mapped to
+     this rep (Admin Portal > HubSpot Integration). Numbers load from
+     /dashboard/reps/<rep>/calls/{summary,volume,history} via
+     static/js/outbound_calls.js -- appdb only, never HubSpot live --
+     and use their own date range (default Last 30 Days), independent of
+     the page's period filter above. See README.md "HubSpot Outbound
+     Call Analytics". -->
+{% set hs = hubspot_context %}
+<div class="td-section td-calls" id="outbound-calls"
+     data-calls-base="{{ url_for('rep_profile', rep_name=rep_name) }}/calls"
+     data-can-view-history="{{ 'true' if can_view_call_history else 'false' }}"
+     data-default-range="{{ call_default_range }}">
+    <div class="td-section-heading">
+        <h2>Outbound Call Performance</h2>
+        <span class="td-muted-inline" data-calls-freshness>
+            HubSpot calls since {{ hs.sync_start_display }}
+            {% if hs.last_success_display %}&middot; last synced {{ hs.last_success_display }}{% endif %}
+        </span>
+    </div>
+
+    {% if not hs.available %}
+    <div class="td-calls-notice td-calls-notice--warn">Call data is temporarily unavailable (the app database couldn't be reached).</div>
+    {% elif not hs.configured and not hs.ever_synced %}
+    <div class="td-calls-notice">HubSpot isn't connected yet{% if permissions.is_admin(current_user) %} &mdash; see <a href="{{ url_for('admin_hubspot') }}">Admin &rsaquo; HubSpot Integration</a>{% endif %}.</div>
+    {% elif not hs.mapped %}
+    <div class="td-calls-notice td-calls-notice--warn">
+        {{ rep_name }} isn't linked to a HubSpot user, so no call activity can be shown.
+        {% if permissions.is_admin(current_user) %}Map them in <a href="{{ url_for('admin_hubspot') }}">Admin &rsaquo; HubSpot Integration</a>.{% else %}Ask an Admin to map them in the HubSpot Integration settings.{% endif %}
+    </div>
+    {% elif not hs.ever_synced %}
+    <div class="td-calls-notice">HubSpot calls haven't finished their first sync yet &mdash; check back in a few minutes.</div>
+    {% else %}
+
+    {% if hs.last_error %}
+    <div class="td-calls-notice td-calls-notice--warn" data-calls-stale>The latest HubSpot sync failed, so these numbers may be out of date. Showing data from the last successful sync.</div>
+    {% endif %}
+
+    <div class="td-calls-controls">
+        <div class="td-calls-range">
+            <select class="td-select" data-calls-range aria-label="Call date range">
+                {% for key, label in call_date_ranges %}
+                <option value="{{ key }}" {{ 'selected' if key == call_default_range else '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <span class="td-custom-dates" data-calls-custom style="display: none;">
+                <input type="date" class="td-date-input" data-calls-start aria-label="Start date">
+                <input type="date" class="td-date-input" data-calls-end aria-label="End date">
+                <button type="button" class="td-btn td-btn-primary" data-calls-apply>Apply</button>
+            </span>
+        </div>
+        <span class="td-calls-error" data-calls-error style="display: none;"></span>
+    </div>
+
+    <div class="td-calls-kpis" data-calls-kpis>
+        {% for key, label, color in [
+            ('total_calls', 'Total Outbound Calls', 'td-cyan'),
+            ('connected_calls', 'Connected Calls', 'td-green'),
+            ('connection_rate', 'Connection Rate', 'td-purple'),
+            ('total_talk', 'Total Talk Time', 'td-yellow'),
+            ('avg_duration', 'Avg Call Duration', 'td-orange'),
+            ('calls_per_sale', 'Calls per Sale', 'td-text-primary td-gradient-text'),
+        ] %}
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">{{ label }}</span>
+            <span class="td-profile-metric-value {{ color }}" data-kpi="{{ key }}"><span class="td-skeleton td-skeleton--value"></span></span>
+            <span class="td-calls-kpi-sub" data-kpi-sub="{{ key }}"></span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="td-chart-card">
+        <div class="td-chart-card-head td-calls-chart-head">
+            <h3>Outbound Call Volume</h3>
+            <div class="td-calls-chart-controls">
+                {# Group by: only reshapes the X axis -- the date range above
+                   decides which calls count. Options are filled per range
+                   from the API's allowed_scales; resets to Auto whenever
+                   the range changes. #}
+                <label class="td-calls-groupby">
+                    <span class="td-calls-groupby-label">Group by</span>
+                    <select class="td-select" data-calls-scale aria-label="Group chart by">
+                        <option value="auto">Auto</option>
+                    </select>
+                </label>
+                <div class="td-chart-toggle" data-calls-chart-type role="group" aria-label="Chart type">
+                    <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-type="bar">Bar</button>
+                    <button type="button" class="td-chart-toggle-btn" data-chart-type="line">Line</button>
+                </div>
+            </div>
+        </div>
+        {# Pace stats for the selected range (independent of Group by). #}
+        <div class="td-calls-pace">
+            <div class="td-calls-pace-item">
+                <span class="td-calls-pace-label">Calls per Hour</span>
+                <span class="td-calls-pace-value td-cyan" data-pace="calls_per_hour"><span class="td-skeleton td-skeleton--value"></span></span>
+                <span class="td-calls-kpi-sub" data-pace-sub="calls_per_hour"></span>
+            </div>
+            <div class="td-calls-pace-item">
+                <span class="td-calls-pace-label">Last Call</span>
+                <span class="td-calls-pace-value td-green" data-pace="last_call"><span class="td-skeleton td-skeleton--value"></span></span>
+                <span class="td-calls-kpi-sub" data-pace-sub="last_call"></span>
+            </div>
+        </div>
+        <div class="td-chart-canvas-wrap">
+            <div class="td-skeleton td-skeleton--chart" data-calls-chart-skeleton></div>
+            <canvas id="outbound-call-volume-chart" data-calls-chart></canvas>
+        </div>
+        <p class="td-empty" data-calls-empty style="display: none;">No outbound calls in this date range.</p>
+    </div>
+
+    <details class="td-collapsible td-calls-history" data-calls-history>
+        <summary class="td-section-heading td-collapsible-summary">
+            <h2>Outbound Call History</h2>
+            <span class="td-muted-inline" data-history-count></span>
+            <span class="td-collapsible-chevron" aria-hidden="true">&#9662;</span>
+        </summary>
+
+        {% if can_view_call_history %}
+        <div class="td-calls-history-body">
+            <div class="td-calls-history-toolbar">
+                <select class="td-select" data-history-outcome aria-label="Filter by outcome">
+                    <option value="">All outcomes</option>
+                </select>
+            </div>
+            <section class="td-table-card">
+                <div class="td-table-scroll">
+                    <table class="td-table td-calls-table">
+                        <thead>
+                            <tr>
+                                <th><button type="button" class="td-calls-sort" data-history-sort aria-label="Sort by date">Date <span data-history-sort-arrow>&#9660;</span></button></th>
+                                <th>Time</th>
+                                <th>Duration</th>
+                                <th>Outcome</th>
+                                <th>Status</th>
+                                <th>Dialed Number</th>
+                                <th>Contact</th>
+                                <th>Recording</th>
+                            </tr>
+                        </thead>
+                        <tbody data-history-rows>
+                            <tr><td colspan="8" class="td-empty-row">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <div class="td-calls-pager" data-history-pager>
+                <button type="button" class="td-btn" data-history-prev>&larr; Prev</button>
+                <span class="td-muted-inline" data-history-page></span>
+                <button type="button" class="td-btn" data-history-next>Next &rarr;</button>
+            </div>
+        </div>
+        {% else %}
+        <p class="td-empty td-calls-history-body">Individual call records are visible only to Admins and to {{ rep_name }}.</p>
+        {% endif %}
+    </details>
+    {% endif %}
+</div>

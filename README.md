@@ -1028,6 +1028,11 @@ exact same function/output that produces the Individual Rep Leaderboard table ro
 Attention tab's count is shown directly in the tab label
 (`Needs Attention (N)`), with a subtle warning treatment when `N > 0`.
 
+The Overview tab ends with **Outbound Call Performance** (added
+2026-10-16): HubSpot outbound-call KPIs, the **Outbound Call Volume**
+chart and the collapsible **Outbound Call History** table. See "HubSpot
+Outbound Call Analytics" below.
+
 ## My Profile
 
 A **My Profile** link in the top nav (`_topnav.html`, added 2026-10-12)
@@ -2011,6 +2016,122 @@ intersecting the current filter scope against every place_id that has
 *ever* had activity logged (`passings_activity_store.get_all_place_ids_with_activity()`)
 rather than a true cross-database join — see `passings_data.get_kpis()`'s
 docstring.
+
+## HubSpot Outbound Call Analytics
+
+Added 2026-10-16. Read-only HubSpot integration that puts each rep's
+outbound calling activity on their Rep Profile.
+
+**Configuration.** `HUBSPOT_SERVICE_KEY` in `.env` (see `.env.example`),
+which reaches the `dashboard` container through the existing `env_file`.
+It is read only by `hubspot_client.py`, sent only in the `Authorization`
+header to `https://api.hubapi.com`, and never rendered, returned by a
+route, or logged (errors pass through `hubspot_client.sanitize()`). The
+Admin page shows only its last 4 characters. Without a key, the sync is
+off and profiles say HubSpot isn't connected. Admins can instead enter
+the key in Admin › HubSpot Integration › **Service Key**. It is checked
+against HubSpot before saving and stored Fernet-encrypted (key derived
+from `SECRET_KEY`) in `app_secrets` (migration 6, `app_secrets.py`).
+A key saved there overrides `.env`, and Remove falls back to `.env`.
+The field is write-only: the key is never sent back to the browser. Optional:
+`HUBSPOT_SYNC_INTERVAL_SECONDS` (default 60, minimum 30) and
+`HUBSPOT_CONNECTED_OUTCOMES` (default `Connected`).
+
+**Modules.**
+- `hubspot_client.py`: stdlib HTTP client. Handles owners
+  (`/crm/v3/owners`, active and archived), calls (`/crm/v3/objects/calls/search`
+  by `hs_lastmodifieddate`, stepping past search's 10,000-result cap), and call outcomes (`/calling/v1/dispositions`). It
+  also does pagination, 429/5xx retries with exponential backoff
+  (honouring `Retry-After`), and 401/403 errors that name the endpoint,
+  the status, and any missing scope HubSpot reports.
+- `hubspot_logic.py`: pure functions (owner matching, property parsing,
+  date ranges, time buckets, formatting), covered by
+  `tests/test_hubspot_logic.py`.
+- `hubspot_store.py`: appdb tables, sync, mapping, and the analytics
+  queries. Covered by `tests/test_hubspot_store_integration.py`, which
+  runs against a throwaway database when `HUBSPOT_INTEGRATION_TEST_DB`
+  is set (see that file's docstring).
+
+**Tables** (migration 5): `hubspot_user_mappings` (one row per HubSpot
+owner), `hubspot_calls` (keyed by HubSpot call id; indexed on owner +
+timestamp), `hubspot_dispositions`, `hubspot_sync_state` (watermark,
+last success/error) and `hubspot_sync_runs` (per-run counts).
+
+**Mapping.** Calls join to owners through `hubspot_owner_id`, the
+owner `id` (not the HubSpot user id). An owner maps to a **Sales Rep**,
+because profiles are per `sales_reps` row. Automatic matching tries
+exact email against `users.email`, then case-insensitive email (taking
+that user's linked Sales Rep), then a normalized first + last name that
+equals exactly one Sales Rep. It never guesses: a name shared by two
+reps, by two owners, or by a rep another owner already holds by email
+is left as *Ambiguous*. Admins can assign, mark an owner as "Not a
+sales rep", or return it to automatic. Manual choices are never
+overwritten by later matching.
+
+**Sync window.** Only calls on or after `HUBSPOT_SYNC_START_DATE`
+(default `2026-01-01`, Eastern time) are fetched or kept. Older rows are
+deleted at the start of each sync, and profile date ranges are clamped
+to this date.
+
+**Sync.** `hubspot_store.start_scheduler()` (started from
+`ensure_data_loaded()`) runs 10 s after boot and then every 60 s, timed from the end of the
+previous run so runs never overlap or pile up. Owners/mappings and call
+outcomes are re-read only every 15 min (or on a manual or first sync).
+Consecutive failures back off exponentially up to 15 min, and
+`hubspot_sync_runs` keeps 3 days of history. Every run
+uses the calls search endpoint, filtered to the sync window and sorted
+by `hs_lastmodifieddate`. The first run reads everything in the window;
+later runs read calls modified since the watermark (minus a 5-min
+overlap). Upserts only rewrite rows
+that actually changed and report new versus updated counts. A Postgres
+advisory lock keeps it to one sync at a time across threads, processes,
+and the Admin "Sync HubSpot Calls" button. A failed sync records the
+error and keeps all previously synced data, and the profile shows a
+stale-data warning instead of zeros.
+
+**Metrics** (only `hs_call_direction = OUTBOUND`):
+- Connected means the call outcome's label is *Connected* (HubSpot's
+  own outcome definitions, plus its built-in Connected id). A completed
+  call is not assumed to be connected.
+- Connection Rate = connected ÷ total.
+- Talk Time is the sum of `hs_call_duration`.
+- Average Duration = talk time ÷ calls with a logged duration.
+- Calls per Sale = calls ÷ `calculate_rep_metrics()` sales over the same
+  days. It shows N/A when the rep has no sales.
+
+**Chart time controls.** The date range is the primary control: it
+decides which calls are counted (KPIs, chart, history). The X-axis
+grouping only reshapes the chart and never changes totals.
+- **Group by** defaults to **Auto**, which picks from the range:
+  - Today and Yesterday → Hourly
+  - Last 7/30 Days, This Month and Last Month → Daily
+  - Last 90 Days and Last 6 Months → Weekly
+  - Last 12 Months and This Year → Monthly
+  - Custom ranges go by length: ≤2 days Hourly, ≤62 Daily, ≤200 Weekly,
+    ≤730 Monthly, then Quarterly, then Yearly.
+- The dropdown lists only the groupings readable for that range
+  (`hubspot_logic.allowed_time_scales()`). The server rejects any
+  other. Changing the range resets grouping to Auto.
+
+Dates and buckets use `America/New_York`. The default range is Last 30
+Days, which Auto groups Daily.
+
+**Access.** The KPIs and chart are visible to anyone who can open the
+profile. Individual call records (dialed numbers) are visible only to
+Admins and the rep themselves (`permissions.can_view_call_history()`).
+Everything under `/admin/hubspot*` is Admin-only.
+
+**Routes.**
+- `GET /dashboard/reps/<rep>/calls/summary|volume|history`
+- `GET /admin/hubspot`
+- `GET /admin/hubspot/status`
+- `POST /admin/hubspot/sync`
+- `POST /admin/hubspot/test`
+- `POST /admin/hubspot/mappings/refresh`
+- `POST /admin/hubspot/mappings/<owner_id>`
+
+**Known limits.** A call deleted in HubSpot after it has synced stays
+in the local table, because search doesn't return deleted records.
 
 ## What's intentionally not built yet
 

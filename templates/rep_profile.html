@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/outbound_calls.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/attention.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
 </head>
@@ -149,6 +150,8 @@
             {% set show_channel_mix = true %}
             {% include "_channel_hourly_toggle.html" %}
         </div>
+
+        {% include "_outbound_calls.html" %}
     </section>
 
     <!-- ================= Needs Attention ================= -->

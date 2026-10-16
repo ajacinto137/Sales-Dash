@@ -122,3 +122,23 @@ def test_disabled_user_cannot_work_any_account():
     user = make_user("Admin", status="disabled")
     allowed, _reason = permissions.can_work_account(user, "Jack Jacinto", days_ago(0))
     assert allowed is False
+
+
+# ---- Outbound Call History (HubSpot call records) ----
+
+def test_call_history_admin_sees_any_rep():
+    assert permissions.can_view_call_history(make_user("Admin"), "Jack Jacinto") is True
+
+
+def test_call_history_rep_sees_own_only():
+    rep = make_user("Sales Rep", sales_rep_name="Jack Jacinto")
+    assert permissions.can_view_call_history(rep, "Jack Jacinto") is True
+    assert permissions.can_view_call_history(rep, "Someone Else") is False
+
+
+def test_call_history_other_roles_and_disabled_denied():
+    assert permissions.can_view_call_history(make_user("Customer Success"), "Jack Jacinto") is False
+    assert permissions.can_view_call_history(make_user("Other"), "Jack Jacinto") is False
+    assert permissions.can_view_call_history(make_user("Admin", status="disabled"), "Jack Jacinto") is False
+    assert permissions.can_view_call_history(None, "Jack Jacinto") is False
+    assert permissions.can_view_call_history(make_user("Sales Rep", sales_rep_name=None), None) is False

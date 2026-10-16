@@ -21,6 +21,8 @@ services:
   dashboard:
     build: .
     image: sales-dash:prod
+    # .env carries every backend secret, including HUBSPOT_SERVICE_KEY
+    # (HubSpot call sync) -- only this backend service gets it.
     env_file:
       - .env
     environment:

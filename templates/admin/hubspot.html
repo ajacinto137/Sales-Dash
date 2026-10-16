@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HubSpot Integration — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/admin_hubspot.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{% macro ts(dt) -%}
+{{ dt|eastern_ts if dt else '—' }}
+{%- endmacro %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    {% include "_admin_nav.html" %}
+
+    <!-- HubSpot Integration (added 2026-10-16) -- connection status,
+         manual sync and HubSpot owner -> Sales Rep mapping for the Rep
+         Profile's Outbound Call Performance section. Admin-only
+         (@auth.admin_required on every /admin/hubspot route). The
+         service key is never rendered -- only its last 4 characters.
+         See README.md "HubSpot Outbound Call Analytics". -->
+    {% set state = status.state or {} %}
+    <section class="td-section" id="hubspot-integration"
+             data-latest-run-id="{{ status.latest_run.id if status.latest_run else 0 }}"
+             data-latest-run-status="{{ status.latest_run.status if status.latest_run else '' }}">
+        <div class="td-section-heading">
+            <h2>HubSpot Integration</h2>
+            <span class="td-muted-inline">Read-only &middot; calls since {{ sync_start_display }} &middot; syncs every {{ status.sync_interval_display }}</span>
+        </div>
+
+        {% if not status.available %}
+        <div class="td-calls-notice td-calls-notice--warn">The app database is unreachable: {{ status.error }}</div>
+        {% endif %}
+        {% if saved_key.undecryptable %}
+        <div class="td-calls-notice td-calls-notice--warn">The saved HubSpot key can't be decrypted (the app's SECRET_KEY changed). Please enter it again below.</div>
+        {% elif not status.configured %}
+        <div class="td-calls-notice td-calls-notice--warn">No HubSpot service key yet. Enter one below to turn on syncing.</div>
+        {% endif %}
+
+        <!-- Service key entry (added 2026-10-16). Write-only: the field
+             is never pre-filled and the key is never sent back to the
+             browser. POST /admin/hubspot/key checks it against HubSpot,
+             stores it encrypted (app_secrets.py) and starts a sync. A key
+             saved here overrides HUBSPOT_SERVICE_KEY in .env; Remove
+             falls back to .env. -->
+        <div class="td-chart-card" data-hs-key-card>
+            <div class="td-chart-card-head">
+                <h3>Service Key</h3>
+                <span class="td-muted-inline">
+                    {% if key_source == 'admin' %}
+                    Saved here {{ key_hint }}{% if saved_key.updated_at %} &middot; {{ saved_key.updated_at|eastern_ts }}{% endif %}{% if saved_key.updated_by_email %} by {{ saved_key.updated_by_email }}{% endif %}
+                    {% elif key_source == 'env' %}
+                    From .env {{ key_hint }} &middot; a key saved here would take its place
+                    {% else %}
+                    Not set
+                    {% endif %}
+                </span>
+            </div>
+            <form class="td-hubspot-key-form" data-hs-key-form autocomplete="off">
+                <input type="password" name="service_key" class="td-search-input td-hubspot-key-input"
+                       placeholder="{{ 'Paste a new key to replace the current one' if key_source else 'Paste your HubSpot service key' }}"
+                       autocomplete="new-password" spellcheck="false" required aria-label="HubSpot service key">
+                <button type="submit" class="td-btn td-btn-primary">{{ 'Replace Key' if key_source == 'admin' else 'Save Key' }}</button>
+                {% if key_source == 'admin' %}
+                <button type="button" class="td-btn" data-hs-key-remove>Remove</button>
+                {% endif %}
+                <span class="td-admin-save-status" data-hs-key-status style="display:none;"></span>
+            </form>
+            <p class="td-empty">Checked with HubSpot before saving, stored encrypted, and never shown again (only the last 4 characters).</p>
+        </div>
+
+        <div class="td-hubspot-stats">
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Connection</span>
+                <span class="td-profile-metric-value td-hubspot-conn" data-hs="connection">
+                    {% if not status.configured %}<span class="td-yellow">Not configured</span>
+                    {% elif state.connection_ok %}<span class="td-green">Connected</span>
+                    {% elif state.connection_ok == false %}<span class="td-orange">Error</span>
+                    {% else %}<span class="td-text-secondary">Not tested</span>{% endif %}
+                </span>
+                <span class="td-calls-kpi-sub">Key {{ key_hint or 'not set' }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Last Successful Sync</span>
+                <span class="td-profile-metric-value td-hubspot-small td-cyan" data-hs="last_success_at">{{ ts(state.last_success_at) }}</span>
+                <span class="td-calls-kpi-sub" data-hs="sync_status">
+                    {% if status.latest_run %}{{ status.latest_run.status|title }} &middot; {{ status.latest_run.kind or '' }} ({{ status.latest_run.trigger }}){% else %}No syncs yet{% endif %}
+                </span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">HubSpot Owners</span>
+                <span class="td-profile-metric-value td-purple" data-hs="owners_total">{{ "{:,}".format(status.owners_total) }}</span>
+                <span class="td-calls-kpi-sub"><span data-hs="owners_mapped">{{ status.owners_mapped }}</span> mapped &middot; <span data-hs="owners_unmatched">{{ status.owners_unmatched }}</span> unmatched</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Outbound Calls Synced</span>
+                <span class="td-profile-metric-value td-green" data-hs="outbound_calls_total">{{ "{:,}".format(status.outbound_calls_total) }}</span>
+                <span class="td-calls-kpi-sub"><span data-hs="calls_total">{{ "{:,}".format(status.calls_total) }}</span> calls total (all directions)</span>
+            </div>
+        </div>
+
+        <div class="td-chart-card">
+            <div class="td-hubspot-actions">
+                <button type="button" class="td-btn td-btn-primary" data-hs-sync {{ 'disabled' if not status.configured else '' }}>Sync HubSpot Calls</button>
+                <button type="button" class="td-btn" data-hs-test {{ 'disabled' if not status.configured else '' }}>Test Connection</button>
+                <span class="td-admin-save-status" data-hs-action-status style="display:none;"></span>
+            </div>
+
+            <div class="td-hubspot-run" data-hs-run>
+                {% set run = status.latest_run %}
+                {% if run %}
+                <span><span class="td-hubspot-run-label">Status</span> <span data-hs="run_status">{{ run.status|title }}</span></span>
+                <span><span class="td-hubspot-run-label">Processed</span> <span data-hs="records_processed">{{ "{:,}".format(run.records_processed) }}</span></span>
+                <span><span class="td-hubspot-run-label">New</span> <span data-hs="new_calls">{{ "{:,}".format(run.new_calls) }}</span></span>
+                <span><span class="td-hubspot-run-label">Updated</span> <span data-hs="updated_calls">{{ "{:,}".format(run.updated_calls) }}</span></span>
+                <span><span class="td-hubspot-run-label">Started</span> <span data-hs="run_started">{{ ts(run.started_at) }}</span></span>
+                {% else %}
+                <span class="td-admin-muted" data-hs="run_status">No sync has run yet.</span>
+                {% endif %}
+            </div>
+
+            <div class="td-calls-notice td-calls-notice--warn" data-hs-error style="{{ '' if state.last_error else 'display:none;' }}">{{ state.last_error or '' }}</div>
+            <div class="td-hubspot-checks" data-hs-checks style="display:none;"></div>
+        </div>
+    </section>
+
+    <section class="td-section" id="hubspot-user-mapping">
+        <div class="td-section-heading">
+            <h2>HubSpot User Mapping</h2>
+            <span class="td-muted-inline">Matched by exact email, then case-insensitive email, then a unique name match. Manual mappings always win and are never changed by auto-matching.</span>
+            <button type="button" class="td-btn" data-hs-refresh-mappings style="margin-left:auto;">Refresh Mappings</button>
+        </div>
+
+        <section class="td-table-card">
+            <div class="td-table-scroll">
+                <table class="td-table td-admin-table">
+                    <thead>
+                        <tr>
+                            <th>HubSpot User</th>
+                            <th>HubSpot Email</th>
+                            <th>Dashboard User</th>
+                            <th>Status</th>
+                            <th>Outbound Calls</th>
+                            <th>Last Synced</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in mappings %}
+                        <tr data-mapping-row data-owner-id="{{ m.hubspot_owner_id }}">
+                            <td>
+                                {{ m.hubspot_name or '—' }}
+                                {% if m.hubspot_archived %}<span class="td-pill td-pill-disabled">Deactivated</span>{% endif %}
+                                <div class="td-admin-muted">Owner ID {{ m.hubspot_owner_id }}</div>
+                            </td>
+                            <td>{{ m.hubspot_email or '—' }}</td>
+                            <td>
+                                <div class="td-admin-team-cell">
+                                    <select class="td-admin-inline-select" data-mapping-select aria-label="Dashboard user for {{ m.hubspot_name or m.hubspot_email }}">
+                                        <option value="auto" {{ 'selected' if m.mapping_method != 'manual' and not m.sales_rep_id else '' }}>— Unassigned (automatic matching) —</option>
+                                        <option value="unassign" {{ 'selected' if m.mapping_method == 'manual' and not m.sales_rep_id else '' }}>Not a sales rep (ignore)</option>
+                                        {% for rep in sales_reps %}
+                                        <option value="{{ rep.id }}" {{ 'selected' if rep.id == m.sales_rep_id else '' }}>{{ rep.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="td-admin-save-status" data-save-status style="display:none;"></span>
+                                </div>
+                                {% if m.dashboard_user_email %}<div class="td-admin-muted">Login: {{ m.dashboard_user_email }}</div>{% endif %}
+                            </td>
+                            <td>
+                                {% if m.mapping_status == 'matched' %}
+                                <span class="td-pill td-pill-active">Matched</span>
+                                {% elif m.mapping_status == 'ambiguous' %}
+                                <span class="td-pill td-pill-review-needed">Ambiguous</span>
+                                {% else %}
+                                <span class="td-pill td-pill-pending">Unmatched</span>
+                                {% endif %}
+                                <div class="td-admin-muted">
+                                    {{ {'email_exact': 'Exact email', 'email_normalized': 'Email (case-insensitive)', 'name': 'Unique name', 'manual': 'Manual', 'none': 'Automatic'}.get(m.mapping_method, m.mapping_method) }}
+                                </div>
+                            </td>
+                            <td>{{ "{:,}".format(m.outbound_calls) }}</td>
+                            <td>{{ ts(m.last_synced_at) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="td-empty-row">No HubSpot owners yet — they appear after the first successful sync.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+</div>
+</body>
+</html>

@@ -26,6 +26,19 @@ def can_access_admin_portal(user):
     return is_admin(user)
 
 
+def can_view_call_history(user, rep_name):
+    """Individual HubSpot call records (dialed numbers, outcomes) on a Rep
+    Profile's Outbound Call History: Admins, or the rep viewing their own
+    profile. Everyone who can open the profile still sees the aggregate
+    Outbound Call Performance KPIs and chart, same as every other
+    profile metric."""
+    if not user or user.get("status") != "active":
+        return False
+    if user.get("role") == ROLE_ADMIN:
+        return True
+    return bool(rep_name) and user.get("sales_rep_name") == rep_name
+
+
 def can_work_account(user, owner_rep_name, needs_attention_since):
     """Returns (allowed: bool, reason: str | None). `reason` is always a
     polished, specific explanation when allowed=False (spec #25) -- never
