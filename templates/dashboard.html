@@ -288,8 +288,9 @@
 
     <!-- ================= Channel Breakdown by State =================
          Canonical name: "Channel Breakdown by State" (added 2026-10-12,
-         by request). Sales per state x sales channel, plus Inbound/
-         Outbound/Total. Team-wide, period-filtered (same period_df as
+         by request). Sales per state x sales channel, plus Total
+         (Inbound/Outbound columns removed 2026-10-16 as redundant, by
+         request). Team-wide, period-filtered (same period_df as
          Channel & Time-of-Day Performance above), computed by
          calculate_channel_state_breakdown() with the same channel
          vocabulary as calculate_channel_breakdown(). "Other" appears only
@@ -314,8 +315,7 @@
         </div>
 
         {# One color per column from the Individual Rep Leaderboard's
-           palette; Outbound (cyan) and Inbound (purple) match that
-           table's own Outbound/Inbound columns. #}
+           palette. #}
         {% from "_channel_colors.html" import channel_colors %}
 
         {% macro channel_cell(value, mode) -%}
@@ -334,8 +334,6 @@
                             {% for channel in channel_state_breakdown.channels %}
                             <th>{{ channel }}</th>
                             {% endfor %}
-                            <th>Inbound</th>
-                            <th>Outbound</th>
                             <th>{{ 'Share of Total' if mode == 'pct' else 'Total' }}</th>
                         </tr>
                     </thead>
@@ -347,8 +345,6 @@
                             {% for channel in channel_state_breakdown.channels %}
                             <td class="{{ channel_colors.get(channel, 'td-text-primary') }}">{{ channel_cell(v.channels[channel], mode) }}</td>
                             {% endfor %}
-                            <td class="td-purple">{{ channel_cell(v.inbound, mode) }}</td>
-                            <td class="td-cyan">{{ channel_cell(v.outbound, mode) }}</td>
                             <td><span class="td-gradient-text">{{ channel_cell(v.total, mode) }}</span></td>
                         </tr>
                         {% endfor %}
