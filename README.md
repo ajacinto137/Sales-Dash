@@ -2156,8 +2156,8 @@ Top nav → **Staffing** (`/staffing`, added 2026-10-20). A month calendar
   from a dropdown (defaults to yourself if your account is linked to a
   rep): a date and an area (town or neighborhood), with no times (removed
   by request). Each rep can have one shift per day; list several areas in
-  that one shift. Reps remove their own shifts, and Admins can
-  remove anyone's.
+  that one shift. The rep, whoever booked the shift, or an Admin can
+  remove it.
 
 **Rules** (`staffing_store.py` + `permissions.can_manage_staffing` /
 `can_staff_self` / `can_post_events` / `can_delete_event` /
