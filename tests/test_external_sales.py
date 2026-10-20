@@ -31,9 +31,10 @@ integration = pytest.mark.skipif(not TEST_DB, reason="EXTERNAL_SALES_INTEGRATION
 def test_query_matches_vba_source():
     codes = re.search(r"fd\.ReferralData IN \((.*?)\)", EXTERNAL_REP_SALES_QUERY, re.S).group(1)
     codes = re.findall(r"'([^']+)'", codes)
-    assert len(codes) == 91 and len(set(codes)) == 91
-    assert codes[0] == "mritchie" and codes[-1] == "joakley"
-    assert {"mastle", "mastle2", "repperson"} <= set(codes)
+    assert len(codes) == 137 and len(set(codes)) == 137
+    assert codes[0] == "mritchie" and codes[90] == "joakley"  # the original 91 from the VBA
+    assert codes[91] == "tseneca" and codes[-1] == "bgill"  # 46 added 2026-10-20
+    assert {"mastle", "mastle2", "repperson", "chumpherys2", "nhinderliter"} <= set(codes)
     excluded = re.search(r"fd\.ID NOT IN \((.*?)\)", EXTERNAL_REP_SALES_QUERY, re.S).group(1)
     assert re.findall(r"'([^']+)'", excluded) == ["201443", "203769", "214436"]
     assert "WHERE fd.QuoteID IS NOT NULL" in EXTERNAL_REP_SALES_QUERY
@@ -371,3 +372,14 @@ def test_install_and_cancellation_dates(test_db):
     header, *lines = text.strip().splitlines()
     assert header.split(",")[21:25] == ["Install Date", "Order Cancellation Date", "Service Cancellation Date", "Install Status"]
     assert all(",Installed," in line for line in lines) and len(lines) == 2
+
+
+@integration
+def test_referral_codes_case_insensitive(test_db):
+    rows = [dict(r) for r in BASE]
+    rows[1].update(scheduled_status="Scheduled", installation_date=datetime(2026, 10, 25, 12, 0))
+    sync(rows + [sale(3001, "MRitchie", "2026-10-19"), sale(3002, " JSparks ", "2026-10-19")])
+    codes = [c for (c,) in q("SELECT DISTINCT referral_code FROM external_rep_sales WHERE order_id IN (3001, 3002) ORDER BY 1")]
+    assert codes == ["jsparks", "mritchie"]
+    assert q("SELECT count(*) FROM external_reps WHERE referral_code <> lower(referral_code)")[0][0] == 0
+    assert sorted(x["order_id"] for x in query(rep="mritchie")["rows"])[-1] == 3001

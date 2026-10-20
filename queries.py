@@ -175,9 +175,11 @@ WHERE
 """
 
 # External Rep Sales (Admin Portal > External Rep Sales). Adapted verbatim
-# from Refresh_Main() in the original VBA workbook -- the referral codes
-# and excluded order IDs below are the source of truth; don't edit them
-# without the business confirming the change. Synced into appdb by
+# from Refresh_Main() in the original VBA workbook, plus 46 referral codes
+# the business added 2026-10-20 -- the referral codes and excluded order
+# IDs below are the source of truth; don't edit them without the business
+# confirming the change. SQL Server's collation is case-insensitive, so a
+# code also matches differently-cased ReferralData (e.g. 'Tseneca'). Synced into appdb by
 # external_sales_store.py, never queried per page load.
 EXTERNAL_REP_SALES_QUERY = """
 SELECT
@@ -332,7 +334,56 @@ AND fd.ReferralData IN (
     'ethompson',
     'thill',
     'ttah',
-    'joakley'
+    'joakley',
+
+    -- Added 2026-10-20 by request: the business-provided list of 137
+    -- codes, which already included every code above.
+    'tseneca',
+    'tvaldez',
+    'elopez',
+    'dritchie',
+    'dbailey',
+    'shale',
+    'dmestas',
+    'chumpherys',
+    'chumpherys2',
+    'dgilbert',
+    'mloveland',
+    'bwhitby',
+    'lzepeda',
+    'bgreenfield',
+    'clindberg',
+    'jromander',
+    'jsutton',
+    'dclark',
+    'grubbelke',
+    'karias',
+    'jcole',
+    'rstokes',
+    'imartinez',
+    'hmccleve',
+    'tbaker',
+    'arodriguez',
+    'athompson',
+    'sbailey',
+    'gnilsen',
+    'anasir',
+    'bzaugg',
+    'wwomack',
+    'lriley',
+    'jdye',
+    'jfuchs',
+    'ckarpowitz',
+    'daldridge',
+    'hashworth',
+    'jdayton',
+    'nhinderliter',
+    'swest',
+    'ssimmons',
+    'bfadness',
+    'mmendieta',
+    'shenrik',
+    'bgill'
 )
 
 AND fd.ID NOT IN (

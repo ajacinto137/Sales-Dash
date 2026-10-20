@@ -2190,7 +2190,10 @@ built yet).
 
 **Source.** `queries.EXTERNAL_REP_SALES_QUERY` is the VBA workbook's
 `Refresh_Main()` query, verbatim, including its referral code list and
-excluded order IDs. It runs on the existing PlanetWeb connection
+excluded order IDs. On 2026-10-20 the business supplied 46 more codes,
+for 137 in total. SQL Server matches codes regardless of case, so the
+sync stores them lowercase (`MRitchie` becomes `mritchie`); otherwise one
+rep would be split in two (migration 13 merged the existing rows). It runs on the existing PlanetWeb connection
 (`PLANETWEB_*` in `.env`), so there are no new credentials. The spec's
 `EXTERNAL_SALES_DB_*` variables point at the same server and database, so
 they were not added.

@@ -584,6 +584,41 @@ MIGRATIONS = [
         ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS service_cancellation_date DATE;
         """,
     ),
+    (
+        13,
+        "lowercase external referral codes; merge case-variant mapping rows (2026-10-20)",
+        """
+        -- SQL Server matches ReferralData case-insensitively, so the source
+        -- query returns e.g. both 'mritchie' and 'MRitchie' for one code;
+        -- Postgres compares case-sensitively and was splitting them into
+        -- two reps. external_sales_store._normalize() now lowercases codes
+        -- on sync; this folds rows stored before that. A case-variant
+        -- mapping row's details fill gaps on the lowercase row, then it
+        -- is dropped (or simply renamed if there is no lowercase row).
+        UPDATE external_reps lo SET
+            rep_name = coalesce(lo.rep_name, mx.rep_name),
+            rep_email = coalesce(lo.rep_email, mx.rep_email),
+            organization_id = coalesce(lo.organization_id, mx.organization_id),
+            manager_name = coalesce(lo.manager_name, mx.manager_name),
+            manager_email = coalesce(lo.manager_email, mx.manager_email),
+            manager_user_id = coalesce(lo.manager_user_id, mx.manager_user_id),
+            dashboard_user_id = coalesce(lo.dashboard_user_id, mx.dashboard_user_id),
+            updated_at = now()
+        FROM external_reps mx
+        WHERE mx.referral_code <> lower(mx.referral_code) AND lo.referral_code = lower(mx.referral_code);
+
+        DELETE FROM external_reps mx
+        WHERE mx.referral_code <> lower(mx.referral_code)
+          AND EXISTS (SELECT 1 FROM external_reps lo WHERE lo.referral_code = lower(mx.referral_code));
+
+        -- Two variants with no lowercase row yet: keep the oldest, fold the rest.
+        DELETE FROM external_reps mx USING external_reps keep
+        WHERE lower(mx.referral_code) = lower(keep.referral_code) AND mx.id > keep.id;
+
+        UPDATE external_reps SET referral_code = lower(referral_code) WHERE referral_code <> lower(referral_code);
+        UPDATE external_rep_sales SET referral_code = lower(referral_code) WHERE referral_code <> lower(referral_code);
+        """,
+    ),
 ]
 
 _schema_ready = False

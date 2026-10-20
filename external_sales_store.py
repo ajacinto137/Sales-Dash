@@ -242,6 +242,10 @@ def _normalize(row):
     row = {**{c: None for c in _ENRICHED_COLUMNS}, **row}
     row["order_id"] = int(row["order_id"])
     row["voice"] = bool(row["voice"])
+    # SQL Server matched ReferralData case-insensitively ('MRitchie' is
+    # mritchie); store one spelling so a rep isn't split in two.
+    if row.get("referral_code"):
+        row["referral_code"] = row["referral_code"].strip().lower()
     return row
 
 
