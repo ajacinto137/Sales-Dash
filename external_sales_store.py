@@ -19,6 +19,11 @@ Sync rules:
   - One sync at a time across threads/processes (Postgres advisory lock,
     same as hubspot_store.py).
 
+Install / order-cancellation / service-cancellation dates aren't in the
+VBA query: fetch_enrichment() looks them up on every sync (Vision/KPI and
+PlanetWeb) and merges them in by order ID. If a lookup fails, those
+columns keep their last stored values and the run records a warning.
+
 Referral codes are mapped to reps/organizations/managers in external_reps
 (one row per code, auto-created when a code first appears). A code is
 never assumed to be one person -- see migration 8's comments."""
@@ -35,7 +40,12 @@ from psycopg2.extras import execute_values
 
 import db
 import db_migrations
-from queries import EXTERNAL_REP_SALES_QUERY
+from queries import (
+    EXTERNAL_ORDER_CANCELLATIONS_QUERY,
+    EXTERNAL_REP_SALES_QUERY,
+    SERVICE_CANCELLATIONS_QUERY,
+    VISION_PACKAGES_QUERY,
+)
 
 SYNC_INTERVAL_SECONDS = max(60, int(os.environ.get("EXTERNAL_SALES_SYNC_INTERVAL_SECONDS", "300")))
 MAX_BACKOFF_SECONDS = 30 * 60
@@ -52,10 +62,19 @@ DEFAULT_PAGE_SIZE = 50
 SCHEDULED = "Scheduled"
 NOT_SCHEDULED = "Not Scheduled"
 UNMAPPED_ORG = "__unmapped__"
+INSTALLED = "installed"
+NOT_INSTALLED = "not_installed"
+CANCELLATION_FILTERS = {
+    "order": "s.order_cancellation_date IS NOT NULL",
+    "service": "s.service_cancellation_date IS NOT NULL",
+    "any": "(s.order_cancellation_date IS NOT NULL OR s.service_cancellation_date IS NOT NULL)",
+    "none": "(s.order_cancellation_date IS NULL AND s.service_cancellation_date IS NULL)",
+}
 
 # (key, source query column, appdb column, dashboard label, shown by default).
 # The ONE place the query's 21 fields, appdb columns, table headers and
-# CSV headers come from, so they can't drift apart.
+# CSV headers come from, so they can't drift apart. Source column None =
+# not from the VBA query: filled by fetch_enrichment() (see ENRICHMENTS).
 COLUMNS = [
     ("order_id", "ID", "order_id", "Order ID", True),
     ("package_speed", "Speed", "package_speed", "Package Speed", True),
@@ -78,9 +97,15 @@ COLUMNS = [
     ("voice", "Voice", "voice", "Voice", True),
     ("scheduled_status", "Scheduled", "scheduled_status", "Scheduling Status", True),
     ("installation_date", "StartDate", "installation_date", "Installation Date", True),
+    ("install_date", None, "install_date", "Install Date", True),
+    ("order_cancellation_date", None, "order_cancellation_date", "Order Cancellation Date", True),
+    ("service_cancellation_date", None, "service_cancellation_date", "Service Cancellation Date", True),
 ]
+SOURCE_COLUMNS = [c for c in COLUMNS if c[1]]
 COLUMN_KEYS = [c[0] for c in COLUMNS]
 _DB_COLUMNS = [c[2] for c in COLUMNS]
+_SOURCE_DB_COLUMNS = [c[2] for c in SOURCE_COLUMNS]
+_ENRICHED_COLUMNS = [c[2] for c in COLUMNS if not c[1]]
 _DATA_COLUMNS = [c for c in _DB_COLUMNS if c != "order_id"]
 
 # Sort key -> SQL expression. Every sort ends with order_id as a tiebreak
@@ -88,7 +113,8 @@ _DATA_COLUMNS = [c for c in _DB_COLUMNS if c != "order_id"]
 _SORT_SQL = {key: f"s.{col}" for key, _src, col, _label, _shown in COLUMNS}
 DEFAULT_SORT = "sale_date"
 # Columns whose first click sorts newest/largest first.
-_DESC_FIRST = {"order_id", "sale_date", "installation_date", "package_speed", "voice"}
+_DESC_FIRST = {"order_id", "sale_date", "installation_date", "package_speed", "voice",
+               "install_date", "order_cancellation_date", "service_cancellation_date"}
 
 _SEARCH_SQL = [
     "CAST(s.order_id AS TEXT)",
@@ -142,16 +168,78 @@ def fetch_source_rows():
         cursor = conn.cursor()
         cursor.execute(EXTERNAL_REP_SALES_QUERY)
         returned = [d[0] for d in cursor.description]
-        expected = [src for _key, src, _col, _label, _shown in COLUMNS]
+        expected = [src for _key, src, _col, _label, _shown in SOURCE_COLUMNS]
         if returned != expected:
             raise RuntimeError(f"External Rep Sales query returned unexpected columns: {returned}")
-        return [dict(zip(_DB_COLUMNS, row)) for row in cursor.fetchall()]
+        return [dict(zip(_SOURCE_DB_COLUMNS, row)) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 
+def _fetch_install_and_service_dates(subscriber_uuids):
+    """KPI (Vision), keyed by subscriber UUID: install date = first-invoice
+    date (main dashboard's "Installed" definition; earliest if a subscriber
+    has conflicting package rows), service cancellation = latest
+    cancellation task."""
+    conn = db.get_kpi_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT subscriber_uuid::text, min(subscriber_first_invoice_date) FROM ({VISION_PACKAGES_QUERY}) vp "
+                "WHERE subscriber_uuid::text = ANY(%s) GROUP BY 1",
+                (subscriber_uuids,),
+            )
+            installs = dict(cur.fetchall())
+            cur.execute(
+                f"SELECT subscriber_uuid::text, max(completed_date) FROM ({SERVICE_CANCELLATIONS_QUERY}) sc "
+                "WHERE subscriber_uuid::text = ANY(%s) GROUP BY 1",
+                (subscriber_uuids,),
+            )
+            service_cancels = dict(cur.fetchall())
+        return installs, service_cancels
+    finally:
+        conn.close()
+
+
+def _fetch_order_cancellations():
+    conn = db.get_planetweb_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(EXTERNAL_ORDER_CANCELLATIONS_QUERY)
+        return {int(order_id): day for order_id, day in cursor.fetchall()}
+    finally:
+        conn.close()
+
+
+def fetch_enrichment(rows):
+    """Install / order-cancellation / service-cancellation dates for the
+    synced rows. Returns (values {order_id: {column: value}}, failed
+    columns, warnings). A failed lookup never fails the sync: its columns
+    are listed as failed, so the sync keeps their last stored values."""
+    values = {r["order_id"]: {c: None for c in _ENRICHED_COLUMNS} for r in rows}
+    failed, warnings = set(), []
+    uuids = sorted({r["subscriber_uuid"] for r in rows if r.get("subscriber_uuid")})
+    try:
+        installs, service_cancels = _fetch_install_and_service_dates(uuids)
+        for r in rows:
+            uuid = r.get("subscriber_uuid")
+            values[r["order_id"]]["install_date"] = installs.get(uuid)
+            values[r["order_id"]]["service_cancellation_date"] = service_cancels.get(uuid)
+    except Exception as exc:
+        failed |= {"install_date", "service_cancellation_date"}
+        warnings.append(f"Install/service cancellation dates not refreshed (Vision/KPI): {db.sanitize_error(exc)}")
+    try:
+        order_cancels = _fetch_order_cancellations()
+        for r in rows:
+            values[r["order_id"]]["order_cancellation_date"] = order_cancels.get(r["order_id"])
+    except Exception as exc:
+        failed.add("order_cancellation_date")
+        warnings.append(f"Order cancellation dates not refreshed (PlanetWeb): {db.sanitize_error(exc)}")
+    return values, failed, warnings
+
+
 def _normalize(row):
-    row = dict(row)
+    row = {**{c: None for c in _ENRICHED_COLUMNS}, **row}
     row["order_id"] = int(row["order_id"])
     row["voice"] = bool(row["voice"])
     return row
@@ -164,7 +252,7 @@ def _update_run(conn, run_id, **fields):
             cur.execute(f"UPDATE external_sales_sync_runs SET {sets} WHERE id = %s", (*fields.values(), run_id))
 
 
-def run_sync(trigger="auto", fetch=fetch_source_rows):
+def run_sync(trigger="auto", fetch=fetch_source_rows, enrich=fetch_enrichment):
     """One full refresh. Returns (ran, summary_or_reason); ran=False means
     another sync already holds the lock (not an error)."""
     lock_conn = _connect()
@@ -179,7 +267,7 @@ def run_sync(trigger="auto", fetch=fetch_source_rows):
                        error = coalesce(error, 'Interrupted (process stopped mid-sync)')
                 WHERE status = 'running'
             """)
-        return True, _run_sync_locked(trigger, fetch)
+        return True, _run_sync_locked(trigger, fetch, enrich)
     finally:
         try:
             with lock_conn.cursor() as cur:
@@ -189,7 +277,7 @@ def run_sync(trigger="auto", fetch=fetch_source_rows):
         lock_conn.close()
 
 
-def _run_sync_locked(trigger, fetch):
+def _run_sync_locked(trigger, fetch, enrich):
     conn = _connect()
     summary = {"rows_fetched": None, "new_rows": 0, "updated_rows": 0, "removed_rows": 0,
                "restored_rows": 0, "warning": None, "error": None}
@@ -217,9 +305,17 @@ def _run_sync_locked(trigger, fetch):
             summary["warning"] = f"Source returned {len(source_rows) - len(incoming)} duplicate order ID(s); kept one row each."
         summary["rows_fetched"] = len(incoming)
 
+        extra, skip_columns, enrich_warnings = enrich(list(incoming.values()))
+        for order_id, fields in extra.items():
+            if order_id in incoming:
+                incoming[order_id].update(fields)
+        if enrich_warnings:
+            note = " ".join(enrich_warnings)
+            summary["warning"] = f"{summary['warning']} {note}" if summary["warning"] else note
+
         with conn:
             with conn.cursor() as cur:
-                _apply_snapshot(cur, list(incoming.values()), summary)
+                _apply_snapshot(cur, list(incoming.values()), summary, skip_columns)
                 cur.execute(
                     """
                     UPDATE external_sales_sync_state SET last_success_at = now(), last_error = NULL,
@@ -271,9 +367,11 @@ class _SourceError(Exception):
     pass
 
 
-def _apply_snapshot(cur, rows, summary):
+def _apply_snapshot(cur, rows, summary, skip_columns=()):
     """Merges one complete query result into external_rep_sales inside the
-    caller's transaction (all-or-nothing)."""
+    caller's transaction (all-or-nothing). skip_columns (an enrichment
+    lookup that failed this run) keep their stored values on existing
+    rows."""
     cols = ", ".join(_DB_COLUMNS)
     cur.execute(
         "CREATE TEMP TABLE _ext_incoming ON COMMIT DROP AS "
@@ -294,9 +392,10 @@ def _apply_snapshot(cur, rows, summary):
     """)
     summary["new_rows"] = cur.rowcount
 
-    set_list = ", ".join(f"{c} = i.{c}" for c in _DATA_COLUMNS)
-    old_row = ", ".join(f"s.{c}" for c in _DATA_COLUMNS)
-    new_row = ", ".join(f"i.{c}" for c in _DATA_COLUMNS)
+    update_columns = [c for c in _DATA_COLUMNS if c not in skip_columns]
+    set_list = ", ".join(f"{c} = i.{c}" for c in update_columns)
+    old_row = ", ".join(f"s.{c}" for c in update_columns)
+    new_row = ", ".join(f"i.{c}" for c in update_columns)
     cur.execute(f"""
         UPDATE external_rep_sales s SET {set_list}, updated_at = now()
         FROM _ext_incoming i
@@ -482,6 +581,8 @@ def parse_filters(args):
         date_from, date_to = date_to, date_from
     speed = (args.get("speed") or "").strip()
     scheduled = (args.get("scheduled") or "").strip()
+    install = (args.get("install") or "").strip()
+    cancellation = (args.get("cancellation") or "").strip()
     sort = args.get("sort") if args.get("sort") in _SORT_SQL else DEFAULT_SORT
     direction = (args.get("dir") or "").lower()
     if direction not in ("asc", "desc"):
@@ -504,6 +605,8 @@ def parse_filters(args):
         "municipality": (args.get("municipality") or "").strip(),
         "speed": int(speed) if speed.isdigit() else None,
         "scheduled": scheduled if scheduled in (SCHEDULED, NOT_SCHEDULED) else "",
+        "install": install if install in (INSTALLED, NOT_INSTALLED) else "",
+        "cancellation": cancellation if cancellation in CANCELLATION_FILTERS else "",
         "include_removed": (args.get("include_removed") or "") in ("1", "true", "on"),
         "sort": sort,
         "dir": direction,
@@ -542,6 +645,12 @@ def _build_where(f):
     if f["scheduled"]:
         clauses.append("s.scheduled_status = %s")
         params.append(f["scheduled"])
+    if f["install"] == INSTALLED:
+        clauses.append("s.install_date IS NOT NULL")
+    elif f["install"] == NOT_INSTALLED:
+        clauses.append("s.install_date IS NULL")
+    if f["cancellation"]:
+        clauses.append(CANCELLATION_FILTERS[f["cancellation"]])
     if f["search"]:
         like = "%" + re.sub(r"([\\%_])", r"\\\1", f["search"]) + "%"
         clauses.append("(" + " OR ".join(f"{col} ILIKE %s" for col in _SEARCH_SQL) + ")")
@@ -580,10 +689,14 @@ def query_sales(f):
                        count(*) FILTER (WHERE s.scheduled_status = %s),
                        count(*) FILTER (WHERE s.scheduled_status = %s),
                        count(*) FILTER (WHERE s.voice),
-                       min(s.sale_date), max(s.sale_date)
+                       min(s.sale_date), max(s.sale_date),
+                       count(*) FILTER (WHERE s.install_date IS NOT NULL),
+                       count(*) FILTER (WHERE s.order_cancellation_date IS NOT NULL),
+                       count(*) FILTER (WHERE s.service_cancellation_date IS NOT NULL)
                 {_FROM_SQL} {where_sql}
             """, [SCHEDULED, NOT_SCHEDULED] + params)
-            total, orders, reps, scheduled, unscheduled, voice, earliest, latest = cur.fetchone()
+            (total, orders, reps, scheduled, unscheduled, voice, earliest, latest,
+             installed, order_cancels, service_cancels) = cur.fetchone()
             result["summary"] = {
                 "total_sales": orders,
                 "active_reps": reps,
@@ -594,6 +707,10 @@ def query_sales(f):
                 "scheduled_rate": (scheduled / total * 100) if total else None,
                 "earliest": earliest,
                 "latest": latest,
+                "installed": installed,
+                "install_rate": (installed / total * 100) if total else None,
+                "order_cancellations": order_cancels,
+                "service_cancellations": service_cancels,
             }
             total_pages = max(1, -(-total // f["per_page"]))
             page = min(f["page"], total_pages)
@@ -642,7 +759,7 @@ def get_filter_options():
     return options
 
 
-EXPORT_HEADERS = [label for _key, _src, _col, label, _shown in COLUMNS] + ["Rep Name", "Organization", "In Source"]
+EXPORT_HEADERS = [label for _key, _src, _col, label, _shown in COLUMNS] + ["Install Status", "Rep Name", "Organization", "In Source"]
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -683,7 +800,8 @@ def iter_export_csv(f):
             for row in cur:
                 d = _row_dict(row)
                 writer.writerow([_csv_value(d[c]) for c in _DB_COLUMNS]
-                                + [_csv_value(d["rep_name"]), _csv_value(d["organization_name"]),
+                                + ["Installed" if d["install_date"] else "Not Yet Installed",
+                                   _csv_value(d["rep_name"]), _csv_value(d["organization_name"]),
                                    "Yes" if d["in_source"] else "No"])
                 count += 1
                 if count % 500 == 0:

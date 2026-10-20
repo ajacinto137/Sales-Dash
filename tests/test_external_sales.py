@@ -41,8 +41,10 @@ def test_query_matches_vba_source():
 
 
 def test_columns_cover_all_21_fields_with_spec_labels():
-    assert len(store.COLUMNS) == 21
-    labels = {src: label for _key, src, _col, label, _shown in store.COLUMNS}
+    assert len(store.SOURCE_COLUMNS) == 21
+    assert [c[3] for c in store.COLUMNS if not c[1]] == [
+        "Install Date", "Order Cancellation Date", "Service Cancellation Date"]
+    labels = {src: label for _key, src, _col, label, _shown in store.SOURCE_COLUMNS}
     assert labels == {
         "ID": "Order ID", "Speed": "Package Speed", "FirstName": "First Name", "LastName": "Last Name",
         "EmailAddress": "Email", "Address": "Address", "ApartmentSuite": "Apartment / Suite", "City": "City",
@@ -79,6 +81,22 @@ def test_search_escapes_like_wildcards():
     where, params = store._build_where(store.parse_filters(MultiDict({"search": "100%_x"})))
     assert "ILIKE" in where
     assert params[0] == "%100\\%\\_x%"
+
+
+def test_order_cancellation_query_excludes_rebooked_orders():
+    from queries import EXTERNAL_ORDER_CANCELLATIONS_QUERY as q
+    assert q.count("StatusID = 16") == 2 and "live.StatusID <> 16" in q and "NOT EXISTS" in q
+
+
+def test_enrichment_failures_never_raise(monkeypatch):
+    def boom(*_args):
+        raise RuntimeError("KPI down")
+    monkeypatch.setattr(store, "_fetch_install_and_service_dates", boom)
+    monkeypatch.setattr(store, "_fetch_order_cancellations", lambda: {7: date(2026, 5, 1)})
+    values, failed, warnings = store.fetch_enrichment([{"order_id": 7, "subscriber_uuid": "u7"}])
+    assert failed == {"install_date", "service_cancellation_date"}
+    assert values[7]["order_cancellation_date"] == date(2026, 5, 1)
+    assert "KPI down" in warnings[0]
 
 
 def test_csv_neutralizes_formulas():
@@ -168,8 +186,18 @@ def execute(sql, params=()):
         conn.close()
 
 
-def sync(rows):
-    ran, summary = store.run_sync("manual", fetch=lambda: [dict(r) for r in rows])
+ENRICH = {}  # order_id -> {column: value}, what the fake lookups "return"
+
+
+def fake_enrich(rows, failed=()):
+    values = {r["order_id"]: {c: (None if c in failed else ENRICH.get(r["order_id"], {}).get(c))
+                              for c in store._ENRICHED_COLUMNS} for r in rows}
+    return values, set(failed), [f"{c} lookup failed" for c in failed]
+
+
+def sync(rows, failed=()):
+    ran, summary = store.run_sync("manual", fetch=lambda: [dict(r) for r in rows],
+                                  enrich=lambda rs: fake_enrich(rs, failed))
     assert ran
     return summary
 
@@ -306,3 +334,40 @@ def test_export_csv(test_db):
     lines = text.strip().splitlines()
     assert lines[0].startswith("Order ID,Package Speed,First Name")
     assert len(lines) == 2 and lines[1].startswith("1003,250,'=cmd,")
+
+
+@integration
+def test_install_and_cancellation_dates(test_db):
+    rows = [dict(r) for r in BASE]
+    rows[1].update(scheduled_status="Scheduled", installation_date=datetime(2026, 10, 25, 12, 0))
+    ENRICH.update({
+        1001: {"install_date": date(2026, 9, 12)},
+        1003: {"install_date": date(2026, 10, 20), "service_cancellation_date": date(2026, 10, 21)},
+        1005: {"order_cancellation_date": date(2026, 10, 19)},
+    })
+    summary = sync(rows)
+    assert summary["error"] is None and summary["updated_rows"] == 3
+    r = query()
+    s = r["summary"]
+    assert (s["installed"], s["order_cancellations"], s["service_cancellations"]) == (2, 1, 1)
+    assert s["install_rate"] == pytest.approx(40.0)
+    assert sorted(x["order_id"] for x in query(install="installed")["rows"]) == [1001, 1003]
+    assert sorted(x["order_id"] for x in query(install="not_installed")["rows"]) == [1002, 1004, 1005]
+    assert [x["order_id"] for x in query(cancellation="order")["rows"]] == [1005]
+    assert [x["order_id"] for x in query(cancellation="service")["rows"]] == [1003]
+    assert sorted(x["order_id"] for x in query(cancellation="any")["rows"]) == [1003, 1005]
+    assert sorted(x["order_id"] for x in query(cancellation="none")["rows"]) == [1001, 1002, 1004]
+    assert [x["order_id"] for x in query(sort="install_date")["rows"]][:2] == [1003, 1001]  # newest first
+
+    # A failed Vision lookup keeps the stored install/service dates and warns.
+    ENRICH.clear()
+    summary = sync(rows, failed=("install_date", "service_cancellation_date"))
+    assert summary["error"] is None and "lookup failed" in summary["warning"]
+    s = query()["summary"]
+    assert (s["installed"], s["service_cancellations"]) == (2, 1)
+    assert s["order_cancellations"] == 0  # that lookup worked and returned nothing
+
+    text = "".join(store.iter_export_csv(store.parse_filters(MultiDict({"install": "installed"}))))
+    header, *lines = text.strip().splitlines()
+    assert header.split(",")[21:25] == ["Install Date", "Order Cancellation Date", "Service Cancellation Date", "Install Status"]
+    assert all(",Installed," in line for line in lines) and len(lines) == 2

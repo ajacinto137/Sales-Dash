@@ -114,6 +114,16 @@
             <span class="td-kpi-note">no install slot booked</span>
         </div>
         <div class="td-kpi">
+            <span class="td-kpi-label">Installed Orders</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(s.installed) if s else '—' }}</span>
+            <span class="td-kpi-note">{% if s and s.install_rate is not none %}{{ "%.1f"|format(s.install_rate) }}% install rate{% else %}&nbsp;{% endif %}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Cancellations</span>
+            <span class="td-kpi-value td-magenta">{{ "{:,}".format(s.order_cancellations) if s else '—' }}</span>
+            <span class="td-kpi-note">orders cancelled{% if s %} &middot; {{ "{:,}".format(s.service_cancellations) }} service cancellation{{ '' if s.service_cancellations == 1 else 's' }}{% endif %}</span>
+        </div>
+        <div class="td-kpi">
             <span class="td-kpi-label">Voice Attach Rate</span>
             <span class="td-kpi-value td-purple">{{ ("%.1f"|format(s.voice_rate)) ~ '%' if s and s.voice_rate is not none else '—' }}</span>
             <span class="td-kpi-note">{{ "{:,}".format(s.voice) if s else 0 }} orders with Voice</span>
@@ -188,6 +198,24 @@
                 <option value="">All</option>
                 <option value="Scheduled" {{ 'selected' if filters.scheduled == 'Scheduled' else '' }}>Scheduled</option>
                 <option value="Not Scheduled" {{ 'selected' if filters.scheduled == 'Not Scheduled' else '' }}>Not Scheduled</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-install">Install</label>
+            <select id="ext-install" name="install" class="td-admin-inline-select">
+                <option value="">All</option>
+                <option value="installed" {{ 'selected' if filters.install == 'installed' else '' }}>Installed</option>
+                <option value="not_installed" {{ 'selected' if filters.install == 'not_installed' else '' }}>Not Yet Installed</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-cancellation">Cancellation</label>
+            <select id="ext-cancellation" name="cancellation" class="td-admin-inline-select">
+                <option value="">All</option>
+                <option value="order" {{ 'selected' if filters.cancellation == 'order' else '' }}>Order cancelled</option>
+                <option value="service" {{ 'selected' if filters.cancellation == 'service' else '' }}>Service cancelled</option>
+                <option value="any" {{ 'selected' if filters.cancellation == 'any' else '' }}>Any cancellation</option>
+                <option value="none" {{ 'selected' if filters.cancellation == 'none' else '' }}>Not cancelled</option>
             </select>
         </div>
         <div class="td-marketing-filter-actions">
@@ -283,6 +311,10 @@
                                 <a class="td-calls-link" href="{{ url_for('admin_external_rep_sales', **dict(args, rep=value, page=1)) }}" title="Show only {{ value }}">{{ value }}</a>
                                 {% if row.rep_name or row.organization_name %}<div class="td-admin-muted">{{ row.rep_name or '' }}{% if row.rep_name and row.organization_name %} · {% endif %}{{ row.organization_name or '' }}</div>{% endif %}
                                 {% else %}<span class="td-admin-muted">—</span>{% endif %}
+                            {% elif key == 'install_date' %}
+                                {% if value %}<span class="td-green">{{ value.strftime('%m/%d/%Y') }}</span>{% else %}<span class="td-admin-muted">Not yet installed</span>{% endif %}
+                            {% elif key in ('order_cancellation_date', 'service_cancellation_date') %}
+                                {% if value %}<span class="td-magenta">{{ value.strftime('%m/%d/%Y') }}</span>{% else %}<span class="td-admin-muted">—</span>{% endif %}
                             {% elif value is none or value == '' %}
                                 <span class="td-admin-muted">—</span>
                             {% elif key == 'package_speed' %}

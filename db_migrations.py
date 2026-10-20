@@ -564,6 +564,26 @@ MIGRATIONS = [
             ON door_knock_shifts (sales_rep_id, shift_date);
         """,
     ),
+    (
+        12,
+        "external_rep_sales install/order-cancellation/service-cancellation dates (2026-10-20)",
+        """
+        -- Filled by external_sales_store.fetch_enrichment() on every sync,
+        -- merged by order ID (the VBA source query itself is unchanged):
+        --   install_date              Vision first-invoice date via
+        --                             vi_subscriber_uuid -- same definition
+        --                             as the main dashboard's "Installed".
+        --   order_cancellation_date   PlanetWeb install job set to status
+        --                             Canceled (StatusID 16) with no live
+        --                             job since (queries.EXTERNAL_ORDER_
+        --                             CANCELLATIONS_QUERY).
+        --   service_cancellation_date latest Vision cancellation task
+        --                             (queries.SERVICE_CANCELLATIONS_QUERY).
+        ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS install_date DATE;
+        ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS order_cancellation_date DATE;
+        ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS service_cancellation_date DATE;
+        """,
+    ),
 ]
 
 _schema_ready = False

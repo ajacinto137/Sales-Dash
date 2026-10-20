@@ -343,3 +343,35 @@ AND fd.ID NOT IN (
 
 ORDER BY fd.ID ASC
 """
+
+# Order cancellations (External Rep Sales' "Order Cancellation Date").
+# PlanetWeb has no order-level cancel field; an order counts as cancelled
+# when one of its install jobs was set to status Canceled (StatusID 16,
+# which exists since 2026-03-24 -- earlier cancellations can't be told
+# apart from reschedules, StatusID 15) and it has no live, non-cancelled
+# job since (i.e. it wasn't rebooked). Cancelled jobs are moved to
+# FTTPScheduleJobsCanceled (CanceledDate); a few stay in FTTPScheduleJobs
+# with the status set (StatusDate). Latest cancellation per order.
+EXTERNAL_ORDER_CANCELLATIONS_QUERY = """
+SELECT
+    c.FormDataID AS OrderID,
+    CAST(MAX(c.CancelDate) AS date) AS OrderCancellationDate
+FROM (
+    SELECT FormDataID, CanceledDate AS CancelDate
+    FROM FTTPScheduleJobsCanceled
+    WHERE StatusID = 16
+
+    UNION ALL
+
+    SELECT FormDataID, StatusDate
+    FROM FTTPScheduleJobs
+    WHERE StatusID = 16
+) c
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM FTTPScheduleJobs live
+    WHERE live.FormDataID = c.FormDataID
+      AND live.StatusID <> 16
+)
+GROUP BY c.FormDataID
+"""

@@ -2214,13 +2214,31 @@ One sync runs at a time (Postgres advisory lock). Each run is logged in
 (`[external-sales]`). The last success, last error and connection state
 are kept in `external_sales_sync_state`.
 
-**Page.** Five summary cards (Total Sales, Active External Reps, Scheduled,
-Unscheduled, Voice Attach Rate), all computed over the current filters. A
-table with all 21 query fields: core columns are shown by default, and the
+**Install & cancellation dates** (added 2026-10-20). These aren't in the
+VBA query. Each sync looks them up and merges them in by order ID:
+- **Install Date:** the Vision first-invoice date via `vi_subscriber_uuid`,
+  the same "Installed" definition the main dashboard uses. If a subscriber
+  has conflicting package rows (3 in all of Vision), the earliest date wins.
+- **Order Cancellation Date:** `queries.EXTERNAL_ORDER_CANCELLATIONS_QUERY`.
+  An install job was set to status *Canceled* (`StatusID 16`) and the
+  order has no live job since, so rebooked orders don't count. PlanetWeb
+  only has that status since 2026-03-24; earlier cancellations can't be
+  told apart from reschedules.
+- **Service Cancellation Date:** the latest Vision cancellation task, using
+  the same `SERVICE_CANCELLATIONS_QUERY` as the main dashboard.
+
+If Vision or that PlanetWeb lookup fails, those columns keep their last
+values and the sync shows a warning; the sales data still refreshes.
+
+**Page.** Seven summary cards (Total Sales, Active External Reps,
+Scheduled, Unscheduled, Installed Orders + install rate, Cancellations,
+Voice Attach Rate), all computed over the current filters. A
+table with all 21 query fields plus the three dates above: core columns are shown by default, and the
 **Columns** menu shows or hides the rest (remembered per browser). Search,
 sort, pagination and every filter run server-side in Postgres. Default
 sort is newest sale first. Filters: sale date range (+ presets), external
-rep, organization, state, municipality, package speed, scheduling status.
+rep, organization, state, municipality, package speed, scheduling status,
+install status, cancellation (order / service / any / none).
 **Export CSV** downloads every row matching the current filters, with
 spreadsheet formulas neutralized. Each export is logged with the admin's
 email.
