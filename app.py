@@ -1934,7 +1934,9 @@ def staffing_page():
         my_rep_id=user.get("sales_rep_id"),
         my_staff_key=my_staff_key,
         selected_event=request.args.get("event", type=int),
-        sales_reps=user_store.list_sales_reps() if is_admin else [],
+        # Everyone can add a sales rep to an event (shift booking for
+        # others stays Admin-only -- see the template).
+        sales_reps=user_store.list_sales_reps(),
         last_refreshed=data_store["last_refreshed"],
     )
 
@@ -1958,8 +1960,11 @@ def staffing_delete_event(event_id):
 @app.route("/staffing/events/<int:event_id>/signup", methods=["POST"])
 @auth.login_required
 def staffing_event_signup(event_id):
-    ok, error = staffing_store.sign_up(event_id, request.form, auth.current_user(), _today())
-    return _staffing_result(ok, error, "Signed up -- see you there.", event_id)
+    user = auth.current_user()
+    ok, error = staffing_store.sign_up(event_id, request.form, user, _today())
+    target = request.form.get("sales_rep_id", "")
+    adding_someone_else = target.isdigit() and int(target) != user.get("sales_rep_id")
+    return _staffing_result(ok, error, "Rep added to the event." if adding_someone_else else "Signed up -- see you there.", event_id)
 
 
 @app.route("/staffing/events/signup", methods=["POST"])

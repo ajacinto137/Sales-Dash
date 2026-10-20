@@ -2139,9 +2139,12 @@ in the local table, because search doesn't return deleted records.
 Top nav → **Staffing** (`/staffing`, added 2026-10-20). A month calendar
 (Mon–Sun, so weekends sit together) with two kinds of entries:
 
-- **Events that need staffing.** Admins post one with a title, date,
-  optional times/location/notes, and how many reps it needs. Anyone
-  logged in can staff an event: pick it in the **Staff an event**
+- **Events that need staffing.** Anyone logged in can post one with a
+  title, date, optional times/location/notes, and how many reps it needs.
+  The poster or an Admin can delete it. Anyone can also add any sales rep
+  to an upcoming event ("Add rep"). Someone can be removed by an Admin,
+  by themselves, or by whoever added them (`staffing_event_signups.created_by`).
+  Anyone logged in can staff an event: pick it in the **Staff an event**
   dropdown at the top, click its label on the calendar, or use **Sign me
   up** on its card or in "Still Needs Reps". Linked accounts sign up as
   their sales rep; accounts with no rep (Admins, managers, Customer
@@ -2155,12 +2158,14 @@ Top nav → **Staffing** (`/staffing`, added 2026-10-20). A month calendar
   remove anyone's.
 
 **Rules** (`staffing_store.py` + `permissions.can_manage_staffing` /
-`can_staff_self`). Anyone logged in can view the calendar. Signing up and
-adding shifts requires an account linked to a sales rep
-(`users.sales_rep_id`), and acts only for that rep. Joining an event
-needs only an active login. Only Admins can post
-events or act for other reps. Nothing can be booked on a past date, and
-non-admins can't change past entries. "Today" is Eastern time.
+`can_staff_self` / `can_post_events` / `can_delete_event` /
+`can_remove_event_staff`). Anyone logged in can view the calendar, post
+events, join events, and add sales reps to events. Booking a
+door-knocking shift requires an account linked to a sales rep
+(`users.sales_rep_id`) and books it for that rep. Only Admins can book
+shifts for other reps, add non-rep accounts to events, or delete anyone's
+event. Nothing can be booked on a past date, and non-admins can't change
+past entries. "Today" is Eastern time.
 
 **Tables** (migrations 9–11): `staffing_events`, `staffing_event_signups`
 (one row per person per event: `sales_rep_id` or `staff_user_id`), and

@@ -161,13 +161,14 @@
                 </div>
                 <div class="td-staff-bar" aria-hidden="true"><span style="width: {{ [100, (e.filled * 100 / e.staff_needed)|round]|min }}%"></span></div>
                 {% if e.notes %}<p class="td-staff-notes">{{ e.notes }}</p>{% endif %}
+                {% if e.created_by_email %}<span class="td-admin-muted td-staff-posted">Posted by {{ 'you' if e.created_by == current_user.id else e.created_by_email }}</span>{% endif %}
 
                 <div class="td-staff-reps">
                     {% for person in e.staff %}
                     {% set kind, person_id = person.key.split(':') %}
                     <span class="td-staff-rep{{ ' td-staff-rep--me' if person.key == my_staff_key else '' }}">
                         {{ person.name }}{% if person.key == my_staff_key %} (you){% endif %}
-                        {% if is_admin %}
+                        {% if (is_admin or not day.is_past) and permissions.can_remove_event_staff(current_user, person.key == my_staff_key, person.added_by) %}
                         <form method="post" action="{{ url_for('staffing_event_leave', event_id=e.id) }}">
                             <input type="hidden" name="{{ 'sales_rep_id' if kind == 'rep' else 'staff_user_id' }}" value="{{ person_id }}">
                             <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
@@ -192,14 +193,14 @@
                         {% endif %}
                     </form>
                     {% endif %}
-                    {% if is_admin %}
-                    {% if not day.is_past %}
+                    {% if not day.is_past and sales_reps %}
                     <form method="post" action="{{ url_for('staffing_event_signup', event_id=e.id) }}" class="td-staff-inline-form">
                         <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
                         {{ rep_select(include_blank=false, label='Rep to add') }}
                         <button type="submit" class="td-btn">Add rep</button>
                     </form>
                     {% endif %}
+                    {% if permissions.can_delete_event(current_user, e.created_by) %}
                     <form method="post" action="{{ url_for('staffing_delete_event', event_id=e.id) }}" data-confirm-twice>
                         <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
                         <button type="submit" class="td-btn td-btn-ghost">Delete event</button>
@@ -245,7 +246,7 @@
             </details>
             {% endif %}
 
-            {% if is_admin and not day.is_past %}
+            {% if not day.is_past %}
             <details class="td-staff-form-card">
                 <summary>+ Post an event that needs staffing</summary>
                 <form method="post" action="{{ url_for('staffing_create_event') }}" class="td-staff-form">

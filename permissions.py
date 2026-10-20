@@ -27,9 +27,31 @@ def can_access_admin_portal(user):
 
 
 def can_manage_staffing(user):
-    """Staffing calendar: post/remove events, and sign up or remove any
-    rep (staffing_store.py)."""
+    """Staffing calendar: delete any event, and sign up or remove any
+    rep/user (staffing_store.py)."""
     return bool(user) and user.get("status") == "active" and user.get("role") == ROLE_ADMIN
+
+
+def can_post_events(user):
+    """Staffing calendar: post an event that needs staffing -- any active
+    account (opened to everyone by request, 2026-10-20). The poster can
+    delete their own event; Admins can delete any."""
+    return bool(user) and user.get("status") == "active"
+
+
+def can_delete_event(user, created_by_user_id):
+    if not can_post_events(user):
+        return False
+    return user.get("role") == ROLE_ADMIN or (created_by_user_id is not None and created_by_user_id == user.get("id"))
+
+
+def can_remove_event_staff(user, is_self, added_by_user_id):
+    """Staffing calendar: take someone off an event -- yourself, someone
+    you added, or (Admins) anyone."""
+    if not can_join_events(user):
+        return False
+    return (is_self or user.get("role") == ROLE_ADMIN
+            or (added_by_user_id is not None and added_by_user_id == user.get("id")))
 
 
 def can_join_events(user):

@@ -3276,3 +3276,5 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
 .td-staff-open-link:hover strong { color: var(--td-cyan); }
 .td-staff-open-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .td-staff-open-foot form { margin: 0; }
+
+.td-staff-posted { font-size: 11.5px; }

@@ -2,8 +2,9 @@
 from db_migrations.py migration 9. See README.md "Staffing Calendar".
 
 Two kinds of entries on one calendar:
-  - Events that need staffing: Admins post them with a head count; reps
-    sign themselves up (staffing_events + staffing_event_signups).
+  - Events that need staffing: anyone logged in posts them with a head
+    count and signs up (staffing_events + staffing_event_signups); the
+    poster or an Admin can delete one.
   - Door-knocking shifts: a rep adds their own shift -- date, time, area
     (door_knock_shifts).
 
@@ -75,11 +76,12 @@ def format_range(start, end):
 
 _EVENT_SELECT = """
     SELECT e.id, e.title, e.event_date, e.start_time, e.end_time, e.location, e.notes,
-           e.staff_needed, cu.email,
+           e.staff_needed, cu.email, e.created_by,
            coalesce(array_agg(coalesce(sr.name, su.email) ORDER BY s.created_at) FILTER (WHERE s.id IS NOT NULL), '{}'),
            coalesce(array_agg(CASE WHEN s.sales_rep_id IS NOT NULL THEN 'rep:' || s.sales_rep_id
                                    ELSE 'user:' || s.staff_user_id END ORDER BY s.created_at)
-                    FILTER (WHERE s.id IS NOT NULL), '{}')
+                    FILTER (WHERE s.id IS NOT NULL), '{}'),
+           coalesce(array_agg(s.created_by ORDER BY s.created_at) FILTER (WHERE s.id IS NOT NULL), '{}')
     FROM staffing_events e
     LEFT JOIN users cu ON cu.id = e.created_by
     LEFT JOIN staffing_event_signups s ON s.event_id = e.id
@@ -91,16 +93,17 @@ _EVENT_GROUP = " GROUP BY e.id, cu.email ORDER BY e.event_date, e.start_time NUL
 
 def _event_dict(row):
     (event_id, title, event_date, start_time, end_time, location, notes,
-     staff_needed, created_by_email, staff_names, staff_keys) = row
+     staff_needed, created_by_email, created_by, staff_names, staff_keys, added_by) = row
     filled = len(staff_keys)
     return {
         "id": event_id, "title": title, "date": event_date,
         "start_time": start_time, "end_time": end_time, "time_display": format_range(start_time, end_time),
         "location": location, "notes": notes, "staff_needed": staff_needed,
-        "created_by_email": created_by_email,
-        # Who's staffing, as {"key": "rep:<id>" | "user:<id>", "name"} --
-        # compare a viewer's staff_key(user) against "staff_keys".
-        "staff": [{"key": k, "name": n} for k, n in zip(staff_keys, staff_names)],
+        "created_by_email": created_by_email, "created_by": created_by,
+        # Who's staffing, as {"key": "rep:<id>" | "user:<id>", "name",
+        # "added_by": users.id who signed them up} -- compare a viewer's
+        # staff_key(user) against "staff_keys".
+        "staff": [{"key": k, "name": n, "added_by": a} for k, n, a in zip(staff_keys, staff_names, added_by)],
         "staff_keys": set(staff_keys), "filled": filled, "open_spots": max(0, staff_needed - filled),
     }
 
@@ -212,17 +215,18 @@ def staff_key(user):
 def _resolve_event_staff(user, form):
     """Who an event sign-up/leave is for, as (sales_rep_id, staff_user_id,
     error). Anyone logged in acts for themselves (their rep if linked,
-    else their own account); an Admin may name a rep (sales_rep_id) or a
-    user (staff_user_id) instead."""
+    else their own account) or names any sales rep (sales_rep_id) -- open
+    to everyone by request, 2026-10-20. Naming a non-rep account
+    (staff_user_id) stays Admin-only."""
     if not permissions.can_join_events(user):
         return None, None, "You must be logged in with an active account to do this."
+    raw_rep = (form.get("sales_rep_id") or "").strip()
+    if raw_rep:
+        if not raw_rep.isdigit() or not any(r["id"] == int(raw_rep) for r in user_store.list_sales_reps()):
+            return None, None, "Choose a sales rep."
+        return int(raw_rep), None, None
     if permissions.can_manage_staffing(user):
-        raw_rep = (form.get("sales_rep_id") or "").strip()
         raw_user = (form.get("staff_user_id") or "").strip()
-        if raw_rep:
-            if not raw_rep.isdigit() or not any(r["id"] == int(raw_rep) for r in user_store.list_sales_reps()):
-                return None, None, "Choose a sales rep."
-            return int(raw_rep), None, None
         if raw_user:
             if not raw_user.isdigit():
                 return None, None, "Choose a user."
@@ -239,8 +243,8 @@ def _check_not_past(day, today, what):
 
 
 def create_event(form, user, today):
-    if not permissions.can_manage_staffing(user):
-        return False, "Only Admins can post events."
+    if not permissions.can_post_events(user):
+        return False, "You must be logged in with an active account to post events."
     title = _text(form, "title")
     event_date = _parse_date(form.get("event_date"))
     start_time, end_time = _parse_time(form.get("start_time")), _parse_time(form.get("end_time"))
@@ -284,17 +288,20 @@ def create_event(form, user, today):
 
 
 def delete_event(event_id, user):
-    if not permissions.can_manage_staffing(user):
-        return False, "Only Admins can remove events."
+    """The poster can delete their own event; Admins can delete any."""
     conn = None
     try:
         conn = _connect()
         with conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT created_by FROM staffing_events WHERE id = %s FOR UPDATE", (event_id,))
+                found = cur.fetchone()
+                if not found:
+                    return False, "That event no longer exists."
+                if not permissions.can_delete_event(user, found[0]):
+                    return False, "Only the person who posted this event, or an Admin, can delete it."
                 cur.execute("DELETE FROM staffing_events WHERE id = %s RETURNING title, event_date", (event_id,))
                 row = cur.fetchone()
-        if not row:
-            return False, "That event no longer exists."
         _log(f"Event #{event_id} '{row[0]}' on {row[1]} removed by {user['email']}")
         return True, None
     except Exception as exc:
@@ -371,12 +378,17 @@ def leave_event(event_id, form, user, today):
                 if event_date < today and not permissions.can_manage_staffing(user):
                     return False, "This event has already happened."
                 cur.execute(
-                    "DELETE FROM staffing_event_signups WHERE event_id = %s "
-                    "AND sales_rep_id IS NOT DISTINCT FROM %s AND staff_user_id IS NOT DISTINCT FROM %s",
+                    "SELECT id, created_by FROM staffing_event_signups WHERE event_id = %s "
+                    "AND sales_rep_id IS NOT DISTINCT FROM %s AND staff_user_id IS NOT DISTINCT FROM %s FOR UPDATE",
                     (event_id, rep_id, staff_user_id),
                 )
-                if cur.rowcount == 0:
+                signup = cur.fetchone()
+                if not signup:
                     return False, "Not signed up for this event."
+                is_self = staff_key(user) == (f"rep:{rep_id}" if rep_id else f"user:{staff_user_id}")
+                if not permissions.can_remove_event_staff(user, is_self, signup[1]):
+                    return False, "Only that rep, the person who added them, or an Admin can remove them."
+                cur.execute("DELETE FROM staffing_event_signups WHERE id = %s", (signup[0],))
         return True, None
     except Exception as exc:
         return False, db.sanitize_error(exc)

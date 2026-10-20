@@ -29,6 +29,9 @@ UNLINKED = {"id": 4, "email": "cs@planet.net", "role": "Customer Success", "stat
 
 
 def test_permissions():
+    assert permissions.can_post_events(REP_A) and permissions.can_post_events(UNLINKED)
+    assert not permissions.can_post_events(None) and not permissions.can_post_events({**REP_A, "status": "disabled"})
+    assert permissions.can_delete_event(REP_A, REP_A["id"]) and not permissions.can_delete_event(REP_A, REP_B["id"])
     assert permissions.can_join_events(UNLINKED) and permissions.can_join_events(ADMIN)
     assert not permissions.can_join_events(None)
     assert store.staff_key(REP_A) == "rep:1" and store.staff_key(ADMIN) == "user:1"
@@ -88,8 +91,7 @@ def _event_id():
 
 
 @integration
-def test_only_admins_post_events_and_never_in_the_past(test_db):
-    assert store.create_event(EVENT, REP_A, TODAY) == (False, "Only Admins can post events.")
+def test_anyone_posts_events_but_never_in_the_past(test_db):
     ok, error = store.create_event({**EVENT, "event_date": "2026-10-19"}, ADMIN, TODAY)
     assert not ok and "passed" in error
     ok, error = store.create_event({**EVENT, "end_time": "09:00"}, ADMIN, TODAY)
@@ -97,6 +99,19 @@ def test_only_admins_post_events_and_never_in_the_past(test_db):
     ok, error = store.create_event({**EVENT, "staff_needed": "0"}, ADMIN, TODAY)
     assert not ok
     assert store.create_event(EVENT, ADMIN, TODAY) == (True, None)
+    # Posting is open to every active account (2026-10-20), linked rep or not.
+    assert store.create_event({**EVENT, "title": "Rep-posted"}, REP_B, TODAY) == (True, None)
+    assert store.create_event({**EVENT, "title": "CS-posted"}, UNLINKED, TODAY) == (True, None)
+    assert store.create_event(EVENT, {**REP_A, "status": "disabled"}, TODAY)[0] is False
+
+    events = {e["title"]: e for e in store.get_calendar(2026, 10, SATURDAY, TODAY)["day"]["events"]}
+    assert events["Rep-posted"]["created_by"] == REP_B["id"]
+    assert events["CS-posted"]["created_by_email"] == "cs@planet.net"
+    # Only the poster (or an Admin) may delete.
+    ok, error = store.delete_event(events["Rep-posted"]["id"], REP_A, )
+    assert not ok and "posted this event" in error
+    assert store.delete_event(events["Rep-posted"]["id"], REP_B) == (True, None)
+    assert store.delete_event(events["CS-posted"]["id"], ADMIN) == (True, None)
 
 
 @integration
@@ -104,8 +119,6 @@ def test_reps_sign_themselves_up(test_db):
     event_id = _event_id()
     assert store.sign_up(event_id, {}, REP_A, TODAY) == (True, None)
     assert store.sign_up(event_id, {}, REP_A, TODAY) == (False, "Already signed up for this event.")
-    # A rep can't sign someone else up -- sales_rep_id is ignored for non-admins.
-    assert store.sign_up(event_id, {"sales_rep_id": "2"}, REP_A, TODAY)[0] is False
     day = store.get_calendar(2026, 10, SATURDAY, TODAY)["day"]
     event = day["events"][0]
     assert (event["filled"], event["open_spots"], [p["name"] for p in event["staff"]]) == (1, 1, ["Alex Rivera"])
@@ -180,6 +193,36 @@ def test_calendar_grid_and_event_delete(test_db):
     assert cal["weeks"][0][3]["day"] == 1
     assert (cal["prev"], cal["next"]) == (date(2026, 9, 1), date(2026, 11, 1))
     event_id = _event_id()
-    assert store.delete_event(event_id, REP_A) == (False, "Only Admins can remove events.")
+    assert store.delete_event(event_id, REP_A)[0] is False  # posted by the Admin
+    assert permissions.can_delete_event(ADMIN, None) and not permissions.can_delete_event(REP_A, None)
     assert store.delete_event(event_id, ADMIN) == (True, None)
     assert store.get_calendar(2026, 10, SATURDAY, TODAY)["day"]["events"] == []
+
+
+@integration
+def test_anyone_adds_a_sales_rep_and_removal_rules(test_db):
+    assert store.create_event({**EVENT, "title": "Open house"}, UNLINKED, TODAY) == (True, None)
+    event = next(e for e in store.get_calendar(2026, 10, SATURDAY, TODAY)["day"]["events"] if e["title"] == "Open house")
+    eid = event["id"]
+    # Customer Success (no linked rep) adds Blake; Alex adds himself.
+    assert store.sign_up(eid, {"sales_rep_id": "2"}, UNLINKED, TODAY) == (True, None)
+    assert store.sign_up(eid, {}, REP_A, TODAY) == (True, None)
+    assert "Choose a sales rep" in store.sign_up(eid, {"sales_rep_id": "999"}, REP_A, TODAY)[1]
+    # Naming a non-rep account stays Admin-only: ignored -> acts as self (already on).
+    assert store.sign_up(eid, {"staff_user_id": "1"}, REP_A, TODAY) == (False, "Already signed up for this event.")
+
+    event = next(e for e in store.get_calendar(2026, 10, SATURDAY, TODAY)["day"]["events"] if e["id"] == eid)
+    staff = {p["key"]: p for p in event["staff"]}
+    assert staff["rep:2"]["added_by"] == UNLINKED["id"] and staff["rep:1"]["added_by"] == REP_A["id"]
+
+    # Alex can't remove Blake (didn't add him); the adder can; Blake can remove himself.
+    ok, error = store.leave_event(eid, {"sales_rep_id": "2"}, REP_A, TODAY)
+    assert not ok and "person who added them" in error
+    assert store.leave_event(eid, {"sales_rep_id": "2"}, UNLINKED, TODAY) == (True, None)
+    assert store.sign_up(eid, {"sales_rep_id": "2"}, REP_A, TODAY) == (True, None)
+    assert store.leave_event(eid, {}, REP_B, TODAY) == (True, None)
+    # Admin removes anyone.
+    assert store.leave_event(eid, {"sales_rep_id": "1"}, ADMIN, TODAY) == (True, None)
+    assert permissions.can_remove_event_staff(REP_A, False, REP_A["id"])
+    assert not permissions.can_remove_event_staff(REP_A, False, REP_B["id"])
+    assert store.delete_event(eid, UNLINKED) == (True, None)
