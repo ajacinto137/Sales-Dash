@@ -5,8 +5,8 @@ Two kinds of entries on one calendar:
   - Events that need staffing: anyone logged in posts them with a head
     count and signs up (staffing_events + staffing_event_signups); the
     poster or an Admin can delete one.
-  - Door-knocking shifts: a rep adds their own shift -- date, time, area
-    (door_knock_shifts).
+  - Door-knocking shifts: anyone books one for any sales rep -- date and
+    area (door_knock_shifts).
 
 Everything is keyed by sales_reps.id, so a user can only act for the rep
 their account is linked to (users.sales_rep_id); Admins can act for any
@@ -109,14 +109,15 @@ def _event_dict(row):
 
 
 _SHIFT_SELECT = """
-    SELECT k.id, k.shift_date, k.area, k.notes, k.sales_rep_id, sr.name
+    SELECT k.id, k.shift_date, k.area, k.notes, k.sales_rep_id, sr.name, k.created_by
     FROM door_knock_shifts k JOIN sales_reps sr ON sr.id = k.sales_rep_id
 """
 
 
 def _shift_dict(row):
-    shift_id, shift_date, area, notes, rep_id, rep_name = row
-    return {"id": shift_id, "date": shift_date, "area": area, "notes": notes, "rep_id": rep_id, "rep_name": rep_name}
+    shift_id, shift_date, area, notes, rep_id, rep_name, created_by = row
+    return {"id": shift_id, "date": shift_date, "area": area, "notes": notes, "rep_id": rep_id,
+            "rep_name": rep_name, "created_by": created_by}
 
 
 def _load_range(cur, start, end):
@@ -190,17 +191,18 @@ def get_calendar(year, month, selected_day, today):
 # ================================================================
 
 def _resolve_rep(user, form):
-    """Which rep this action is for: a non-admin is always their own
-    linked rep; an Admin may pick any rep (sales_rep_id in the form) or
-    fall back to their own. Returns (rep_id, error)."""
-    if permissions.can_manage_staffing(user):
-        raw = (form.get("sales_rep_id") or "").strip()
-        if raw:
-            if not raw.isdigit() or not any(r["id"] == int(raw) for r in user_store.list_sales_reps()):
-                return None, "Choose a sales rep."
-            return int(raw), None
+    """Which rep a door-knocking shift is for: the sales rep picked in the
+    form (anyone may book for any rep -- by request, 2026-10-20), else
+    the user's own linked rep. Returns (rep_id, error)."""
+    if not permissions.can_join_events(user):
+        return None, "You must be logged in with an active account to do this."
+    raw = (form.get("sales_rep_id") or "").strip()
+    if raw:
+        if not raw.isdigit() or not any(r["id"] == int(raw) for r in user_store.list_sales_reps()):
+            return None, "Choose a sales rep."
+        return int(raw), None
     if not permissions.can_staff_self(user):
-        return None, "Your account isn't linked to a sales rep, so you can't sign up. Ask an Admin to link it."
+        return None, "Choose a sales rep for the shift."
     return user["sales_rep_id"], None
 
 
@@ -424,7 +426,7 @@ def add_shift(form, user, today):
                     (rep_id, shift_date, area, _text(form, "notes", MAX_NOTES), user["id"]),
                 )
                 if cur.rowcount == 0:
-                    return False, ("There's already a door-knocking shift booked that day -- "
+                    return False, ("That rep already has a door-knocking shift booked that day -- "
                                    "remove it first, or list every area in one shift.")
         return True, None
     except Exception as exc:
@@ -440,14 +442,14 @@ def delete_shift(shift_id, user, today):
         conn = _connect()
         with conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT sales_rep_id, shift_date FROM door_knock_shifts WHERE id = %s FOR UPDATE",
+                cur.execute("SELECT sales_rep_id, shift_date, created_by FROM door_knock_shifts WHERE id = %s FOR UPDATE",
                             (shift_id,))
                 row = cur.fetchone()
                 if not row:
                     return False, "That shift no longer exists."
                 is_admin = permissions.can_manage_staffing(user)
-                if not is_admin and row[0] != user.get("sales_rep_id"):
-                    return False, "You can only remove your own shifts."
+                if not permissions.can_remove_shift(user, row[0], row[2]):
+                    return False, "Only that rep, the person who booked the shift, or an Admin can remove it."
                 if not is_admin and row[1] < today:
                     return False, "This shift has already happened."
                 cur.execute("DELETE FROM door_knock_shifts WHERE id = %s", (shift_id,))

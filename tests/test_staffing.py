@@ -159,14 +159,14 @@ def test_door_knock_shifts(test_db):
     assert store.add_shift(SHIFT, REP_A, TODAY) == (True, None)
     # One shift per rep per day -- no times to tell two apart.
     ok, error = store.add_shift({**SHIFT, "area": "Downtown"}, REP_A, TODAY)
-    assert not ok and "already a door-knocking shift" in error
+    assert not ok and "already has a door-knocking shift" in error
     assert store.add_shift({**SHIFT, "shift_date": "2026-10-25"}, REP_A, TODAY) == (True, None)
     assert store.add_shift(SHIFT, REP_B, TODAY) == (True, None)  # same day, other rep
     # Times sent by an old form are simply ignored.
     assert store.add_shift({**SHIFT, "shift_date": "2026-10-31", "start_time": "10:00"}, REP_B, TODAY) == (True, None)
     assert "passed" in store.add_shift({**SHIFT, "shift_date": "2026-10-01"}, REP_A, TODAY)[1]
     assert "knocking" in store.add_shift({**SHIFT, "area": " "}, REP_A, TODAY)[1]
-    assert "isn't linked" in store.add_shift(SHIFT, UNLINKED, TODAY)[1]
+    assert "Choose a sales rep" in store.add_shift(SHIFT, UNLINKED, TODAY)[1]  # no linked rep, none picked
 
     cal = store.get_calendar(2026, 10, SATURDAY, TODAY)
     shifts = cal["day"]["shifts"]
@@ -176,7 +176,7 @@ def test_door_knock_shifts(test_db):
     assert saturday_cell["is_weekend"] and len(saturday_cell["shifts"]) == 2 and len(saturday_cell["events"]) == 1
 
     blakes = next(s for s in shifts if s["rep_name"] == "Blake Chen")
-    assert store.delete_shift(blakes["id"], REP_A, TODAY) == (False, "You can only remove your own shifts.")
+    assert "person who booked" in store.delete_shift(blakes["id"], REP_A, TODAY)[1]
     assert store.delete_shift(blakes["id"], REP_B, TODAY) == (True, None)
     alexs = shifts[0]
     assert store.delete_shift(alexs["id"], REP_A, date(2026, 10, 25)) == (False, "This shift has already happened.")
@@ -226,3 +226,23 @@ def test_anyone_adds_a_sales_rep_and_removal_rules(test_db):
     assert permissions.can_remove_event_staff(REP_A, False, REP_A["id"])
     assert not permissions.can_remove_event_staff(REP_A, False, REP_B["id"])
     assert store.delete_event(eid, UNLINKED) == (True, None)
+
+
+@integration
+def test_anyone_books_a_shift_for_any_rep(test_db):
+    day = {**SHIFT, "shift_date": "2026-11-07", "area": "Weehawken"}
+    # Customer Success (no linked rep) books Blake; Alex books Blake too -> one per day.
+    assert store.add_shift({**day, "sales_rep_id": "2"}, UNLINKED, TODAY) == (True, None)
+    assert "already has" in store.add_shift({**day, "sales_rep_id": "2"}, REP_A, TODAY)[1]
+    assert "Choose a sales rep" in store.add_shift({**day, "sales_rep_id": "999"}, REP_A, TODAY)[1]
+    # A rep picking themselves via the dropdown works like before.
+    assert store.add_shift({**day, "sales_rep_id": "1"}, REP_A, TODAY) == (True, None)
+
+    shifts = {s["rep_name"]: s for s in store.get_calendar(2026, 11, date(2026, 11, 7), TODAY)["day"]["shifts"]}
+    blakes, alexs = shifts["Blake Chen"], shifts["Alex Rivera"]
+    assert blakes["created_by"] == UNLINKED["id"]
+    # Alex didn't book Blake's shift and isn't Blake -> no; the booker can.
+    assert "person who booked" in store.delete_shift(blakes["id"], REP_A, TODAY)[1]
+    assert store.delete_shift(blakes["id"], UNLINKED, TODAY) == (True, None)
+    assert store.delete_shift(alexs["id"], REP_A, TODAY) == (True, None)
+    assert permissions.can_remove_shift(REP_B, 2, None) and not permissions.can_remove_shift(REP_B, 1, 1)

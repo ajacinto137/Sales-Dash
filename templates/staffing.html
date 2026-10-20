@@ -54,9 +54,6 @@
     </section>
     {% endif %}
 
-    {% if not can_staff_self and not is_admin %}
-    <div class="td-calls-notice td-calls-notice--warn">Your account isn't linked to a sales rep. You can still staff events, but booking door-knocking shifts needs a linked rep — ask an Admin to link it.</div>
-    {% endif %}
 
     <!-- Staff an event: pick any upcoming event and sign yourself up
          without hunting for its day on the calendar. -->
@@ -220,7 +217,7 @@
                     <div class="td-staff-meta"><span>{{ s.area }}</span></div>
                     {% if s.notes %}<p class="td-staff-notes">{{ s.notes }}</p>{% endif %}
                 </div>
-                {% if is_admin or (s.rep_id == my_rep_id and not day.is_past) %}
+                {% if permissions.can_remove_shift(current_user, s.rep_id, s.created_by) and (is_admin or not day.is_past) %}
                 <form method="post" action="{{ url_for('staffing_delete_shift', shift_id=s.id) }}" data-confirm-twice>
                     <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
                     <button type="submit" class="td-btn td-btn-ghost">Remove</button>
@@ -231,13 +228,18 @@
             <p class="td-empty">No one is door knocking this day yet.</p>
             {% endfor %}
 
-            {% if (can_staff_self or is_admin) and not day.is_past %}
+            {% if not day.is_past and sales_reps %}
             <details class="td-staff-form-card" {{ 'open' if not day.shifts and can_staff_self else '' }}>
                 <summary>+ Add a door-knocking shift</summary>
                 <form method="post" action="{{ url_for('staffing_add_shift') }}" class="td-staff-form">
-                    {% if is_admin %}
-                    <label>Rep {{ rep_select(include_blank=can_staff_self) }}</label>
-                    {% endif %}
+                    <label>Sales rep
+                        <select name="sales_rep_id" class="td-admin-inline-select" required>
+                            {% if not my_rep_id %}<option value="">— Choose a sales rep —</option>{% endif %}
+                            {% for rep in sales_reps %}
+                            <option value="{{ rep.id }}" {{ 'selected' if rep.id == my_rep_id else '' }}>{{ rep.name }}{{ ' (you)' if rep.id == my_rep_id else '' }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
                     <label>Date <input type="date" name="shift_date" class="td-date-input" value="{{ day.date.isoformat() }}" min="{{ today.isoformat() }}" required></label>
                     <label>Area <input type="text" name="area" class="td-search-input" maxlength="200" placeholder="Town or neighborhood(s), e.g. Hoboken – uptown" required></label>
                     <label>Notes <textarea name="notes" class="td-search-input" rows="2" maxlength="1000" placeholder="Optional"></textarea></label>

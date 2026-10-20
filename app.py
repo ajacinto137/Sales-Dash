@@ -1934,8 +1934,7 @@ def staffing_page():
         my_rep_id=user.get("sales_rep_id"),
         my_staff_key=my_staff_key,
         selected_event=request.args.get("event", type=int),
-        # Everyone can add a sales rep to an event (shift booking for
-        # others stays Admin-only -- see the template).
+        # Everyone can add any sales rep to an event or book them a shift.
         sales_reps=user_store.list_sales_reps(),
         last_refreshed=data_store["last_refreshed"],
     )
@@ -1995,8 +1994,12 @@ def staffing_event_leave(event_id):
 @app.route("/staffing/shifts", methods=["POST"])
 @auth.login_required
 def staffing_add_shift():
-    ok, error = staffing_store.add_shift(request.form, auth.current_user(), _today())
-    flash("Door-knocking shift added." if ok else error, "ok" if ok else "error")
+    user = auth.current_user()
+    ok, error = staffing_store.add_shift(request.form, user, _today())
+    target = request.form.get("sales_rep_id", "")
+    for_someone_else = target.isdigit() and int(target) != user.get("sales_rep_id")
+    flash(("Door-knocking shift booked for that rep." if for_someone_else else "Door-knocking shift added.") if ok else error,
+          "ok" if ok else "error")
     day = staffing_store._parse_date(request.form.get("shift_date")) if ok else None
     return _staffing_redirect(day)
 

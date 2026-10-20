@@ -54,6 +54,16 @@ def can_remove_event_staff(user, is_self, added_by_user_id):
             or (added_by_user_id is not None and added_by_user_id == user.get("id")))
 
 
+def can_remove_shift(user, shift_rep_id, booked_by_user_id):
+    """Staffing calendar: remove a door-knocking shift -- the rep it's
+    for, whoever booked it, or an Admin."""
+    if not can_join_events(user):
+        return False
+    return (user.get("role") == ROLE_ADMIN
+            or (shift_rep_id is not None and shift_rep_id == user.get("sales_rep_id"))
+            or (booked_by_user_id is not None and booked_by_user_id == user.get("id")))
+
+
 def can_join_events(user):
     """Staffing calendar: sign yourself up for an event -- any active
     account (as its linked rep, or as itself if it has none)."""

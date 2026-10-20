@@ -2152,19 +2152,20 @@ Top nav → **Staffing** (`/staffing`, added 2026-10-20). A month calendar
   of the needed reps it has (`2/4`): orange while short, green when full.
   Admins can also add or remove any rep and delete events. "Still Needs
   Reps" lists upcoming events with open spots.
-- **Door-knocking shifts.** A rep books their own shift: a date and an
-  area (town or neighborhood), with no times (removed by request). Each
-  rep can have one shift per day; list several areas in that one shift. Reps remove their own shifts, and Admins can
+- **Door-knocking shifts.** Anyone books a shift for any sales rep, picked
+  from a dropdown (defaults to yourself if your account is linked to a
+  rep): a date and an area (town or neighborhood), with no times (removed
+  by request). Each rep can have one shift per day; list several areas in
+  that one shift. Reps remove their own shifts, and Admins can
   remove anyone's.
 
 **Rules** (`staffing_store.py` + `permissions.can_manage_staffing` /
 `can_staff_self` / `can_post_events` / `can_delete_event` /
 `can_remove_event_staff`). Anyone logged in can view the calendar, post
 events, join events, and add sales reps to events. Booking a
-door-knocking shift requires an account linked to a sales rep
-(`users.sales_rep_id`) and books it for that rep. Only Admins can book
-shifts for other reps, add non-rep accounts to events, or delete anyone's
-event. Nothing can be booked on a past date, and non-admins can't change
+door-knocking shift works the same way: pick any sales rep. A shift can
+be removed by that rep, whoever booked it, or an Admin. Only Admins can
+add non-rep accounts to events or delete anyone's event. Nothing can be booked on a past date, and non-admins can't change
 past entries. "Today" is Eastern time.
 
 **Tables** (migrations 9–11): `staffing_events`, `staffing_event_signups`
