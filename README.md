@@ -2113,8 +2113,9 @@ grouping only reshapes the chart and never changes totals.
   (`hubspot_logic.allowed_time_scales()`). The server rejects any
   other. Changing the range resets grouping to Auto.
 
-Dates and buckets use `America/New_York`. The default range is Last 30
-Days, which Auto groups Daily.
+Dates and buckets use `America/New_York`. The default range is Today
+(Auto groups it Hourly), shown as a line chart; both were changed from
+Last 30 Days / bar by request on 2026-10-20. Bar is still one click away.
 
 **Access.** The KPIs and chart are visible to anyone who can open the
 profile. Individual call records (dialed numbers) are visible only to
@@ -2132,6 +2133,131 @@ Everything under `/admin/hubspot*` is Admin-only.
 
 **Known limits.** A call deleted in HubSpot after it has synced stays
 in the local table, because search doesn't return deleted records.
+
+## Staffing Calendar
+
+Top nav → **Staffing** (`/staffing`, added 2026-10-20). A month calendar
+(Mon–Sun, so weekends sit together) with two kinds of entries:
+
+- **Events that need staffing.** Admins post one with a title, date,
+  optional times/location/notes, and how many reps it needs. Anyone
+  logged in can staff an event: pick it in the **Staff an event**
+  dropdown at the top, click its label on the calendar, or use **Sign me
+  up** on its card or in "Still Needs Reps". Linked accounts sign up as
+  their sales rep; accounts with no rep (Admins, managers, Customer
+  Success) sign up as themselves (`staff_user_id`). Each event shows how many
+  of the needed reps it has (`2/4`): orange while short, green when full.
+  Admins can also add or remove any rep and delete events. "Still Needs
+  Reps" lists upcoming events with open spots.
+- **Door-knocking shifts.** A rep books their own shift: a date and an
+  area (town or neighborhood), with no times (removed by request). Each
+  rep can have one shift per day; list several areas in that one shift. Reps remove their own shifts, and Admins can
+  remove anyone's.
+
+**Rules** (`staffing_store.py` + `permissions.can_manage_staffing` /
+`can_staff_self`). Anyone logged in can view the calendar. Signing up and
+adding shifts requires an account linked to a sales rep
+(`users.sales_rep_id`), and acts only for that rep. Joining an event
+needs only an active login. Only Admins can post
+events or act for other reps. Nothing can be booked on a past date, and
+non-admins can't change past entries. "Today" is Eastern time.
+
+**Tables** (migrations 9–11): `staffing_events`, `staffing_event_signups`
+(one row per person per event: `sales_rep_id` or `staff_user_id`), and
+`door_knock_shifts` (unique per rep and date).
+
+**Routes.**
+- `GET /staffing?month=YYYY-MM&day=YYYY-MM-DD`
+- `POST /staffing/events`
+- `POST /staffing/events/signup` (the dropdown picker; takes `event_id`)
+- `POST /staffing/events/<id>/delete|signup|leave`
+- `POST /staffing/shifts`
+- `POST /staffing/shifts/<id>/delete`
+
+Each POST redirects back to the same day with a confirmation or error
+message.
+
+**Tests.** `tests/test_staffing.py` (integration:
+`-e STAFFING_INTEGRATION_TEST_DB=staffing_it`).
+
+## External Rep Sales
+
+Admin Portal → Data Tools → **External Rep Sales** (`/admin/external-rep-sales`,
+added 2026-10-20). Sales made under external door-to-door referral codes,
+plus the referral code → rep/organization/manager mapping that a future
+external rep/manager dashboard will build on (that dashboard is **not**
+built yet).
+
+**Source.** `queries.EXTERNAL_REP_SALES_QUERY` is the VBA workbook's
+`Refresh_Main()` query, verbatim, including its referral code list and
+excluded order IDs. It runs on the existing PlanetWeb connection
+(`PLANETWEB_*` in `.env`), so there are no new credentials. The spec's
+`EXTERNAL_SALES_DB_*` variables point at the same server and database, so
+they were not added.
+
+**Sync** (`external_sales_store.py`). A background thread pulls the full
+query result every `EXTERNAL_SALES_SYNC_INTERVAL_SECONDS` (default 300,
+minimum 60; ~5k rows, under a second). The **Refresh Data** button runs one
+on demand. Rows are upserted into appdb's `external_rep_sales` by
+PlanetWeb's own order ID, so there are no duplicates and IDs are preserved.
+Nothing is deleted:
+- A row that a successful refresh no longer returns is flagged
+  `in_source = false`. It is hidden by default (there's an "Include …"
+  checkbox) and restored automatically if it comes back.
+- A failed refresh changes nothing. The page shows the error and keeps
+  showing the last good data.
+- A refresh that returns less than half the stored rows (or zero rows) is
+  treated as incomplete: it still upserts, but flags nothing as removed.
+
+One sync runs at a time (Postgres advisory lock). Each run is logged in
+`external_sales_sync_runs` (14 days) and the container logs
+(`[external-sales]`). The last success, last error and connection state
+are kept in `external_sales_sync_state`.
+
+**Page.** Five summary cards (Total Sales, Active External Reps, Scheduled,
+Unscheduled, Voice Attach Rate), all computed over the current filters. A
+table with all 21 query fields: core columns are shown by default, and the
+**Columns** menu shows or hides the rest (remembered per browser). Search,
+sort, pagination and every filter run server-side in Postgres. Default
+sort is newest sale first. Filters: sale date range (+ presets), external
+rep, organization, state, municipality, package speed, scheduling status.
+**Export CSV** downloads every row matching the current filters, with
+spreadsheet formulas neutralized. Each export is logged with the admin's
+email.
+
+**Rep Mapping** (`?view=mapping`, table `external_reps`). One row per
+referral code, created automatically when a code first has a synced sale,
+so no sales are ever unattributed. Fields: rep name and email,
+organization (typed by name, created in `external_organizations` on first
+use), manager name and email, dashboard user, and active status. A code is
+**not** assumed to be one person: several codes (e.g. `mastle` /
+`mastle2`) can carry the same rep and dashboard user. Mappings only label
+sales. Which sales exist is decided by the source query alone.
+
+**Future external dashboard (groundwork only).** An External Sales Rep
+would see sales whose `referral_code` maps to their `dashboard_user_id`.
+An External Sales Manager would see codes whose `manager_user_id` is
+theirs (an indexed column, not yet editable in the UI; `manager_name` /
+`manager_email` hold the manager until they have a login), plus
+organization-level rollups via `organization_id`. Neither role exists in
+`user_store.ROLES` yet.
+
+**Security.** Every route is `@auth.admin_required` (non-admins get 403;
+signed-out users are redirected to login). Customer PII and the CSV never
+reach anyone else, and no SQL Server credentials or raw queries reach the
+browser.
+
+**Routes.**
+- `GET /admin/external-rep-sales` (`?view=mapping`)
+- `GET /admin/external-rep-sales/export.csv`
+- `GET /admin/external-rep-sales/status`
+- `POST /admin/external-rep-sales/sync`
+- `POST /admin/external-rep-sales/reps/<id>`
+
+**Tests.** `tests/test_external_sales.py`. Its unit tests always run. Its
+integration tests need a real Postgres:
+`docker compose exec -e EXTERNAL_SALES_INTEGRATION_TEST_DB=external_sales_it dashboard python -m pytest tests/test_external_sales.py -v`
+(creates and drops its own database).
 
 ## What's intentionally not built yet
 

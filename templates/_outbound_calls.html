@@ -4,7 +4,7 @@
      this rep (Admin Portal > HubSpot Integration). Numbers load from
      /dashboard/reps/<rep>/calls/{summary,volume,history} via
      static/js/outbound_calls.js -- appdb only, never HubSpot live --
-     and use their own date range (default Last 30 Days), independent of
+     and use their own date range (default Today, line chart), independent of
      the page's period filter above. See README.md "HubSpot Outbound
      Call Analytics". -->
 {% set hs = hubspot_context %}
@@ -85,8 +85,8 @@
                     </select>
                 </label>
                 <div class="td-chart-toggle" data-calls-chart-type role="group" aria-label="Chart type">
-                    <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-type="bar">Bar</button>
-                    <button type="button" class="td-chart-toggle-btn" data-chart-type="line">Line</button>
+                    <button type="button" class="td-chart-toggle-btn" data-chart-type="bar">Bar</button>
+                    <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-type="line">Line</button>
                 </div>
             </div>
         </div>

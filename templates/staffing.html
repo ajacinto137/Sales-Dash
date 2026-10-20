@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Staffing — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/staffing.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{% macro month_url(d) -%}
+{{ url_for('staffing_page', month=d.strftime('%Y-%m')) }}
+{%- endmacro %}
+{% macro day_url(d) -%}
+{{ url_for('staffing_page', month=d.strftime('%Y-%m'), day=d.isoformat()) }}
+{%- endmacro %}
+{% macro event_url(e) -%}
+{{ url_for('staffing_page', month=e.date.strftime('%Y-%m'), day=e.date.isoformat(), event=e.id) }}#event-{{ e.id }}
+{%- endmacro %}
+{% macro rep_select(name='sales_rep_id', label='Rep', include_blank=true) -%}
+<select name="{{ name }}" class="td-admin-inline-select" aria-label="{{ label }}" {{ '' if include_blank else 'required' }}>
+    {% if include_blank %}<option value="">{{ 'Me' if can_staff_self else '— Choose a rep —' }}</option>{% endif %}
+    {% for rep in sales_reps %}
+    <option value="{{ rep.id }}">{{ rep.name }}</option>
+    {% endfor %}
+</select>
+{%- endmacro %}
+
+<!-- Staffing Calendar (added 2026-10-20) -- see staffing_store.py and
+     README.md "Staffing Calendar". Plain server-rendered page: every
+     action is a POST form that redirects back here with a flash message.
+     Who may do what is enforced in staffing_store.py; the conditionals
+     below only hide buttons that would be refused anyway. -->
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Staffing Calendar</h2>
+        <span class="td-muted-inline">Sign up for events that need reps, or book your own door-knocking shift</span>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="td-staff-flash td-staff-flash--{{ category }}" role="status">{{ message }}</div>
+    {% endfor %}
+    {% endwith %}
+
+    {% if not cal.ok %}
+    <section class="td-error-panel">
+        <div class="td-error-panel-title">The staffing calendar is unavailable</div>
+        <p class="td-error-panel-message">{{ cal.error or "The app database couldn't be reached." }}</p>
+    </section>
+    {% endif %}
+
+    {% if not can_staff_self and not is_admin %}
+    <div class="td-calls-notice td-calls-notice--warn">Your account isn't linked to a sales rep. You can still staff events, but booking door-knocking shifts needs a linked rep — ask an Admin to link it.</div>
+    {% endif %}
+
+    <!-- Staff an event: pick any upcoming event and sign yourself up
+         without hunting for its day on the calendar. -->
+    <form class="td-staff-picker" method="post" action="{{ url_for('staffing_signup_picked') }}">
+        <label for="staff-picker-event">Staff an event</label>
+        <select id="staff-picker-event" name="event_id" class="td-admin-inline-select" required {{ 'disabled' if not joinable else '' }}>
+            {% if joinable %}
+            <option value="">Choose an upcoming event…</option>
+            {% for e in joinable %}
+            <option value="{{ e.id }}" {{ 'selected' if e.id == selected_event else '' }}>{{ e.date.strftime('%a %b %-d') }} · {{ e.title }}{% if e.time_display %} · {{ e.time_display }}{% endif %} — {{ e.open_spots ~ ' spot' ~ ('' if e.open_spots == 1 else 's') ~ ' open' if e.open_spots else 'full' }}</option>
+            {% endfor %}
+            {% else %}
+            <option>{{ "You're signed up for every upcoming event" if cal.upcoming_events else 'No upcoming events yet' }}</option>
+            {% endif %}
+        </select>
+        <button type="submit" class="td-btn td-btn-primary" {{ 'disabled' if not joinable else '' }}>Sign me up</button>
+        {% if my_events %}
+        <span class="td-staff-picker-mine">You're on:
+            {% for e in my_events %}<a class="td-calls-link" href="{{ event_url(e) }}">{{ e.date.strftime('%a %-m/%-d') }} {{ e.title }}</a>{{ ', ' if not loop.last else '' }}{% endfor %}
+        </span>
+        {% endif %}
+    </form>
+
+    <div class="td-staff-layout">
+        <!-- ================= Month calendar ================= -->
+        <div class="td-calendar-card td-staff-calendar">
+            <div class="td-calendar-nav">
+                <a class="td-btn td-btn-ghost" href="{{ month_url(cal.prev) }}">&larr; Prev</a>
+                <span class="td-calendar-month-label">{{ cal.month_label }}</span>
+                <div class="td-staff-nav-right">
+                    {% if (today.year, today.month) != (cal.year, cal.month) %}
+                    <a class="td-btn td-btn-ghost" href="{{ day_url(today) }}">Today</a>
+                    {% endif %}
+                    <a class="td-btn td-btn-ghost" href="{{ month_url(cal.next) }}">Next &rarr;</a>
+                </div>
+            </div>
+
+            <div class="td-staff-legend">
+                <span><i class="td-staff-dot td-staff-dot--open"></i>Event needs reps</span>
+                <span><i class="td-staff-dot td-staff-dot--full"></i>Event fully staffed</span>
+                <span><i class="td-staff-dot td-staff-dot--shift"></i>Door-knocking shift</span>
+            </div>
+
+            <div class="td-calendar-scroll">
+                <div class="td-calendar-inner td-staff-inner">
+                    <div class="td-calendar-grid td-calendar-weekdays">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span class="td-staff-weekend-label">Sat</span><span class="td-staff-weekend-label">Sun</span>
+                    </div>
+                    {% for week in cal.weeks %}
+                    <div class="td-calendar-grid">
+                        {% for cell in week %}
+                        {% if cell %}
+                        {% set total = cell.events|length + cell.shifts|length %}
+                        <div class="td-calendar-cell td-staff-cell{{ ' td-calendar-today' if cell.is_today else '' }}{{ ' td-staff-cell--weekend' if cell.is_weekend else '' }}{{ ' td-staff-cell--past' if cell.is_past else '' }}{{ ' td-staff-cell--selected' if cell.is_selected else '' }}">
+                            <a class="td-staff-cell-link" href="{{ day_url(cell.date) }}"
+                               aria-label="{{ cell.date.strftime('%A, %B %-d') }}: {{ cell.events|length }} event{{ '' if cell.events|length == 1 else 's' }}, {{ cell.shifts|length }} shift{{ '' if cell.shifts|length == 1 else 's' }}"
+                               {{ 'aria-current=date' if cell.is_today else '' }}></a>
+                            <span class="td-calendar-day">{{ cell.day }}</span>
+                            <span class="td-staff-chips">
+                                {% for e in cell.events[:2] %}
+                                <a class="td-staff-chip {{ 'td-staff-chip--open' if e.open_spots else 'td-staff-chip--full' }}{{ ' td-staff-chip--mine' if my_staff_key in e.staff_keys else '' }}"
+                                   href="{{ event_url(e) }}" title="{{ e.title }} — {{ e.filled }}/{{ e.staff_needed }} reps{{ ' (you’re on it)' if my_staff_key in e.staff_keys else '' }}">{{ e.title }} <b>{{ e.filled }}/{{ e.staff_needed }}</b></a>
+                                {% endfor %}
+                                {% for s in cell.shifts[:(3 - cell.events[:2]|length)] %}
+                                <span class="td-staff-chip td-staff-chip--shift" title="{{ s.rep_name }} · {{ s.area }}">{{ s.rep_name.split(' ')[0] }} · {{ s.area }}</span>
+                                {% endfor %}
+                                {% set shown = cell.events[:2]|length + cell.shifts[:(3 - cell.events[:2]|length)]|length %}
+                                {% if total > shown %}<span class="td-staff-more">+{{ total - shown }} more</span>{% endif %}
+                            </span>
+                        </div>
+                        {% else %}
+                        <div class="td-calendar-cell td-calendar-cell-pad"></div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= Selected day ================= -->
+        {% set day = cal.day %}
+        <aside class="td-staff-panel" id="day">
+            <div class="td-staff-panel-head">
+                <h3>{{ day.date.strftime('%A, %B %-d') }}</h3>
+                {% if day.is_weekend %}<span class="td-pill td-pill-sales-rep">Weekend</span>{% endif %}
+                {% if day.date == today %}<span class="td-pill td-pill-active">Today</span>{% endif %}
+                {% if day.is_past %}<span class="td-pill td-pill-disabled">Past</span>{% endif %}
+            </div>
+
+            <h4 class="td-staff-subhead">Events needing reps</h4>
+            {% for e in day.events %}
+            {% set mine = my_staff_key in e.staff_keys %}
+            <div class="td-staff-event{{ ' td-staff-event--full' if not e.open_spots else '' }}{{ ' td-staff-event--selected' if e.id == selected_event else '' }}" id="event-{{ e.id }}">
+                <div class="td-staff-event-title">
+                    <strong>{{ e.title }}</strong>
+                    <span class="{{ 'td-orange' if e.open_spots else 'td-green' }} td-staff-fill">{{ e.filled }}/{{ e.staff_needed }} reps</span>
+                </div>
+                <div class="td-staff-meta">
+                    {% if e.time_display %}<span>{{ e.time_display }}</span>{% endif %}
+                    {% if e.location %}<span>{{ e.location }}</span>{% endif %}
+                </div>
+                <div class="td-staff-bar" aria-hidden="true"><span style="width: {{ [100, (e.filled * 100 / e.staff_needed)|round]|min }}%"></span></div>
+                {% if e.notes %}<p class="td-staff-notes">{{ e.notes }}</p>{% endif %}
+
+                <div class="td-staff-reps">
+                    {% for person in e.staff %}
+                    {% set kind, person_id = person.key.split(':') %}
+                    <span class="td-staff-rep{{ ' td-staff-rep--me' if person.key == my_staff_key else '' }}">
+                        {{ person.name }}{% if person.key == my_staff_key %} (you){% endif %}
+                        {% if is_admin %}
+                        <form method="post" action="{{ url_for('staffing_event_leave', event_id=e.id) }}">
+                            <input type="hidden" name="{{ 'sales_rep_id' if kind == 'rep' else 'staff_user_id' }}" value="{{ person_id }}">
+                            <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
+                            <button type="submit" class="td-staff-x" aria-label="Remove {{ person.name }}">&times;</button>
+                        </form>
+                        {% endif %}
+                    </span>
+                    {% else %}
+                    <span class="td-admin-muted">No one yet{{ ' — be the first' if not day.is_past else '' }}.</span>
+                    {% endfor %}
+                    {% if e.open_spots and e.staff %}<span class="td-admin-muted">{{ e.open_spots }} spot{{ '' if e.open_spots == 1 else 's' }} open</span>{% endif %}
+                </div>
+
+                <div class="td-staff-actions">
+                    {% if not day.is_past %}
+                    <form method="post" action="{{ url_for('staffing_event_leave' if mine else 'staffing_event_signup', event_id=e.id) }}">
+                        <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
+                        {% if mine %}
+                        <button type="submit" class="td-btn">Leave event</button>
+                        {% else %}
+                        <button type="submit" class="td-btn td-btn-primary">{{ 'Sign me up' if e.open_spots else 'Sign me up anyway' }}</button>
+                        {% endif %}
+                    </form>
+                    {% endif %}
+                    {% if is_admin %}
+                    {% if not day.is_past %}
+                    <form method="post" action="{{ url_for('staffing_event_signup', event_id=e.id) }}" class="td-staff-inline-form">
+                        <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
+                        {{ rep_select(include_blank=false, label='Rep to add') }}
+                        <button type="submit" class="td-btn">Add rep</button>
+                    </form>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('staffing_delete_event', event_id=e.id) }}" data-confirm-twice>
+                        <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
+                        <button type="submit" class="td-btn td-btn-ghost">Delete event</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <p class="td-empty">No events on this day.</p>
+            {% endfor %}
+
+            <h4 class="td-staff-subhead">Door-knocking shifts</h4>
+            {% for s in day.shifts %}
+            <div class="td-staff-shift">
+                <div>
+                    <strong class="{{ 'td-cyan' if s.rep_id == my_rep_id else '' }}">{{ s.rep_name }}</strong>
+                    <div class="td-staff-meta"><span>{{ s.area }}</span></div>
+                    {% if s.notes %}<p class="td-staff-notes">{{ s.notes }}</p>{% endif %}
+                </div>
+                {% if is_admin or (s.rep_id == my_rep_id and not day.is_past) %}
+                <form method="post" action="{{ url_for('staffing_delete_shift', shift_id=s.id) }}" data-confirm-twice>
+                    <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
+                    <button type="submit" class="td-btn td-btn-ghost">Remove</button>
+                </form>
+                {% endif %}
+            </div>
+            {% else %}
+            <p class="td-empty">No one is door knocking this day yet.</p>
+            {% endfor %}
+
+            {% if (can_staff_self or is_admin) and not day.is_past %}
+            <details class="td-staff-form-card" {{ 'open' if not day.shifts and can_staff_self else '' }}>
+                <summary>+ Add a door-knocking shift</summary>
+                <form method="post" action="{{ url_for('staffing_add_shift') }}" class="td-staff-form">
+                    {% if is_admin %}
+                    <label>Rep {{ rep_select(include_blank=can_staff_self) }}</label>
+                    {% endif %}
+                    <label>Date <input type="date" name="shift_date" class="td-date-input" value="{{ day.date.isoformat() }}" min="{{ today.isoformat() }}" required></label>
+                    <label>Area <input type="text" name="area" class="td-search-input" maxlength="200" placeholder="Town or neighborhood(s), e.g. Hoboken – uptown" required></label>
+                    <label>Notes <textarea name="notes" class="td-search-input" rows="2" maxlength="1000" placeholder="Optional"></textarea></label>
+                    <button type="submit" class="td-btn td-btn-primary">Add shift</button>
+                </form>
+            </details>
+            {% endif %}
+
+            {% if is_admin and not day.is_past %}
+            <details class="td-staff-form-card">
+                <summary>+ Post an event that needs staffing</summary>
+                <form method="post" action="{{ url_for('staffing_create_event') }}" class="td-staff-form">
+                    <label>Title <input type="text" name="title" class="td-search-input" maxlength="200" placeholder="e.g. Hoboken Fall Festival booth" required></label>
+                    <label>Date <input type="date" name="event_date" class="td-date-input" value="{{ day.date.isoformat() }}" min="{{ today.isoformat() }}" required></label>
+                    <div class="td-staff-form-row">
+                        <label>Start <input type="time" name="start_time" class="td-date-input"></label>
+                        <label>End <input type="time" name="end_time" class="td-date-input"></label>
+                        <label>Reps needed <input type="number" name="staff_needed" class="td-date-input" min="1" max="100" value="2" required></label>
+                    </div>
+                    <label>Location <input type="text" name="location" class="td-search-input" maxlength="200" placeholder="Optional"></label>
+                    <label>Notes <textarea name="notes" class="td-search-input" rows="2" maxlength="1000" placeholder="What reps should know or bring"></textarea></label>
+                    <button type="submit" class="td-btn td-btn-primary">Post event</button>
+                </form>
+            </details>
+            {% endif %}
+        </aside>
+    </div>
+
+    <!-- ================= Still needs reps ================= -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Still Needs Reps</h2>
+            <span class="td-muted-inline">Upcoming events with open spots</span>
+        </div>
+        <div class="td-staff-open-list">
+            {% for e in cal.open_events %}
+            <div class="td-staff-open">
+                <a class="td-staff-open-link" href="{{ event_url(e) }}">
+                    <span class="td-staff-open-date">{{ e.date.strftime('%a %b %-d') }}</span>
+                    <strong>{{ e.title }}</strong>
+                    <span class="td-admin-muted">{{ e.time_display }}{% if e.time_display and e.location %} · {% endif %}{{ e.location or '' }}</span>
+                </a>
+                <div class="td-staff-open-foot">
+                    <span class="td-orange td-staff-fill">{{ e.open_spots }} spot{{ '' if e.open_spots == 1 else 's' }} open</span>
+                    {% if my_staff_key in e.staff_keys %}
+                    <span class="td-pill td-pill-active">You're on it</span>
+                    {% else %}
+                    <form method="post" action="{{ url_for('staffing_event_signup', event_id=e.id) }}">
+                        <input type="hidden" name="return_day" value="{{ e.date.isoformat() }}">
+                        <button type="submit" class="td-btn td-btn-primary">Sign me up</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <p class="td-empty">Every upcoming event is fully staffed.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+</body>
+</html>

@@ -173,3 +173,173 @@ WHERE
     vp.reportable_gpon = true
     AND vsp.first_invoice_date IS NOT NULL
 """
+
+# External Rep Sales (Admin Portal > External Rep Sales). Adapted verbatim
+# from Refresh_Main() in the original VBA workbook -- the referral codes
+# and excluded order IDs below are the source of truth; don't edit them
+# without the business confirming the change. Synced into appdb by
+# external_sales_store.py, never queried per page load.
+EXTERNAL_REP_SALES_QUERY = """
+SELECT
+    fd.[ID],
+    rates.SpeedUp AS Speed,
+    fd.[FirstName],
+    fd.[LastName],
+    fd.[EmailAddress],
+    fd.[Address],
+    fd.[ApartmentSuite],
+    fd.[City],
+    fd.[State],
+    fd.[Zipcode],
+    fd.[ReferralData],
+    CAST(fd.InsertDate AS date) AS Date,
+    fd.Q1,
+    fd.[PhoneNumber],
+    fd.[NJPR_municipalityName] AS Municipality,
+    fd.Cc_PayBy,
+    fd.[vi_subscriber_id],
+    fd.[vi_subscriber_uuid],
+
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM FTTPFormDataItems items
+            JOIN FTTPRates r2
+                ON r2.ID = items.RateID
+            WHERE items.FormDataID = fd.ID
+              AND r2.ServiceName LIKE '%Voice%'
+        )
+        THEN CAST(1 AS bit)
+        ELSE CAST(0 AS bit)
+    END AS Voice,
+
+    CASE
+        WHEN sched.SlotID IS NULL
+            THEN 'Not Scheduled'
+        ELSE 'Scheduled'
+    END AS Scheduled,
+
+    sched.StartDate
+
+FROM [PlanetWeb].[dbo].[FTTPFormData] fd
+
+JOIN FTTPRates rates
+    ON rates.ID = fd.RateID
+
+OUTER APPLY (
+    SELECT TOP 1
+        jobs.SlotID,
+        slots.StartDate
+    FROM FTTPScheduleJobs jobs
+    LEFT JOIN FTTPScheduleSlots slots
+        ON slots.ID = jobs.SlotID
+    WHERE jobs.FormDataID = fd.ID
+    ORDER BY
+        slots.StartDate DESC,
+        jobs.ID DESC
+) sched
+
+WHERE fd.QuoteID IS NOT NULL
+
+AND fd.ReferralData IN (
+    'mritchie',
+    'dpond',
+    'bthompson',
+    'agarcia',
+    'jberg',
+    'tnofsinger',
+    'jsmallwood',
+    'pleland',
+    'jsherrow',
+    'jmcglothlin',
+    'avicari',
+    'nsvinth',
+    'amcglothlin',
+    'mfritz',
+    'pnielson',
+    'jkamp',
+    'lwilliamson',
+    'mfontana',
+    'ccovington',
+    'ccarman',
+    'jtownsend',
+    'smaloney',
+    'obrown',
+    'jsunstrum',
+    'bdavis',
+    'dharacic',
+    'eharacic',
+    'jmortensen',
+    'dthompson',
+    'msanchez',
+    'jkenny',
+    'llopez',
+    'jescobar',
+    'myoung',
+    'csessions',
+    'cvest',
+    'amorgan',
+    'iprice',
+    'ljackson',
+    'asharber',
+    'jjamison',
+    'mbustamante',
+    'sbustamante',
+    'twells',
+    'bstevens',
+    'jsparks',
+    'lbrossard',
+    'ehendricks',
+    'efreeman',
+    'plavender',
+    'psadoyama',
+    'broskelley',
+    'jcampbell',
+    'acampbell',
+    'clyman',
+    'etarr',
+    'pwabel',
+    'bdufur',
+    'ndavis',
+    'djones',
+    'lfurrow',
+    'ttaylor',
+    'repperson',
+    'bmickelsen',
+    'hseats',
+    'oreed',
+    'dbechtol',
+    'tplacencio',
+    'mmartinez',
+    'wmortensen',
+    'taldridge',
+    'mlavender',
+    'pstolley',
+    'clebaron',
+    'kshamy',
+    'hchecketts',
+    'mwagner',
+    'gbaldauf',
+    'dwagner',
+    'jtinney',
+    'plee',
+    'hbranam',
+    'kfredekind',
+    'mastle',
+    'dhardy',
+    'jcaudillo',
+    'mastle2',
+    'ethompson',
+    'thill',
+    'ttah',
+    'joakley'
+)
+
+AND fd.ID NOT IN (
+    '201443',
+    '203769',
+    '214436'
+)
+
+ORDER BY fd.ID ASC
+"""

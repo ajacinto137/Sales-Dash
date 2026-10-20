@@ -41,6 +41,10 @@
              Dashboard/Marketing Dashboard above -- see README.md
              "Passings & Leads" for the permissions extension point. -->
         <a class="{{ 'td-topnav-active' if active_page == 'passings' else '' }}" href="{{ url_for('passings_page') }}">Passings &amp; Leads</a>
+        <!-- Staffing (added 2026-10-20) -- events that need reps + reps'
+             own door-knocking shifts (staffing_store.py). Login-gated;
+             who may post/sign up is decided server-side. -->
+        <a class="{{ 'td-topnav-active' if active_page == 'staffing' else '' }}" href="{{ url_for('staffing_page') }}">Staffing</a>
         <!-- My Profile (added 2026-10-12) -- the logged-in user's own
              Individual Sales Profile, via the sales rep linked to their
              account (users.sales_rep_id -> sales_rep_name). Hidden for

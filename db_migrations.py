@@ -347,6 +347,223 @@ MIGRATIONS = [
         UPDATE hubspot_sync_state SET initial_sync_completed_at = NULL WHERE id = 1;
         """,
     ),
+    (
+        8,
+        "external_rep_sales, external_organizations, external_reps, external_sales_sync_state/runs (External Rep Sales, 2026-10-20)",
+        """
+        -- Snapshot of queries.EXTERNAL_REP_SALES_QUERY (PlanetWeb), synced
+        -- by external_sales_store.py. order_id is PlanetWeb's own
+        -- FTTPFormData.ID, never renumbered. Rows are never deleted: one
+        -- that a SUCCESSFUL full refresh no longer returns is flagged
+        -- in_source = false (removed_from_source_at set) and hidden by
+        -- default, and comes back to in_source = true if it reappears.
+        -- installation_date is the slot's StartDate as stored in
+        -- PlanetWeb (naive Eastern local time, like every other
+        -- PlanetWeb datetime in this app).
+        CREATE TABLE IF NOT EXISTS external_rep_sales (
+            order_id BIGINT PRIMARY KEY,
+            package_speed INTEGER,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            address TEXT,
+            apartment_suite TEXT,
+            city TEXT,
+            state TEXT,
+            zipcode TEXT,
+            referral_code TEXT,
+            sale_date DATE,
+            q1 TEXT,
+            phone_number TEXT,
+            municipality TEXT,
+            payment_method TEXT,
+            subscriber_id TEXT,
+            subscriber_uuid TEXT,
+            voice BOOLEAN NOT NULL DEFAULT false,
+            scheduled_status TEXT,
+            installation_date TIMESTAMP,
+            in_source BOOLEAN NOT NULL DEFAULT true,
+            first_synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            removed_from_source_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS idx_external_rep_sales_sale_date
+            ON external_rep_sales (sale_date DESC, order_id DESC);
+        CREATE INDEX IF NOT EXISTS idx_external_rep_sales_referral_code
+            ON external_rep_sales (referral_code, sale_date);
+
+        -- The external companies door-to-door reps sell for.
+        CREATE TABLE IF NOT EXISTS external_organizations (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            active BOOLEAN NOT NULL DEFAULT true,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- One row per REFERRAL CODE (ReferralData), auto-created the
+        -- first time a code shows up in synced sales so no code's sales
+        -- are ever unattributed. A code is NOT a person: several codes
+        -- can belong to one rep (e.g. mastle / mastle2 -- give them the
+        -- same rep_email/dashboard_user_id), and a code can be left
+        -- with no rep at all. Unmapped = rep_name/organization_id NULL.
+        --
+        -- Groundwork for the future external dashboard (not built yet):
+        -- an External Sales Rep will see sales whose referral_code maps
+        -- to their dashboard_user_id; an External Sales Manager will see
+        -- codes whose manager_user_id is theirs (manager_name/email
+        -- record the manager before they have a login). Neither role
+        -- exists in user_store.ROLES yet.
+        CREATE TABLE IF NOT EXISTS external_reps (
+            id SERIAL PRIMARY KEY,
+            referral_code TEXT NOT NULL UNIQUE,
+            rep_name TEXT,
+            rep_email TEXT,
+            organization_id INTEGER REFERENCES external_organizations(id),
+            manager_name TEXT,
+            manager_email TEXT,
+            manager_user_id INTEGER REFERENCES users(id),
+            dashboard_user_id INTEGER REFERENCES users(id),
+            active BOOLEAN NOT NULL DEFAULT true,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_by INTEGER REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_external_reps_dashboard_user_id
+            ON external_reps (dashboard_user_id);
+        CREATE INDEX IF NOT EXISTS idx_external_reps_manager_user_id
+            ON external_reps (manager_user_id);
+        CREATE INDEX IF NOT EXISTS idx_external_reps_organization_id
+            ON external_reps (organization_id);
+
+        -- Single-row (id = 1) sync state, same shape as hubspot_sync_state.
+        CREATE TABLE IF NOT EXISTS external_sales_sync_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_success_at TIMESTAMPTZ,
+            last_attempt_at TIMESTAMPTZ,
+            last_error TEXT,
+            connection_ok BOOLEAN,
+            source_row_count INTEGER
+        );
+        INSERT INTO external_sales_sync_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+        CREATE TABLE IF NOT EXISTS external_sales_sync_runs (
+            id SERIAL PRIMARY KEY,
+            trigger TEXT NOT NULL,
+            status TEXT NOT NULL,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            finished_at TIMESTAMPTZ,
+            rows_fetched INTEGER,
+            new_rows INTEGER NOT NULL DEFAULT 0,
+            updated_rows INTEGER NOT NULL DEFAULT 0,
+            removed_rows INTEGER NOT NULL DEFAULT 0,
+            restored_rows INTEGER NOT NULL DEFAULT 0,
+            warning TEXT,
+            error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_external_sales_sync_runs_started_at
+            ON external_sales_sync_runs (started_at DESC);
+        """,
+    ),
+    (
+        9,
+        "staffing_events, staffing_event_signups, door_knock_shifts (Staffing calendar, 2026-10-20)",
+        """
+        -- Staffing calendar (staffing_store.py, /staffing). Dates/times
+        -- are Eastern wall-clock values (DATE + TIME, no time zone) --
+        -- "Saturday 10:00-14:00" means that locally, whatever the server
+        -- clock says.
+        --
+        -- An event an Admin posts that needs reps (a community day, a
+        -- grand opening...). staff_needed is how many reps it wants;
+        -- sign-ups beyond that are still allowed and shown as over-staffed.
+        CREATE TABLE IF NOT EXISTS staffing_events (
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            event_date DATE NOT NULL,
+            start_time TIME,
+            end_time TIME,
+            location TEXT,
+            notes TEXT,
+            staff_needed INTEGER NOT NULL DEFAULT 1 CHECK (staff_needed > 0),
+            created_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_staffing_events_event_date ON staffing_events (event_date);
+
+        -- Keyed by sales_reps (not users), same as everything else a rep
+        -- "owns" -- a rep is on an event at most once.
+        CREATE TABLE IF NOT EXISTS staffing_event_signups (
+            id SERIAL PRIMARY KEY,
+            event_id INTEGER NOT NULL REFERENCES staffing_events(id) ON DELETE CASCADE,
+            sales_rep_id INTEGER NOT NULL REFERENCES sales_reps(id),
+            created_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (event_id, sales_rep_id)
+        );
+
+        -- A rep's own door-knocking shift. Overlapping shifts for the
+        -- same rep are rejected in staffing_store.add_shift().
+        CREATE TABLE IF NOT EXISTS door_knock_shifts (
+            id SERIAL PRIMARY KEY,
+            sales_rep_id INTEGER NOT NULL REFERENCES sales_reps(id),
+            shift_date DATE NOT NULL,
+            start_time TIME NOT NULL,
+            end_time TIME NOT NULL CHECK (end_time > start_time),
+            area TEXT NOT NULL,
+            notes TEXT,
+            created_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_door_knock_shifts_date ON door_knock_shifts (shift_date);
+        CREATE INDEX IF NOT EXISTS idx_door_knock_shifts_rep_date ON door_knock_shifts (sales_rep_id, shift_date);
+        """,
+    ),
+    (
+        10,
+        "staffing_event_signups.staff_user_id (anyone logged in can staff an event, 2026-10-20)",
+        """
+        -- Event sign-ups were rep-only; an account with no linked sales
+        -- rep (an Admin, a manager, Customer Success) can now staff an
+        -- event as itself. Exactly one of sales_rep_id / staff_user_id
+        -- identifies who is staffing (linked accounts keep signing up as
+        -- their rep, so a rep's history stays on the rep).
+        ALTER TABLE staffing_event_signups ALTER COLUMN sales_rep_id DROP NOT NULL;
+        ALTER TABLE staffing_event_signups ADD COLUMN IF NOT EXISTS staff_user_id INTEGER REFERENCES users(id);
+        ALTER TABLE staffing_event_signups DROP CONSTRAINT IF EXISTS staffing_event_signups_one_person;
+        ALTER TABLE staffing_event_signups ADD CONSTRAINT staffing_event_signups_one_person
+            CHECK ((sales_rep_id IS NULL) <> (staff_user_id IS NULL));
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_staffing_event_signups_user
+            ON staffing_event_signups (event_id, staff_user_id) WHERE staff_user_id IS NOT NULL;
+        """,
+    ),
+    (
+        11,
+        "door_knock_shifts: drop start/end time, one shift per rep per day (2026-10-20)",
+        """
+        -- By request: a door-knocking shift is just a day + area, no
+        -- times. Without times there's nothing to overlap, so a rep has
+        -- at most one shift per day (list several neighborhoods in
+        -- `area`). Any same-day duplicates from the short-lived timed
+        -- version are merged into the earliest row first.
+        UPDATE door_knock_shifts k SET area = merged.areas
+        FROM (
+            SELECT min(id) AS keep_id, string_agg(area, ', ' ORDER BY start_time, id) AS areas
+            FROM door_knock_shifts GROUP BY sales_rep_id, shift_date HAVING count(*) > 1
+        ) merged
+        WHERE k.id = merged.keep_id;
+        DELETE FROM door_knock_shifts k USING door_knock_shifts keep
+        WHERE k.sales_rep_id = keep.sales_rep_id AND k.shift_date = keep.shift_date AND k.id > keep.id;
+
+        ALTER TABLE door_knock_shifts DROP COLUMN IF EXISTS start_time;
+        ALTER TABLE door_knock_shifts DROP COLUMN IF EXISTS end_time;
+        DROP INDEX IF EXISTS idx_door_knock_shifts_rep_date;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_door_knock_shifts_rep_date
+            ON door_knock_shifts (sales_rep_id, shift_date);
+        """,
+    ),
 ]
 
 _schema_ready = False

@@ -1,17 +1,21 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import os
 import threading
 import time
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from flask import Flask, abort, g, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Flask, Response, abort, flash, g, jsonify, redirect, render_template, request, session, stream_with_context,
+    url_for,
+)
 
 import app_secrets
 import attention_store
 import auth
 import db
 import email_service
+import external_sales_store
 import hubspot_client
 import hubspot_logic
 import hubspot_store
@@ -24,6 +28,7 @@ import passings_activity_store
 import passings_classification
 import passings_data
 import permissions
+import staffing_store
 import user_store
 from queries import (
     MAIN_SALES_QUERY,
@@ -504,6 +509,9 @@ def ensure_data_loaded():
     # doesn't run every sync twice. (gunicorn/prod never sets this up.)
     if not (_debug_enabled() and os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
         hubspot_store.start_scheduler()
+        # External Rep Sales: PlanetWeb -> appdb every
+        # EXTERNAL_SALES_SYNC_INTERVAL_SECONDS (default 5 min).
+        external_sales_store.start_scheduler()
     if not _initial_load_done:
         load_all_data()
 
@@ -1870,6 +1878,131 @@ def passings_log_activity():
     })
 
 
+# ================================================================
+# Staffing calendar -- events that need reps + door-knocking shifts
+# ================================================================
+
+def _staffing_redirect(day=None, event_id=None):
+    """Back to the calendar on the day (and event) just acted on."""
+    day = day or staffing_store._parse_date(request.form.get("return_day")) or _today()
+    url = url_for("staffing_page", month=day.strftime("%Y-%m"), day=day.isoformat(), event=event_id)
+    return redirect(url + (f"#event-{event_id}" if event_id else ""))
+
+
+def _staffing_result(ok, error, success_message, event_id=None):
+    flash(success_message if ok else error, "ok" if ok else "error")
+    return _staffing_redirect(event_id=event_id)
+
+
+@app.route("/staffing")
+@auth.login_required
+def staffing_page():
+    """Month calendar of staffing events (Admins post, reps sign up) and
+    reps' own door-knocking shifts. ?month=YYYY-MM picks the month,
+    ?day=YYYY-MM-DD the day shown in the detail panel (defaults to the
+    next Saturday if it's in view, else today / the 1st), ?event=<id>
+    the event to highlight there and preselect in "Staff an event"."""
+    today = _today()
+    try:
+        year, month = (int(x) for x in request.args.get("month", "").split("-"))
+        date(year, month, 1)
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    selected = staffing_store._parse_date(request.args.get("day"))
+    if selected is None or (selected.year, selected.month) != (year, month):
+        next_saturday = today + timedelta(days=(5 - today.weekday()) % 7)
+        if (next_saturday.year, next_saturday.month) == (year, month):
+            selected = next_saturday
+        elif (today.year, today.month) == (year, month):
+            selected = today
+        else:
+            selected = date(year, month, 1)
+
+    user = auth.current_user()
+    is_admin = permissions.can_manage_staffing(user)
+    cal = staffing_store.get_calendar(year, month, selected, today)
+    my_staff_key = staffing_store.staff_key(user)
+    return render_template(
+        "staffing.html",
+        active_page="staffing",
+        cal=cal,
+        joinable=[e for e in cal["upcoming_events"] if my_staff_key not in e["staff_keys"]],
+        my_events=[e for e in cal["upcoming_events"] if my_staff_key in e["staff_keys"]],
+        today=today,
+        is_admin=is_admin,
+        can_staff_self=permissions.can_staff_self(user),
+        my_rep_id=user.get("sales_rep_id"),
+        my_staff_key=my_staff_key,
+        selected_event=request.args.get("event", type=int),
+        sales_reps=user_store.list_sales_reps() if is_admin else [],
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/staffing/events", methods=["POST"])
+@auth.login_required
+def staffing_create_event():
+    ok, error = staffing_store.create_event(request.form, auth.current_user(), _today())
+    flash("Event posted." if ok else error, "ok" if ok else "error")
+    day = staffing_store._parse_date(request.form.get("event_date")) if ok else None
+    return _staffing_redirect(day)
+
+
+@app.route("/staffing/events/<int:event_id>/delete", methods=["POST"])
+@auth.login_required
+def staffing_delete_event(event_id):
+    ok, error = staffing_store.delete_event(event_id, auth.current_user())
+    return _staffing_result(ok, error, "Event removed.")
+
+
+@app.route("/staffing/events/<int:event_id>/signup", methods=["POST"])
+@auth.login_required
+def staffing_event_signup(event_id):
+    ok, error = staffing_store.sign_up(event_id, request.form, auth.current_user(), _today())
+    return _staffing_result(ok, error, "Signed up -- see you there.", event_id)
+
+
+@app.route("/staffing/events/signup", methods=["POST"])
+@auth.login_required
+def staffing_signup_picked():
+    """The "Staff an event" picker: event chosen from a dropdown rather
+    than a day's event card. Lands on that event's day afterwards."""
+    event_id = request.form.get("event_id", type=int)
+    if not event_id:
+        flash("Choose an event to staff.", "error")
+        return _staffing_redirect()
+    ok, error = staffing_store.sign_up(event_id, request.form, auth.current_user(), _today())
+    flash("Signed up -- see you there." if ok else error, "ok" if ok else "error")
+    day = staffing_store.get_event_date(event_id)
+    if day is None:
+        return _staffing_redirect()
+    return redirect(url_for("staffing_page", month=day.strftime("%Y-%m"), day=day.isoformat(), event=event_id)
+                    + f"#event-{event_id}")
+
+
+@app.route("/staffing/events/<int:event_id>/leave", methods=["POST"])
+@auth.login_required
+def staffing_event_leave(event_id):
+    ok, error = staffing_store.leave_event(event_id, request.form, auth.current_user(), _today())
+    return _staffing_result(ok, error, "Removed from the event.", event_id)
+
+
+@app.route("/staffing/shifts", methods=["POST"])
+@auth.login_required
+def staffing_add_shift():
+    ok, error = staffing_store.add_shift(request.form, auth.current_user(), _today())
+    flash("Door-knocking shift added." if ok else error, "ok" if ok else "error")
+    day = staffing_store._parse_date(request.form.get("shift_date")) if ok else None
+    return _staffing_redirect(day)
+
+
+@app.route("/staffing/shifts/<int:shift_id>/delete", methods=["POST"])
+@auth.login_required
+def staffing_delete_shift(shift_id):
+    ok, error = staffing_store.delete_shift(shift_id, auth.current_user(), _today())
+    return _staffing_result(ok, error, "Shift removed.")
+
+
 @app.route("/cancellations")
 @auth.admin_required
 def cancellations_page():
@@ -2420,6 +2553,113 @@ def admin_passings_data():
         passings_last_refreshed=datetime.now(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z"),
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+# ================================================================
+# ADMIN -- External Rep Sales
+# ================================================================
+
+def _external_sales_status_json(status):
+    state = status.get("state") or {}
+    run = status.get("latest_run")
+    return {
+        "available": status["available"],
+        "connection_ok": state.get("connection_ok"),
+        "last_success_at": _iso(state.get("last_success_at")),
+        "last_attempt_at": _iso(state.get("last_attempt_at")),
+        "last_error": state.get("last_error"),
+        "in_source_total": status["in_source_total"],
+        "latest_run": {**run, "started_at": _iso(run["started_at"]), "finished_at": _iso(run["finished_at"])} if run else None,
+    }
+
+
+@app.route("/admin/external-rep-sales")
+@auth.admin_required
+def admin_external_rep_sales():
+    """Admin-only. Sales made under external door-to-door referral codes,
+    synced from PlanetWeb into appdb by external_sales_store.py (the page
+    itself never queries PlanetWeb). view=mapping shows the referral code
+    -> rep/organization/manager mapping instead of the sales table."""
+    view = "mapping" if request.args.get("view") == "mapping" else "sales"
+    status = external_sales_store.get_status()
+    context = {
+        "active_page": "admin_external_rep_sales",
+        "view": view,
+        "status": status,
+        "last_refreshed": data_store["last_refreshed"],
+    }
+    if view == "mapping":
+        context.update(
+            mappings=external_sales_store.list_rep_mappings(),
+            organizations=external_sales_store.get_filter_options()["organizations"],
+            users=[u for u in user_store.list_users() if u.get("status") != "disabled"],
+        )
+    else:
+        filters = external_sales_store.parse_filters(request.args)
+        today = _today()
+        context.update(
+            filters=filters,
+            result=external_sales_store.query_sales(filters),
+            filter_options=external_sales_store.get_filter_options(),
+            columns=external_sales_store.COLUMNS,
+            page_size_options=external_sales_store.PAGE_SIZE_OPTIONS,
+            unmapped_org=external_sales_store.UNMAPPED_ORG,
+            date_presets=[
+                ("Month to Date", today.replace(day=1), today),
+                ("Last 30 Days", today - timedelta(days=29), today),
+                ("Year to Date", today.replace(month=1, day=1), today),
+            ],
+        )
+    return render_template("admin/external_rep_sales.html", **context)
+
+
+@app.route("/admin/external-rep-sales/export.csv")
+@auth.admin_required
+def admin_external_rep_sales_export():
+    """Every row matching the page's current filters (not just the visible
+    page). Contains customer PII -- admin-only, never cached, and logged."""
+    filters = external_sales_store.parse_filters(request.args)
+    try:
+        chunks = external_sales_store.iter_export_csv(filters)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Export failed: {db.sanitize_error(exc)}"}), 503
+    user = auth.current_user()
+    applied = {k: str(v) for k, v in filters.items() if v and k not in ("page", "per_page", "sort", "dir")}
+    print(f"[external-sales] CSV export by {user['email']} (filters: {applied or 'none'})")
+    filename = f"external_rep_sales_{_today().isoformat()}.csv"
+    return Response(
+        stream_with_context(chunks),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.route("/admin/external-rep-sales/status")
+@auth.admin_required
+def admin_external_rep_sales_status():
+    return jsonify({"ok": True, **_external_sales_status_json(external_sales_store.get_status())})
+
+
+@app.route("/admin/external-rep-sales/sync", methods=["POST"])
+@auth.admin_required
+def admin_external_rep_sales_sync():
+    started, error = external_sales_store.start_sync_in_background("manual")
+    if not started:
+        return jsonify({"ok": False, "error": error}), 409
+    print(f"[external-sales] Manual refresh requested by {auth.current_user()['email']}")
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/external-rep-sales/reps/<int:rep_id>", methods=["POST"])
+@auth.admin_required
+def admin_external_rep_update(rep_id):
+    ok, error = external_sales_store.update_rep_mapping(rep_id, request.form, auth.current_user()["id"])
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
 
 
 # ================================================================

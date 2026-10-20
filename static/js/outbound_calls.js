@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", function () {
         start: "",
         end: "",
         scale: "auto",
-        chartType: "bar",
+        chartType: "line",  // default by request, 2026-10-20 (was bar)
         series: [],
         history: { page: 1, outcome: "", order: "desc", loadedFor: null },
     };

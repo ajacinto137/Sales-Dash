@@ -26,6 +26,24 @@ def can_access_admin_portal(user):
     return is_admin(user)
 
 
+def can_manage_staffing(user):
+    """Staffing calendar: post/remove events, and sign up or remove any
+    rep (staffing_store.py)."""
+    return bool(user) and user.get("status") == "active" and user.get("role") == ROLE_ADMIN
+
+
+def can_join_events(user):
+    """Staffing calendar: sign yourself up for an event -- any active
+    account (as its linked rep, or as itself if it has none)."""
+    return bool(user) and user.get("status") == "active"
+
+
+def can_staff_self(user):
+    """Staffing calendar: add your own door-knocking shifts -- any active
+    account linked to a sales rep."""
+    return bool(user) and user.get("status") == "active" and bool(user.get("sales_rep_id"))
+
+
 def can_view_call_history(user, rep_name):
     """Individual HubSpot call records (dialed numbers, outcomes) on a Rep
     Profile's Outbound Call History: Admins, or the rep viewing their own

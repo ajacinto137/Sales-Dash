@@ -244,7 +244,7 @@ DATE_RANGES = [
     ("custom", "Custom Date Range"),
 ]
 DATE_RANGE_KEYS = {key for key, _ in DATE_RANGES}
-DEFAULT_DATE_RANGE = "last_30_days"
+DEFAULT_DATE_RANGE = "today"  # by request, 2026-10-20 (was Last 30 Days)
 MAX_CUSTOM_RANGE_DAYS = 366 * 10
 
 

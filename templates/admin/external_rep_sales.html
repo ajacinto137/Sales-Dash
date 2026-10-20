@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>External Rep Sales — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/admin_external_rep_sales.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{% macro ts(dt) -%}
+{{ dt|eastern_ts if dt else '—' }}
+{%- endmacro %}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    {% include "_admin_nav.html" %}
+
+    <!-- External Rep Sales (added 2026-10-20) -- sales under external
+         door-to-door referral codes. PlanetWeb's EXTERNAL_REP_SALES_QUERY
+         (queries.py) is synced into appdb by external_sales_store.py; this
+         page only reads appdb. Admin-only: every /admin/external-rep-sales
+         route is @auth.admin_required. See README.md "External Rep Sales". -->
+    {% set state = status.state or {} %}
+    {% set run = status.latest_run %}
+    <section class="td-section" id="external-rep-sales"
+             data-latest-run-id="{{ run.id if run else 0 }}"
+             data-latest-run-status="{{ run.status if run else '' }}">
+        <div class="td-section-heading td-ext-heading">
+            <h2>External Rep Sales</h2>
+            <span class="td-muted-inline">Synced from PlanetWeb every {{ status.sync_interval_display }}</span>
+            <div class="td-chart-toggle td-ext-view-toggle" role="tablist">
+                <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if view == 'sales' else '' }}" href="{{ url_for('admin_external_rep_sales') }}">Sales</a>
+                <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if view == 'mapping' else '' }}" href="{{ url_for('admin_external_rep_sales', view='mapping') }}">
+                    Rep Mapping{% if status.codes_unmapped %} <span class="td-ext-count">{{ status.codes_unmapped }}</span>{% endif %}
+                </a>
+            </div>
+        </div>
+
+        {% if not status.available %}
+        <section class="td-error-panel">
+            <div class="td-error-panel-title">The app database is unreachable</div>
+            <p class="td-error-panel-message">{{ status.error or "See the container logs for details." }}</p>
+        </section>
+        {% endif %}
+
+        <div class="td-ext-sync">
+            <div class="td-ext-sync-item">
+                <span class="td-kpi-label">Source</span>
+                <span class="td-ext-sync-value" data-ext="connection">
+                    {% if state.connection_ok %}<span class="td-green">Connected</span>
+                    {% elif state.connection_ok == false %}<span class="td-orange">Connection Error</span>
+                    {% else %}<span class="td-text-secondary">Not synced yet</span>{% endif %}
+                </span>
+                <span class="td-kpi-note">PlanetWeb SQL Server</span>
+            </div>
+            <div class="td-ext-sync-item">
+                <span class="td-kpi-label">Last Successful Refresh</span>
+                <span class="td-ext-sync-value td-cyan" data-ext="last_success_at">{{ ts(state.last_success_at) }}</span>
+                <span class="td-kpi-note" data-ext="last_attempt">{% if state.last_attempt_at %}Last attempt {{ ts(state.last_attempt_at) }}{% endif %}</span>
+            </div>
+            <div class="td-ext-sync-item">
+                <span class="td-kpi-label">Orders in Source</span>
+                <span class="td-ext-sync-value td-purple" data-ext="in_source_total">{{ "{:,}".format(status.in_source_total) }}</span>
+                <span class="td-kpi-note">
+                    {% if status.removed_total %}+ {{ "{:,}".format(status.removed_total) }} kept that the query no longer returns{% else %}every stored order is still returned by the query{% endif %}
+                </span>
+            </div>
+            <div class="td-ext-sync-actions">
+                <button type="button" class="td-btn td-btn-primary" data-ext-sync>Refresh Data</button>
+                <span class="td-admin-save-status" data-ext-sync-status style="display:none;"></span>
+            </div>
+        </div>
+        <div class="td-calls-notice td-calls-notice--warn" data-ext-error style="{{ '' if state.last_error else 'display:none;' }}">
+            Last refresh failed: <span data-ext="last_error">{{ state.last_error or '' }}</span>{% if state.last_success_at %} Showing data from the last successful refresh.{% endif %}
+        </div>
+        {% if run and run.status == 'success' and run.warning %}
+        <div class="td-calls-notice td-calls-notice--warn">{{ run.warning }}</div>
+        {% endif %}
+    </section>
+
+    {% if view == 'sales' %}
+    {% set args = request.args.to_dict() %}
+    {% set s = result.summary %}
+
+    <section class="td-kpi-bar td-ext-kpis">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Total Sales</span>
+            <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(s.total_sales) if s else '—' }}</span>
+            <span class="td-kpi-note">
+                {% if s and s.earliest %}{{ s.earliest.strftime('%-m/%-d/%Y') }} – {{ s.latest.strftime('%-m/%-d/%Y') }}{% else %}unique order IDs{% endif %}
+            </span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Active External Reps</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(s.active_reps) if s else '—' }}</span>
+            <span class="td-kpi-note">referral codes with a sale</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Scheduled Orders</span>
+            <span class="td-kpi-value td-green">{{ "{:,}".format(s.scheduled) if s else '—' }}</span>
+            <span class="td-kpi-note">{% if s and s.scheduled_rate is not none %}{{ "%.1f"|format(s.scheduled_rate) }}% of orders{% else %}&nbsp;{% endif %}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Unscheduled Orders</span>
+            <span class="td-kpi-value td-orange">{{ "{:,}".format(s.unscheduled) if s else '—' }}</span>
+            <span class="td-kpi-note">no install slot booked</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Voice Attach Rate</span>
+            <span class="td-kpi-value td-purple">{{ ("%.1f"|format(s.voice_rate)) ~ '%' if s and s.voice_rate is not none else '—' }}</span>
+            <span class="td-kpi-note">{{ "{:,}".format(s.voice) if s else 0 }} orders with Voice</span>
+        </div>
+    </section>
+
+    <form class="td-marketing-filters td-ext-filters" method="get" action="{{ url_for('admin_external_rep_sales') }}" data-ext-filters>
+        <input type="hidden" name="sort" value="{{ filters.sort }}">
+        <input type="hidden" name="dir" value="{{ filters.dir }}">
+        <div class="td-marketing-filter-field td-marketing-filter-search">
+            <label for="ext-search">Search</label>
+            <input type="search" id="ext-search" name="search" class="td-search-input" value="{{ filters.search }}"
+                   placeholder="Customer name, email, phone, address, ZIP, order ID, rep…">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-date-from">Sale Date From</label>
+            <input type="date" id="ext-date-from" name="date_from" class="td-date-input" value="{{ filters.date_from or '' }}">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-date-to">Sale Date To</label>
+            <input type="date" id="ext-date-to" name="date_to" class="td-date-input" value="{{ filters.date_to or '' }}">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-rep">External Rep</label>
+            <select id="ext-rep" name="rep" class="td-admin-inline-select">
+                <option value="">All reps</option>
+                {% for r in filter_options.reps %}
+                <option value="{{ r.code }}" {{ 'selected' if r.code == filters.rep else '' }}>{{ r.code }}{% if r.name %} — {{ r.name }}{% endif %} ({{ r.sales }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-org">Organization</label>
+            <select id="ext-org" name="organization" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for o in filter_options.organizations %}
+                <option value="{{ o.id }}" {{ 'selected' if o.id|string == filters.organization else '' }}>{{ o.name }}</option>
+                {% endfor %}
+                <option value="{{ unmapped_org }}" {{ 'selected' if filters.organization == unmapped_org else '' }}>No organization</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-state">State</label>
+            <select id="ext-state" name="state" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for v in filter_options.states %}
+                <option value="{{ v }}" {{ 'selected' if v == filters.state else '' }}>{{ v }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-municipality">Municipality</label>
+            <select id="ext-municipality" name="municipality" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for v in filter_options.municipalities %}
+                <option value="{{ v }}" {{ 'selected' if v == filters.municipality else '' }}>{{ v }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-speed">Package Speed</label>
+            <select id="ext-speed" name="speed" class="td-admin-inline-select">
+                <option value="">All</option>
+                {% for v in filter_options.speeds %}
+                <option value="{{ v }}" {{ 'selected' if v == filters.speed else '' }}>{{ v }} Mbps</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="ext-scheduled">Scheduling</label>
+            <select id="ext-scheduled" name="scheduled" class="td-admin-inline-select">
+                <option value="">All</option>
+                <option value="Scheduled" {{ 'selected' if filters.scheduled == 'Scheduled' else '' }}>Scheduled</option>
+                <option value="Not Scheduled" {{ 'selected' if filters.scheduled == 'Not Scheduled' else '' }}>Not Scheduled</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-actions">
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_external_rep_sales') }}">Clear Filters</a>
+        </div>
+        <div class="td-ext-filter-footer">
+            <div class="td-ext-presets">
+                <span class="td-kpi-label">Sale date</span>
+                {% for label, start, end in date_presets %}
+                {% set active = filters.date_from == start and filters.date_to == end %}
+                <a class="td-ext-preset{{ ' td-ext-preset-active' if active else '' }}"
+                   href="{{ url_for('admin_external_rep_sales', **dict(args, date_from=start.isoformat(), date_to=end.isoformat(), page=1)) }}">{{ label }}</a>
+                {% endfor %}
+                <a class="td-ext-preset{{ ' td-ext-preset-active' if not filters.date_from and not filters.date_to else '' }}"
+                   href="{{ url_for('admin_external_rep_sales', **dict(args, date_from='', date_to='', page=1)) }}">All Time</a>
+            </div>
+            {% if status.removed_total %}
+            <label class="td-ext-check">
+                <input type="checkbox" name="include_removed" value="1" {{ 'checked' if filters.include_removed else '' }} data-ext-autosubmit>
+                Include {{ "{:,}".format(status.removed_total) }} order{{ '' if status.removed_total == 1 else 's' }} no longer returned by the query
+            </label>
+            {% endif %}
+        </div>
+    </form>
+
+    <div class="td-ext-toolbar">
+        <span class="td-muted-inline">
+            {% if result.ok %}{{ "{:,}".format(result.total) }} order{{ '' if result.total == 1 else 's' }} match{{ 'es' if result.total == 1 else '' }}{% endif %}
+        </span>
+        <div class="td-ext-toolbar-actions">
+            <label class="td-ext-inline-field">
+                Rows
+                <select class="td-admin-inline-select" data-ext-per-page aria-label="Rows per page">
+                    {% for n in page_size_options %}
+                    <option value="{{ n }}" {{ 'selected' if n == filters.per_page else '' }}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <details class="td-ext-columns" data-ext-columns>
+                <summary class="td-btn">Columns <span class="td-ext-count" data-ext-visible-count></span></summary>
+                <div class="td-ext-columns-menu">
+                    {% for key, _src, _col, label, shown in columns %}
+                    <label class="td-ext-check">
+                        <input type="checkbox" value="{{ key }}" data-default="{{ '1' if shown else '0' }}" {{ 'checked' if shown else '' }}>
+                        {{ label }}
+                    </label>
+                    {% endfor %}
+                    <div class="td-ext-columns-actions">
+                        <button type="button" class="td-btn td-btn-ghost" data-ext-columns-all>Show all</button>
+                        <button type="button" class="td-btn td-btn-ghost" data-ext-columns-reset>Reset</button>
+                    </div>
+                </div>
+            </details>
+            <a class="td-btn" href="{{ url_for('admin_external_rep_sales_export', **args) }}" {{ 'aria-disabled=true' if not result.total else '' }}>Export CSV</a>
+        </div>
+    </div>
+
+    {% if not result.ok %}
+    <section class="td-error-panel">
+        <div class="td-error-panel-title">Could not load External Rep Sales</div>
+        <p class="td-error-panel-message">{{ result.error or "The app database query failed. See the container logs." }}</p>
+    </section>
+    {% endif %}
+
+    <section class="td-table-card">
+        <div class="td-table-scroll td-table-scroll--tall">
+            <table class="td-table td-admin-table td-marketing-table td-ext-table" data-ext-table>
+                <thead>
+                    <tr>
+                        {% for key, _src, _col, label, shown in columns %}
+                        {% set is_sorted = filters.sort == key %}
+                        {% set next_dir = ('asc' if filters.dir == 'desc' else 'desc') if is_sorted else '' %}
+                        <th data-col="{{ key }}" class="{{ '' if shown else 'td-ext-col-hidden' }}"
+                            aria-sort="{{ ('ascending' if filters.dir == 'asc' else 'descending') if is_sorted else 'none' }}">
+                            <a class="td-sort-link{{ ' td-sort-active' if is_sorted else '' }}"
+                               href="{{ url_for('admin_external_rep_sales', **dict(args, sort=key, dir=next_dir, page=1)) }}">{{ label }}{% if is_sorted %} {{ '▲' if filters.dir == 'asc' else '▼' }}{% endif %}</a>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in result.rows %}
+                    <tr class="{{ '' if row.in_source else 'td-ext-row-removed' }}">
+                        {% for key, _src, col, label, shown in columns %}
+                        {% set value = row[col] %}
+                        <td data-col="{{ key }}" class="{{ '' if shown else 'td-ext-col-hidden' }}">
+                            {% if key == 'order_id' %}
+                                <span class="td-ext-mono">{{ value }}</span>
+                                {% if not row.in_source %}<span class="td-pill td-pill-disabled" title="No longer returned by the source query">Not in source</span>{% endif %}
+                            {% elif key == 'referral_code' %}
+                                {% if value %}
+                                <a class="td-calls-link" href="{{ url_for('admin_external_rep_sales', **dict(args, rep=value, page=1)) }}" title="Show only {{ value }}">{{ value }}</a>
+                                {% if row.rep_name or row.organization_name %}<div class="td-admin-muted">{{ row.rep_name or '' }}{% if row.rep_name and row.organization_name %} · {% endif %}{{ row.organization_name or '' }}</div>{% endif %}
+                                {% else %}<span class="td-admin-muted">—</span>{% endif %}
+                            {% elif value is none or value == '' %}
+                                <span class="td-admin-muted">—</span>
+                            {% elif key == 'package_speed' %}
+                                {{ value }} Mbps
+                            {% elif key == 'sale_date' %}
+                                {{ value.strftime('%m/%d/%Y') }}
+                            {% elif key == 'installation_date' %}
+                                <span title="{{ value.strftime('%m/%d/%Y %I:%M %p') }}">{{ value.strftime('%m/%d/%Y %-I:%M %p') }}</span>
+                            {% elif key == 'voice' %}
+                                {% if value %}<span class="td-pill td-pill-customer-success">Yes</span>{% else %}<span class="td-admin-muted">No</span>{% endif %}
+                            {% elif key == 'scheduled_status' %}
+                                <span class="td-pill {{ 'td-pill-active' if value == 'Scheduled' else 'td-pill-review-needed' }}">{{ value }}</span>
+                            {% else %}
+                                <span class="td-cell-truncate" title="{{ value }}">{{ value }}</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="{{ columns|length }}" class="td-empty-row">
+                        {% if not result.ok %}Data unavailable — see the error above.
+                        {% elif not status.stored_total %}No External Rep Sales synced yet. Click <strong>Refresh Data</strong> to run the first sync.
+                        {% else %}No orders match the current search/filters.{% endif %}
+                    </td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% if result.ok and result.rows %}
+    <div class="td-marketing-pagination">
+        <span class="td-muted-inline">Page {{ result.page }} of {{ result.total_pages }} &middot; rows {{ (result.page - 1) * filters.per_page + 1 }}–{{ (result.page - 1) * filters.per_page + result.rows|length }} of {{ "{:,}".format(result.total) }}</span>
+        <div class="td-marketing-pagination-btns">
+            {% if result.page > 1 %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_external_rep_sales', **dict(args, page=1)) }}">&laquo; First</a>
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_external_rep_sales', **dict(args, page=result.page - 1)) }}">&larr; Prev</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">&laquo; First</span>
+            <span class="td-btn td-btn-ghost td-btn-disabled">&larr; Prev</span>
+            {% endif %}
+            {% if result.page < result.total_pages %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_external_rep_sales', **dict(args, page=result.page + 1)) }}">Next &rarr;</a>
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_external_rep_sales', **dict(args, page=result.total_pages)) }}">Last &raquo;</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">Next &rarr;</span>
+            <span class="td-btn td-btn-ghost td-btn-disabled">Last &raquo;</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- ================= Rep Mapping =================
+         One row per referral code (auto-added when a code first has a
+         synced sale). A code is not assumed to be one person: give
+         several codes the same rep/email/dashboard user if they belong
+         to one rep. Organization is typed by name and created on first
+         save. Mappings only label sales -- they never change which
+         sales the source query returns. -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Referral Code Mapping</h2>
+            <span class="td-muted-inline">{{ mappings|length }} codes &middot; {{ status.codes_unmapped }} unmapped</span>
+        </div>
+        <div class="td-marketing-filters td-ext-mapping-filters">
+            <div class="td-marketing-filter-field td-marketing-filter-search">
+                <label for="ext-map-search">Find</label>
+                <input type="search" id="ext-map-search" class="td-search-input" placeholder="Referral code, rep, organization, manager…" data-ext-map-search>
+            </div>
+            <label class="td-ext-check"><input type="checkbox" data-ext-map-unmapped> Unmapped only</label>
+        </div>
+
+        <datalist id="ext-org-options">
+            {% for o in organizations %}<option value="{{ o.name }}">{% endfor %}
+        </datalist>
+
+        <section class="td-table-card">
+            <div class="td-table-scroll td-table-scroll--tall">
+                <table class="td-table td-admin-table td-marketing-table td-ext-map-table">
+                    <thead>
+                        <tr>
+                            <th>Referral Code</th>
+                            <th>Rep Name</th>
+                            <th>Rep Email</th>
+                            <th>Organization</th>
+                            <th>Manager</th>
+                            <th>Manager Email</th>
+                            <th>Dashboard User</th>
+                            <th>Active</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in mappings %}
+                        {% set unmapped = not m.rep_name and not m.organization_id %}
+                        <tr data-ext-map-row data-rep-id="{{ m.id }}" data-unmapped="{{ '1' if unmapped else '0' }}"
+                            data-search="{{ [m.referral_code, m.rep_name, m.rep_email, m.organization_name, m.manager_name, m.manager_email]|select|join(' ')|lower }}">
+                            <td>
+                                <a class="td-calls-link" href="{{ url_for('admin_external_rep_sales', rep=m.referral_code) }}">{{ m.referral_code }}</a>
+                                {% if unmapped %}<span class="td-pill td-pill-pending">Unmapped</span>{% endif %}
+                                <div class="td-admin-muted">{{ "{:,}".format(m.sales) }} sale{{ '' if m.sales == 1 else 's' }}{% if m.last_sale_date %} · last {{ m.last_sale_date.strftime('%-m/%-d/%Y') }}{% endif %}</div>
+                            </td>
+                            <td><input class="td-search-input td-ext-map-input" name="rep_name" value="{{ m.rep_name or '' }}" maxlength="200" aria-label="Rep name for {{ m.referral_code }}"></td>
+                            <td><input class="td-search-input td-ext-map-input" type="email" name="rep_email" value="{{ m.rep_email or '' }}" maxlength="200" aria-label="Rep email for {{ m.referral_code }}"></td>
+                            <td><input class="td-search-input td-ext-map-input" name="organization" list="ext-org-options" value="{{ m.organization_name or '' }}" maxlength="200" aria-label="Organization for {{ m.referral_code }}"></td>
+                            <td><input class="td-search-input td-ext-map-input" name="manager_name" value="{{ m.manager_name or '' }}" maxlength="200" aria-label="Manager for {{ m.referral_code }}"></td>
+                            <td><input class="td-search-input td-ext-map-input" type="email" name="manager_email" value="{{ m.manager_email or '' }}" maxlength="200" aria-label="Manager email for {{ m.referral_code }}"></td>
+                            <td>
+                                <select class="td-admin-inline-select" name="dashboard_user_id" aria-label="Dashboard user for {{ m.referral_code }}">
+                                    <option value="">— None —</option>
+                                    {% for u in users %}
+                                    <option value="{{ u.id }}" {{ 'selected' if u.id == m.dashboard_user_id else '' }}>{{ u.email }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="checkbox" name="active" value="1" {{ 'checked' if m.active else '' }} aria-label="{{ m.referral_code }} active"></td>
+                            <td>
+                                <div class="td-admin-team-cell">
+                                    <button type="button" class="td-btn td-btn-primary" data-ext-map-save disabled>Save</button>
+                                    <span class="td-admin-save-status" data-save-status style="display:none;"></span>
+                                </div>
+                                {% if m.updated_by_email %}<div class="td-admin-muted" title="{{ ts(m.updated_at) }}">by {{ m.updated_by_email }}</div>{% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="9" class="td-empty-row">No referral codes yet. They appear here after the first successful refresh.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+    {% endif %}
+</div>
+</body>
+</html>
