@@ -3039,8 +3039,15 @@ a.td-record-rep:hover {
 .td-staff-inner { min-width: 640px; }
 .td-staff-weekend-label { color: var(--td-cyan) !important; }
 
+/* Every day is the same size no matter how long its event/shift text is:
+   minmax(0, 1fr) stops nowrap chips from widening a column, and a fixed
+   height (fits the day number + 3 chips + "+N more") stops rows growing. */
+.td-staff-inner .td-calendar-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+
 .td-staff-cell {
-    min-height: 96px;
+    height: 118px;
+    min-width: 0;
+    overflow: hidden;
     justify-content: flex-start;
     gap: 6px;
     text-decoration: none;
