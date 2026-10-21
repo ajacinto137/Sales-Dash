@@ -1231,10 +1231,16 @@ def _rep_installs_with_month(df, rep):
     (that count's drill-down), so the two can never disagree. Installs
     are bucketed by install month -- the scheduled install date, the only
     install date the dataset carries -- not sale month (by request,
-    2026-10-20). Returns an empty DataFrame for missing/empty input."""
+    2026-10-20). Inbound sales (INBOUND_CHANNELS) are excluded (by
+    request, 2026-10-20). Returns an empty DataFrame for missing/empty
+    input."""
     if df is None or df.empty:
         return pd.DataFrame()
-    installed = df[(df["sales_rep"] == rep) & (df["status"] == "Installed")]
+    installed = df[
+        (df["sales_rep"] == rep)
+        & (df["status"] == "Installed")
+        & ~df["sales_channel"].isin(INBOUND_CHANNELS)
+    ]
     return installed.assign(
         _install_month=pd.to_datetime(installed["scheduled_date"], errors="coerce").dt.to_period("M")
     )

@@ -15,6 +15,7 @@ DF = pd.DataFrame({
     "sales_rep": ["A", "A", "A", "A", "A", "B"],
     "status": ["Installed", "Installed", "Installed", "Pending", "Installed", "Installed"],
     "scheduled_date": ["2026-07-03", "2026-07-20", "2026-09-01", "2026-10-05", None, "2026-07-02"],
+    "sales_channel": ["Outbound Call", "Door to Door", "Outbound Call", "Outbound Call", "Texting", "Outbound Call"],
 })
 
 
@@ -40,7 +41,7 @@ def test_other_reps_and_non_installed_rows_are_excluded():
 
 def test_far_future_install_date_is_capped():
     df = pd.DataFrame({"sales_rep": ["A", "A"], "status": ["Installed"] * 2,
-                       "scheduled_date": ["2026-10-01", "2099-01-01"]})
+                       "scheduled_date": ["2026-10-01", "2099-01-01"], "sales_channel": ["Outbound Call"] * 2})
     assert len(monthly(df, "A")["months"]) == 13
 
 
@@ -50,3 +51,14 @@ def test_drill_down_matches_month_count():
         assert title == "July 2026 Installs"
         assert rows == ["2026-07-03", "2026-07-20"]
         assert sm.get_install_month_account_view(DF, "A", 2026, 13) == ("Invalid Month", [])
+
+
+def test_inbound_installs_are_excluded():
+    df = pd.DataFrame({"sales_rep": ["A"] * 3, "status": ["Installed"] * 3,
+                       "scheduled_date": ["2026-10-01"] * 3,
+                       "sales_channel": ["Inbound Call", "Inbound Email", "Outbound Call"]})
+    result = monthly(df, "A")
+    assert result["total"] == 1
+    assert result["months"][0]["count"] == 1
+    with mock.patch.object(sm, "build_bulk_account_rows", side_effect=lambda f: list(f["sales_channel"])):
+        assert sm.get_install_month_account_view(df, "A", 2026, 10)[1] == ["Outbound Call"]

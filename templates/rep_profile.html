@@ -171,7 +171,7 @@
     </section>
 
     <!-- ================= Installs =================
-         Canonical name: "Installs" tab (added 2026-10-20). Installed sales
+         Canonical name: "Installs" tab (added 2026-10-20). Installed non-inbound sales
          per install month (scheduled install date -- the only install date
          the data has), all time, newest first. Each count opens a Bulk
          Account View of that month's installs (?view=installs_month). See
@@ -179,7 +179,7 @@
     <section class="td-tab-panel" data-tab-panel="installs" style="display: none;">
         <div class="td-section-heading">
             <h2>Installs by Month</h2>
-            <span class="td-muted-inline">Installed sales by install month &middot; all time &middot; click a count to see the accounts</span>
+            <span class="td-muted-inline">Installed sales by install month, excluding inbound sales &middot; all time &middot; click a count to see the accounts</span>
         </div>
 
         {% set mi = monthly_installs %}
