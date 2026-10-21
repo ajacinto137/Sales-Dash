@@ -924,6 +924,35 @@ def get_call_history(rep_name, start_date, end_date, page=1, outcome=None, newes
 
 TEAM_CALLS_DAY_START_HOUR = 8
 
+# Calls per Hour's shift model (by request, 2026-10-20): reps work 8-5 or
+# 9-5 with a 30-minute lunch. A rep's day starts at their first call, or
+# 9 AM if that came later (a 9 AM starter who dials at 9:40 still started
+# at 9); it ends now, capped at 5 PM unless they were still calling after.
+SHIFT_LATEST_START = dt_time(9, 0)
+SHIFT_END = dt_time(17, 0)
+LUNCH_MINUTES = 30
+# Lunch is only deducted once the shift is long enough to include it.
+LUNCH_AFTER_HOURS = 4
+# Floor on the hours divisor, so a rep's first few calls of the morning
+# can't read as an absurd rate.
+MIN_SHIFT_HOURS = 1
+
+
+def shift_hours_worked(first_call_at, last_call_at, now):
+    """Hours a rep has worked so far today under the shift model above,
+    or None if they haven't called today. All args are aware datetimes."""
+    if first_call_at is None:
+        return None
+    first = first_call_at.astimezone(BUSINESS_TZ)
+    day = first.date()
+    start = min(first, datetime.combine(day, SHIFT_LATEST_START, tzinfo=BUSINESS_TZ))
+    end = min(now.astimezone(BUSINESS_TZ), datetime.combine(day, SHIFT_END, tzinfo=BUSINESS_TZ))
+    end = max(end, last_call_at.astimezone(BUSINESS_TZ))
+    hours = (end - start).total_seconds() / 3600
+    if hours > LUNCH_AFTER_HOURS:
+        hours -= LUNCH_MINUTES / 60
+    return max(hours, MIN_SHIFT_HOURS)
+
 
 def _last_call_display(call_at, today):
     """"Today 2:14 PM" / "Yesterday 4:05 PM" / "Mon 10/12 3:00 PM", in
@@ -982,7 +1011,8 @@ def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
                 SELECT r.name, bool_or(m.hubspot_owner_id IS NOT NULL), max(c.call_timestamp),
                        count(c.hubspot_call_id) FILTER (WHERE c.call_timestamp >= %s AND c.call_timestamp < %s),
                        count(c.hubspot_call_id) FILTER (WHERE c.call_timestamp >= %s AND c.call_timestamp < %s
-                                                        AND c.disposition = ANY(%s))
+                                                        AND c.disposition = ANY(%s)),
+                       min(c.call_timestamp) FILTER (WHERE c.call_timestamp >= %s AND c.call_timestamp < %s)
                 FROM sales_reps r
                 LEFT JOIN hubspot_user_mappings m ON m.sales_rep_id = r.id
                 LEFT JOIN hubspot_calls c ON c.hubspot_owner_id = m.hubspot_owner_id AND {_OUTBOUND}
@@ -990,15 +1020,23 @@ def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
                 GROUP BY r.name
                 ORDER BY max(c.call_timestamp) DESC NULLS LAST, r.name
                 """,
-                (day_start, day_end, day_start, day_end, connected_ids, last_call_team),
+                (day_start, day_end, day_start, day_end, connected_ids, day_start, day_end, last_call_team),
             )
-            ctx["last_calls"] = [
-                {"rep": name, "mapped": mapped,
-                 "display": _last_call_display(call_at, today) if call_at else None,
-                 "is_today": bool(call_at) and call_at.astimezone(BUSINESS_TZ).date() == today,
-                 "calls_today": calls_today, "connected_today": connected_today}
-                for name, mapped, call_at, calls_today, connected_today in cur.fetchall()
-            ]
+            now = datetime.now(BUSINESS_TZ)
+            ctx["last_calls"] = []
+            for name, mapped, call_at, calls_today, connected_today, first_today in cur.fetchall():
+                # first_today is only set when they called today, so
+                # call_at (their latest call) is today's last call too.
+                hours = shift_hours_worked(first_today, call_at, now)
+                ctx["last_calls"].append({
+                    "rep": name, "mapped": mapped,
+                    "display": _last_call_display(call_at, today) if call_at else None,
+                    "is_today": bool(call_at) and call_at.astimezone(BUSINESS_TZ).date() == today,
+                    "calls_today": calls_today, "connected_today": connected_today,
+                    "hours_today": hours,
+                    "hours_display": logic.format_hours_minutes(hours * 3600) if hours else None,
+                    "calls_per_hour": calls_today / hours if hours else None,
+                })
         ctx["available"] = True
     except Exception as exc:
         ctx["error"] = db.sanitize_error(exc)
