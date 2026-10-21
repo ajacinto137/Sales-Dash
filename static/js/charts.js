@@ -645,6 +645,7 @@ const CHART_TOGGLE_FACTORIES = {
     monthlyTrend: createMonthlySalesTrendChart,
     monthToDate: createMonthToDateChart,
     salesVolume: createSalesVolumeChart,
+    bucketSeries: createBucketSeriesChart,
 };
 
 // Shared button-wiring for a .td-chart-toggle segmented control: one
@@ -940,9 +941,22 @@ document.addEventListener("DOMContentLoaded", () => {
     // team-monthly-trend-toggle already relies on).
     wireChartToggle(document.getElementById("team-sales-volume-group-toggle"), ".td-volume-group");
 
-    // Team Outbound Calls (dashboard.html) -- generic line series.
-    const teamCallsEl = document.getElementById("team-today-calls-chart");
-    if (teamCallsEl) createBucketSeriesChart(teamCallsEl, tokens);
+    // Team Outbound Calls (dashboard.html) -- generic line series, one
+    // panel per time-scale tab. The head's per-tab call-count subtitles
+    // are [data-chart-panel] too but aren't direct card children, so
+    // they're toggled separately here.
+    const teamCallsToggle = document.getElementById("team-calls-scale-toggle");
+    wireChartToggle(teamCallsToggle);
+    if (teamCallsToggle) {
+        const head = teamCallsToggle.closest(".td-chart-card-head");
+        teamCallsToggle.querySelectorAll(".td-chart-toggle-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                head.querySelectorAll("[data-chart-panel]").forEach((el) => {
+                    el.style.display = el.dataset.chartPanel === btn.dataset.chartToggle ? "" : "none";
+                });
+            });
+        });
+    }
 
     // Passings & Leads (templates/passings.html) -- every chart on that
     // page is one of these 4 generic factories, looked up by a shared

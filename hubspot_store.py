@@ -923,6 +923,15 @@ def get_call_history(rep_name, start_date, end_date, page=1, outcome=None, newes
 # ================================================================
 
 TEAM_CALLS_DAY_START_HOUR = 8
+# Team Outbound Calls chart's time-scale tabs: (key, label, days back
+# including today, grouping). First is the default.
+TEAM_CALLS_VIEWS = [
+    ("today", "Today", 1, "hourly"),
+    ("7d", "7 Days", 7, "daily"),
+    ("30d", "30 Days", 30, "daily"),
+    ("90d", "90 Days", 90, "weekly"),
+    ("12m", "12 Months", 365, "monthly"),
+]
 
 # Calls per Hour's shift model (by request, 2026-10-20): reps work 8-5 or
 # 9-5 with a 30-minute lunch. A rep's day starts at their first call, or
@@ -967,14 +976,14 @@ def _last_call_display(call_at, today):
 
 
 def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
-    """Dashboard context: the whole sales team's outbound calls for the
-    current day only (by request, 2026-10-20), hour by hour (every HubSpot
-    owner mapped to a sales rep, zero-filled), plus each `last_call_team`
+    """Dashboard context: the whole sales team's outbound calls (every
+    HubSpot owner mapped to a sales rep, zero-filled) for each
+    TEAM_CALLS_VIEWS time scale, plus each `last_call_team`
     rep's most recent outbound call. Reads appdb only -- never HubSpot
     live -- and never raises: {"available": False, ...} when appdb is
     unreachable."""
     ctx = {"available": False, "ever_synced": False, "configured": hubspot_client.is_configured(),
-           "series": [], "today_calls": 0, "last_calls": [],
+           "series_views": [], "last_calls": [],
            "last_call_team": last_call_team, "last_success_display": None}
     conn = None
     try:
@@ -988,18 +997,29 @@ def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
                     ctx["last_success_display"] = _last_call_display(row[0], today)
             cur.execute("SELECT hubspot_owner_id FROM hubspot_user_mappings WHERE sales_rep_id IS NOT NULL")
             team_owner_ids = [r[0] for r in cur.fetchall()]
-            hours = _volume_series(cur, team_owner_ids, today, today, "hourly")
-            # Show from 8 AM (or the first call, if earlier) up to the
-            # current hour -- future hours would plot as a misleading drop
-            # to zero.
-            called = [i for i, b in enumerate(hours) if b["count"]]
-            first = min([TEAM_CALLS_DAY_START_HOUR] + called[:1])
-            last = max([datetime.now(BUSINESS_TZ).hour] + called[-1:])
-            ctx["series"] = [
-                {"label": datetime.fromisoformat(b["start"]).strftime("%-I %p"), "value": b["count"]}
-                for b in hours[first:last + 1]
-            ]
-            ctx["today_calls"] = sum(b["count"] for b in hours)
+            # One pre-rendered series per time-scale tab (by request,
+            # 2026-10-21; was Today only) -- the chart's toggle switches
+            # between them client-side.
+            for key, label, days, scale in TEAM_CALLS_VIEWS:
+                start_date = max(today - timedelta(days=days - 1), SYNC_START_DATE)
+                buckets = _volume_series(cur, team_owner_ids, start_date, today, scale)
+                if scale == "hourly":
+                    # Show from 8 AM (or the first call, if earlier) up to
+                    # the current hour -- future hours would plot as a
+                    # misleading drop to zero.
+                    called = [i for i, b in enumerate(buckets) if b["count"]]
+                    first = min([TEAM_CALLS_DAY_START_HOUR] + called[:1])
+                    last = max([datetime.now(BUSINESS_TZ).hour] + called[-1:])
+                    series = [
+                        {"label": datetime.fromisoformat(b["start"]).strftime("%-I %p"), "value": b["count"]}
+                        for b in buckets[first:last + 1]
+                    ]
+                else:
+                    series = [{"label": b["label"], "value": b["count"]} for b in buckets]
+                ctx["series_views"].append({
+                    "key": key, "label": label, "series": series,
+                    "total": sum(b["count"] for b in buckets),
+                })
 
             # Last call (any day) plus today's calls/connected calls per
             # rep -- Calls per Sale is added by the caller, which owns the
