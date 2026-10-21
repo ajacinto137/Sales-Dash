@@ -234,7 +234,7 @@
                 <form method="post" action="{{ url_for('staffing_add_shift') }}" class="td-staff-form">
                     <label>Sales rep
                         <select name="sales_rep_id" class="td-admin-inline-select" required>
-                            {% if not my_rep_id %}<option value="">— Choose a sales rep —</option>{% endif %}
+                            {% if my_rep_id not in sales_reps|map(attribute='id') %}<option value="">— Choose a sales rep —</option>{% endif %}
                             {% for rep in sales_reps %}
                             <option value="{{ rep.id }}" {{ 'selected' if rep.id == my_rep_id else '' }}>{{ rep.name }}{{ ' (you)' if rep.id == my_rep_id else '' }}</option>
                             {% endfor %}

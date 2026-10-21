@@ -198,7 +198,7 @@ def _resolve_rep(user, form):
         return None, "You must be logged in with an active account to do this."
     raw = (form.get("sales_rep_id") or "").strip()
     if raw:
-        if not raw.isdigit() or not any(r["id"] == int(raw) for r in user_store.list_sales_reps()):
+        if not raw.isdigit() or not any(r["id"] == int(raw) for r in user_store.list_role_sales_reps()):
             return None, "Choose a sales rep."
         return int(raw), None
     if not permissions.can_staff_self(user):
@@ -224,7 +224,7 @@ def _resolve_event_staff(user, form):
         return None, None, "You must be logged in with an active account to do this."
     raw_rep = (form.get("sales_rep_id") or "").strip()
     if raw_rep:
-        if not raw_rep.isdigit() or not any(r["id"] == int(raw_rep) for r in user_store.list_sales_reps()):
+        if not raw_rep.isdigit() or not any(r["id"] == int(raw_rep) for r in user_store.list_role_sales_reps()):
             return None, None, "Choose a sales rep."
         return int(raw_rep), None, None
     if permissions.can_manage_staffing(user):

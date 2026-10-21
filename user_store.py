@@ -146,6 +146,34 @@ def list_sales_reps():
             conn.close()
 
 
+def list_role_sales_reps():
+    """[{id, name}, ...] ordered by name -- only reps linked to a
+    non-disabled user whose role is "Sales Rep". The staffing rep
+    dropdowns use this (by request, 2026-10-20) rather than
+    list_sales_reps(), which holds every name ever seen in source data.
+    Empty list (never raises) if appdb is unreachable."""
+    conn = None
+    try:
+        conn = db.get_appdb_connection()
+        db_migrations.ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT sr.id, sr.name
+                FROM sales_reps sr JOIN users u ON u.sales_rep_id = sr.id
+                WHERE u.role = %s AND u.status <> %s
+                ORDER BY sr.name
+                """,
+                ("Sales Rep", STATUS_DISABLED),
+            )
+            return [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+    except Exception:
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def list_sales_reps_by_team():
     """{team: [rep_name, ...]} for every value in SALES_REP_TEAMS, each
     list sorted by name -- the exact grouping the Sales Volume Over

@@ -1934,8 +1934,9 @@ def staffing_page():
         my_rep_id=user.get("sales_rep_id"),
         my_staff_key=my_staff_key,
         selected_event=request.args.get("event", type=int),
-        # Everyone can add any sales rep to an event or book them a shift.
-        sales_reps=user_store.list_sales_reps(),
+        # Everyone can add any sales rep to an event or book them a shift --
+        # only reps whose user account has the Sales Rep role are offered.
+        sales_reps=user_store.list_role_sales_reps(),
         last_refreshed=data_store["last_refreshed"],
     )
 
