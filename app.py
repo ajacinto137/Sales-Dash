@@ -980,6 +980,13 @@ def dashboard_page():
     # team's HubSpot outbound calls + each NJ rep's latest call. appdb only
     # (synced HubSpot data), independent of the period filter.
     team_calls = hubspot_store.get_team_call_overview(_today())
+    # Calls per Sale = today's calls / today's sales, same
+    # calculate_rep_metrics() sales count the Rep Profile's KPI uses.
+    today_df = filter_by_period(normalized, "today")
+    sales_today = {r["sales_rep"]: r["sales"] for r in calculate_rep_metrics(today_df)}
+    for row in team_calls["last_calls"]:
+        row["sales_today"] = sales_today.get(row["rep"], 0)
+        row["calls_per_sale"] = row["calls_today"] / row["sales_today"] if row["sales_today"] else None
 
     return render_template(
         "dashboard.html",

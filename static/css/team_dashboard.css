@@ -3290,7 +3290,15 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
    Chart left, NJ reps' last-call list right; the list scrolls inside a
    card the chart's height so a big team never stretches the row. */
 .td-team-calls .td-team-last-calls { display: flex; flex-direction: column; min-height: 0; }
-.td-team-last-calls .td-record-list { max-height: 290px; overflow-y: auto; padding-right: 4px; }
+.td-last-calls-scroll { max-height: 290px; overflow: auto; }
+.td-last-calls-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.td-last-calls-table th {
+    position: sticky; top: 0; background: var(--td-panel);
+    text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--td-text-muted); padding: 0 8px 8px 0; white-space: nowrap;
+}
+.td-last-calls-table td { padding: 9px 8px 9px 0; border-top: 1px solid var(--td-border-soft); white-space: nowrap; }
+.td-last-calls-table .td-num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .td-team-last-calls { border-top: 2px solid var(--td-cyan); }
 .td-last-call { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
 .td-last-call.td-record-meta { font-weight: 400; }

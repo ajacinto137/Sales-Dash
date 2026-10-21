@@ -972,9 +972,17 @@ def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
             ]
             ctx["today_calls"] = sum(b["count"] for b in hours)
 
+            # Last call (any day) plus today's calls/connected calls per
+            # rep -- Calls per Sale is added by the caller, which owns the
+            # sales data.
+            day_start, day_end = _range_bounds(today, today)
+            connected_ids = sorted(logic.connected_disposition_ids(_disposition_labels(cur)))
             cur.execute(
                 f"""
-                SELECT r.name, bool_or(m.hubspot_owner_id IS NOT NULL), max(c.call_timestamp)
+                SELECT r.name, bool_or(m.hubspot_owner_id IS NOT NULL), max(c.call_timestamp),
+                       count(c.hubspot_call_id) FILTER (WHERE c.call_timestamp >= %s AND c.call_timestamp < %s),
+                       count(c.hubspot_call_id) FILTER (WHERE c.call_timestamp >= %s AND c.call_timestamp < %s
+                                                        AND c.disposition = ANY(%s))
                 FROM sales_reps r
                 LEFT JOIN hubspot_user_mappings m ON m.sales_rep_id = r.id
                 LEFT JOIN hubspot_calls c ON c.hubspot_owner_id = m.hubspot_owner_id AND {_OUTBOUND}
@@ -982,13 +990,14 @@ def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
                 GROUP BY r.name
                 ORDER BY max(c.call_timestamp) DESC NULLS LAST, r.name
                 """,
-                (last_call_team,),
+                (day_start, day_end, day_start, day_end, connected_ids, last_call_team),
             )
             ctx["last_calls"] = [
                 {"rep": name, "mapped": mapped,
                  "display": _last_call_display(call_at, today) if call_at else None,
-                 "is_today": bool(call_at) and call_at.astimezone(BUSINESS_TZ).date() == today}
-                for name, mapped, call_at in cur.fetchall()
+                 "is_today": bool(call_at) and call_at.astimezone(BUSINESS_TZ).date() == today,
+                 "calls_today": calls_today, "connected_today": connected_today}
+                for name, mapped, call_at, calls_today, connected_today in cur.fetchall()
             ]
         ctx["available"] = True
     except Exception as exc:
