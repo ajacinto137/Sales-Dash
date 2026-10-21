@@ -2096,8 +2096,9 @@ stale-data warning instead of zeros.
 - Connection Rate = connected ÷ total.
 - Talk Time is the sum of `hs_call_duration`.
 - Average Duration = talk time ÷ calls with a logged duration.
-- Calls per Sale = calls ÷ `calculate_rep_metrics()` sales over the same
-  days. It shows N/A when the rep has no sales.
+- Calls per Sale = calls ÷ `calculate_rep_metrics()` **outbound** sales
+  over the same days (inbound sales don't count, by request 2026-10-20).
+  It shows N/A when the rep has no outbound sales.
 
 **Chart time controls.** The date range is the primary control: it
 decides which calls are counted (KPIs, chart, history). The X-axis

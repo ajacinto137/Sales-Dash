@@ -116,7 +116,7 @@ document.addEventListener("DOMContentLoaded", function () {
         setKpi(
             "calls_per_sale",
             k.calls_per_sale === null ? "N/A" : k.calls_per_sale.toFixed(1),
-            fmt.format(k.sales) + " sale" + (k.sales === 1 ? "" : "s") + " in range"
+            fmt.format(k.sales) + " outbound sale" + (k.sales === 1 ? "" : "s") + " in range"
         );
     }
 

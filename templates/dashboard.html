@@ -657,7 +657,7 @@
                             <td class="td-num td-purple">{{ "{:,}".format(r.calls_today) }}</td>
                             <td class="td-num td-green">{{ "{:,}".format(r.connected_today) }}</td>
                             <td class="td-num td-cyan"{% if r.hours_today %} title="{{ r.calls_today }} calls over {{ r.hours_display }} worked (shift starts at first call or 9 AM, ends now or 5 PM, minus a 30-min lunch after 4 hours)"{% endif %}>{{ '%.1f'|format(r.calls_per_hour) if r.calls_per_hour is not none else '—' }}</td>
-                            <td class="td-num td-yellow" title="{{ r.calls_today }} calls / {{ r.sales_today }} sale{{ '' if r.sales_today == 1 else 's' }} today">{{ '%.1f'|format(r.calls_per_sale) if r.calls_per_sale is not none else 'N/A' }}</td>
+                            <td class="td-num td-yellow" title="{{ r.calls_today }} calls / {{ r.sales_today }} outbound sale{{ '' if r.sales_today == 1 else 's' }} today">{{ '%.1f'|format(r.calls_per_sale) if r.calls_per_sale is not none else 'N/A' }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

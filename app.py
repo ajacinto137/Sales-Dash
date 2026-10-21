@@ -980,10 +980,10 @@ def dashboard_page():
     # team's HubSpot outbound calls + each NJ rep's latest call. appdb only
     # (synced HubSpot data), independent of the period filter.
     team_calls = hubspot_store.get_team_call_overview(_today())
-    # Calls per Sale = today's calls / today's sales, same
-    # calculate_rep_metrics() sales count the Rep Profile's KPI uses.
+    # Calls per Sale = today's calls / today's OUTBOUND sales (by request,
+    # 2026-10-20), same calculate_rep_metrics() count the Rep Profile's KPI uses.
     today_df = filter_by_period(normalized, "today")
-    sales_today = {r["sales_rep"]: r["sales"] for r in calculate_rep_metrics(today_df)}
+    sales_today = {r["sales_rep"]: r["outbound"] for r in calculate_rep_metrics(today_df)}
     for row in team_calls["last_calls"]:
         row["sales_today"] = sales_today.get(row["rep"], 0)
         row["calls_per_sale"] = row["calls_today"] / row["sales_today"] if row["sales_today"] else None
@@ -1229,12 +1229,12 @@ def rep_call_summary(rep_name):
     except Exception as exc:
         return _call_api_error(exc)
 
-    # Calls per Sale reuses the existing sales calculation untouched --
-    # the same calculate_rep_metrics() the profile's Total Sales uses,
-    # over the same business-timezone days as the call range.
+    # Calls per Sale counts OUTBOUND sales only (by request, 2026-10-20) --
+    # calculate_rep_metrics()'s outbound count over the same
+    # business-timezone days as the call range.
     period_df = filter_by_period(normalized, "custom", start_date.isoformat(), end_date.isoformat())
     rep_row = next((r for r in calculate_rep_metrics(period_df) if r["sales_rep"] == rep_name), None)
-    sales = rep_row["sales"] if rep_row else 0
+    sales = rep_row["outbound"] if rep_row else 0
 
     context = hubspot_store.get_rep_call_context(rep_name)
     total = summary["total_calls"]
