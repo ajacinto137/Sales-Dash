@@ -56,6 +56,9 @@
             <button type="button" class="td-tab {{ 'td-tab-warning' if needs_attention_count > 0 else '' }}" data-tab="needs-attention">
                 Needs Attention <span class="td-tab-count">{{ needs_attention_count }}</span>
             </button>
+            <button type="button" class="td-tab" data-tab="installs">
+                Installs <span class="td-tab-count">{{ "{:,}".format(monthly_installs.total) }}</span>
+            </button>
         </nav>
     </header>
 
@@ -165,6 +168,52 @@
         {% set empty_message = "No accounts currently need attention." %}
         {% set view = "needs_attention" %}
         {% include "_bulk_account_view.html" %}
+    </section>
+
+    <!-- ================= Installs =================
+         Canonical name: "Installs" tab (added 2026-10-20). Installed sales
+         per install month (scheduled install date -- the only install date
+         the data has), all time, newest first. Each count opens a Bulk
+         Account View of that month's installs (?view=installs_month). See
+         calculate_rep_monthly_installs() in sales_metrics.py. -->
+    <section class="td-tab-panel" data-tab-panel="installs" style="display: none;">
+        <div class="td-section-heading">
+            <h2>Installs by Month</h2>
+            <span class="td-muted-inline">Installed sales by install month &middot; all time &middot; click a count to see the accounts</span>
+        </div>
+
+        {% set mi = monthly_installs %}
+        {% if mi.months %}
+        <div class="td-record-card td-installs-card">
+            <table class="td-installs-table">
+                <thead>
+                    <tr><th>Month</th><th class="td-num">Installs</th><th class="td-installs-bar-col"></th></tr>
+                </thead>
+                <tbody>
+                    {% for m in mi.months %}
+                    <tr>
+                        <td>{{ m.label }}</td>
+                        <td class="td-num">
+                            {% if m.count %}
+                            <a class="td-metric-link td-green" href="{{ url_for('bulk_account_view', rep_name=rep_name, view='installs_month', year=m.year, month=m.month) }}">{{ "{:,}".format(m.count) }}</a>
+                            {% else %}
+                            <span class="td-installs-zero">0</span>
+                            {% endif %}
+                        </td>
+                        <td class="td-installs-bar-col">
+                            <span class="td-installs-bar" style="width: {{ (m.count / mi.max_count * 100) if mi.max_count else 0 }}%;"></span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if mi.undated %}
+        <p class="td-muted-inline td-installs-note">{{ mi.undated }} installed sale{{ '' if mi.undated == 1 else 's' }} with no install date {{ 'is' if mi.undated == 1 else 'are' }} not counted in any month.</p>
+        {% endif %}
+        {% else %}
+        <p class="td-empty">No installed sales yet.</p>
+        {% endif %}
     </section>
 
 </div>

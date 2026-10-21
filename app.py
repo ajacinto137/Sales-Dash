@@ -53,11 +53,13 @@ from sales_metrics import (
     calculate_records,
     calculate_rep_metrics,
     calculate_rep_monthly_activity,
+    calculate_rep_monthly_installs,
     calculate_sales_volume_trend,
     calculate_total_daily_sales,
     filter_by_period,
     get_bulk_account_view,
     get_calendar_day_account_view,
+    get_install_month_account_view,
     get_channel_account_view,
     get_leaderboard_metric_account_view,
     get_rep_achievements,
@@ -1089,6 +1091,10 @@ def rep_profile(rep_name):
     # calculate_needs_attention()'s docstring.
     needs_attention = calculate_needs_attention(normalized, rep_name)
 
+    # Installs tab (added 2026-10-20) -- installs per install month,
+    # all-time, each count drilling into ?view=installs_month.
+    monthly_installs = calculate_rep_monthly_installs(normalized, rep_name)
+
     # Cosmetic achievement badges (icons next to the rep's name) -- see
     # get_rep_achievements()'s docstring. Always all-time, purely display.
     achievements = get_rep_achievements(normalized, rep_name)
@@ -1126,6 +1132,7 @@ def rep_profile(rep_name):
         rep_monthly_activity=rep_monthly_activity,
         needs_attention=needs_attention,
         needs_attention_count=len(needs_attention),
+        monthly_installs=monthly_installs,
         attention_available=attention_available,
         attention_progress=attention_progress,
         attention_statuses=attention_store.ATTENTION_STATUSES,
@@ -1347,6 +1354,16 @@ def bulk_account_view(rep_name):
             view_title, accounts = get_calendar_day_account_view(
                 normalized, rep_name,
                 int(request.args.get("year", 0)), int(request.args.get("month", 0)), int(request.args.get("day", 0)),
+            )
+        except (TypeError, ValueError):
+            abort(404)
+        all_time = True
+    elif view == "installs_month":
+        # Rep Profile Installs tab's per-month drill-down -- by install
+        # month, all-time like the tab itself.
+        try:
+            view_title, accounts = get_install_month_account_view(
+                normalized, rep_name, int(request.args.get("year", 0)), int(request.args.get("month", 0)),
             )
         except (TypeError, ValueError):
             abort(404)

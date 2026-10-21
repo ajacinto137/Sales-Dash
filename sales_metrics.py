@@ -1223,6 +1223,76 @@ def get_calendar_day_account_view(df, rep, year, month, day):
     return title, build_bulk_account_rows(filtered)
 
 
+def _rep_installs_with_month(df, rep):
+    """`rep`'s Installed rows with an `_install_month` column (a
+    pd.Period, NaT when unscheduled) -- the ONE definition of "an install
+    in this month" shared by calculate_rep_monthly_installs() (the Rep
+    Profile's Installs tab counts) and get_install_month_account_view()
+    (that count's drill-down), so the two can never disagree. Installs
+    are bucketed by install month -- the scheduled install date, the only
+    install date the dataset carries -- not sale month (by request,
+    2026-10-20). Returns an empty DataFrame for missing/empty input."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    installed = df[(df["sales_rep"] == rep) & (df["status"] == "Installed")]
+    return installed.assign(
+        _install_month=pd.to_datetime(installed["scheduled_date"], errors="coerce").dt.to_period("M")
+    )
+
+
+def calculate_rep_monthly_installs(df, rep):
+    """Rep Profile's Installs tab: {"months": [{year, month, label,
+    count}, ...] newest first, every month from the rep's first install
+    through the current month (zero months included), "total", "undated"
+    (installed with no install date, so in no month)}. Always all-time,
+    independent of the page's period filter."""
+    installs = _rep_installs_with_month(df, rep)
+    result = {"months": [], "total": int(len(installs)), "undated": 0, "max_count": 0}
+    if installs.empty:
+        return result
+    dated = installs["_install_month"].dropna()
+    result["undated"] = int(len(installs) - len(dated))
+    if dated.empty:
+        return result
+    counts = dated.value_counts()
+    current = pd.Period(_today(), freq="M")
+    month = dated.min()
+    # Through the current month, or a later one installs are dated in --
+    # capped a year out so one bad far-future date can't add years of
+    # empty rows (that install still shows in its own month's count only
+    # if it falls inside the range).
+    last = max(min(dated.max(), current + 12), current)
+    while month <= last:
+        count = int(counts.get(month, 0))
+        result["months"].append({
+            "year": month.year, "month": month.month,
+            "label": month.strftime("%B %Y"), "count": count,
+        })
+        month += 1
+    result["months"].reverse()
+    result["max_count"] = max(m["count"] for m in result["months"])
+    return result
+
+
+def get_install_month_account_view(df, rep, year, month):
+    """Bulk Account View of `rep`'s installs in one install month (the
+    Installs tab's per-month drill-down). Returns (title, []) for an
+    invalid month or empty scope, never raises."""
+    try:
+        target = pd.Period(date(year, month, 1), freq="M")
+    except (TypeError, ValueError):
+        return "Invalid Month", []
+    title = target.strftime("%B %Y") + " Installs"
+    installs = _rep_installs_with_month(df, rep)
+    if installs.empty:
+        return title, []
+    filtered = installs[installs["_install_month"] == target]
+    filtered = filtered.assign(
+        _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
+    ).sort_values("_scheduled_sort", na_position="last")
+    return title, build_bulk_account_rows(filtered)
+
+
 def calculate_needs_attention(df, rep):
     """Thin wrapper kept for the Rep Profile's inline Needs Attention tab
     -- routes through the same get_bulk_account_view() used by every other

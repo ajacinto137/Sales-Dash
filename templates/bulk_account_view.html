@@ -16,7 +16,7 @@
 
     <header class="td-profile-header">
         {% if rep_name %}
-        <a class="td-back-link" href="{{ url_for('rep_profile', rep_name=rep_name, period=period, start=custom_start, end=custom_end) }}">&larr; Back to {{ rep_name }}</a>
+        <a class="td-back-link" href="{{ url_for('rep_profile', rep_name=rep_name, period=period, start=custom_start, end=custom_end) }}{{ '#installs' if view == 'installs_month' else '' }}">&larr; Back to {{ rep_name }}</a>
         {% else %}
         <a class="td-back-link" href="{{ url_for('dashboard_page') }}">&larr; Back to Dashboard</a>
         {% endif %}
