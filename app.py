@@ -2074,7 +2074,8 @@ def staffing_add_shift():
     ok, error = staffing_store.add_shift(request.form, user, _today())
     target = request.form.get("sales_rep_id", "")
     for_someone_else = target.isdigit() and int(target) != user.get("sales_rep_id")
-    flash(("Door-knocking shift booked for that rep." if for_someone_else else "Door-knocking shift added.") if ok else error,
+    label = "Weekend shift" if request.form.get("kind") == "weekend" else "Door-knocking shift"
+    flash((f"{label} booked for that rep." if for_someone_else else f"{label} added.") if ok else error,
           "ok" if ok else "error")
     day = staffing_store._parse_date(request.form.get("shift_date")) if ok else None
     return _staffing_redirect(day)

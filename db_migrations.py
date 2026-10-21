@@ -635,6 +635,25 @@ MIGRATIONS = [
         );
         """,
     ),
+    (
+        15,
+        "door_knock_shifts.kind: weekend shifts (Staffing calendar, 2026-10-21)",
+        """
+        -- A second kind of shift on the same table: a 'weekend' shift is
+        -- a rep working Saturday/Sunday (staffing_store.add_shift only
+        -- allows it on those days); 'door_knock' is every existing row.
+        -- A rep can hold one of each per day, and a weekend shift's area
+        -- is optional.
+        ALTER TABLE door_knock_shifts ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'door_knock';
+        ALTER TABLE door_knock_shifts DROP CONSTRAINT IF EXISTS door_knock_shifts_kind_check;
+        ALTER TABLE door_knock_shifts ADD CONSTRAINT door_knock_shifts_kind_check
+            CHECK (kind IN ('door_knock', 'weekend'));
+        ALTER TABLE door_knock_shifts ALTER COLUMN area DROP NOT NULL;
+        DROP INDEX IF EXISTS uq_door_knock_shifts_rep_date;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_door_knock_shifts_rep_date_kind
+            ON door_knock_shifts (sales_rep_id, shift_date, kind);
+        """,
+    ),
 ]
 
 _schema_ready = False

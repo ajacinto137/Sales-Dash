@@ -5,8 +5,9 @@ Two kinds of entries on one calendar:
   - Events that need staffing: anyone logged in posts them with a head
     count and signs up (staffing_events + staffing_event_signups); the
     poster or an Admin can delete one.
-  - Door-knocking shifts: anyone books one for any sales rep -- date and
-    area (door_knock_shifts).
+  - Shifts: anyone books one for any sales rep (door_knock_shifts) --
+    a door-knocking shift (date + area) or a weekend shift (Saturday or
+    Sunday only, area optional; added 2026-10-21). `kind` tells them apart.
 
 Everything is keyed by sales_reps.id, so a user can only act for the rep
 their account is linked to (users.sales_rep_id); Admins can act for any
@@ -28,6 +29,7 @@ import user_store
 MAX_TEXT = 200
 MAX_NOTES = 1000
 MAX_STAFF_NEEDED = 100
+SHIFT_KINDS = ("door_knock", "weekend")
 
 
 def _connect():
@@ -109,21 +111,21 @@ def _event_dict(row):
 
 
 _SHIFT_SELECT = """
-    SELECT k.id, k.shift_date, k.area, k.notes, k.sales_rep_id, sr.name, k.created_by
+    SELECT k.id, k.shift_date, k.area, k.notes, k.sales_rep_id, sr.name, k.created_by, k.kind
     FROM door_knock_shifts k JOIN sales_reps sr ON sr.id = k.sales_rep_id
 """
 
 
 def _shift_dict(row):
-    shift_id, shift_date, area, notes, rep_id, rep_name, created_by = row
+    shift_id, shift_date, area, notes, rep_id, rep_name, created_by, kind = row
     return {"id": shift_id, "date": shift_date, "area": area, "notes": notes, "rep_id": rep_id,
-            "rep_name": rep_name, "created_by": created_by}
+            "rep_name": rep_name, "created_by": created_by, "kind": kind}
 
 
 def _load_range(cur, start, end):
     cur.execute(_EVENT_SELECT + " WHERE e.event_date BETWEEN %s AND %s" + _EVENT_GROUP, (start, end))
     events = [_event_dict(r) for r in cur.fetchall()]
-    cur.execute(_SHIFT_SELECT + " WHERE k.shift_date BETWEEN %s AND %s ORDER BY k.shift_date, sr.name",
+    cur.execute(_SHIFT_SELECT + " WHERE k.shift_date BETWEEN %s AND %s ORDER BY k.shift_date, k.kind DESC, sr.name",
                 (start, end))
     shifts = [_shift_dict(r) for r in cur.fetchall()]
     return events, shifts
@@ -181,7 +183,9 @@ def get_calendar(year, month, selected_day, today):
 
     result["day"] = {
         "date": selected_day, "is_past": selected_day < today, "is_weekend": selected_day.weekday() >= 5,
-        "events": day_events, "shifts": day_shifts,
+        "events": day_events,
+        "shifts": [s for s in day_shifts if s["kind"] == "door_knock"],
+        "weekend_shifts": [s for s in day_shifts if s["kind"] == "weekend"],
     }
     return result
 
@@ -403,6 +407,9 @@ def add_shift(form, user, today):
     rep_id, error = _resolve_rep(user, form)
     if error:
         return False, error
+    kind = (form.get("kind") or "door_knock").strip()
+    if kind not in SHIFT_KINDS:
+        return False, "Unknown shift type."
     shift_date = _parse_date(form.get("shift_date"))
     area = _text(form, "area")
     if not shift_date:
@@ -410,22 +417,26 @@ def add_shift(form, user, today):
     error = _check_not_past(shift_date, today, "add a shift on")
     if error:
         return False, error
-    if not area:
+    if kind == "weekend" and shift_date.weekday() < 5:
+        return False, "Weekend shifts can only be booked on a Saturday or Sunday."
+    if kind == "door_knock" and not area:
         return False, "Say where you'll be knocking (town or neighborhood)."
     conn = None
     try:
         conn = _connect()
         with conn:
             with conn.cursor() as cur:
-                # One shift per rep per day (uq_door_knock_shifts_rep_date).
+                # One shift of each kind per rep per day (uq_door_knock_shifts_rep_date_kind).
                 cur.execute(
                     """
-                    INSERT INTO door_knock_shifts (sales_rep_id, shift_date, area, notes, created_by)
-                    VALUES (%s, %s, %s, %s, %s) ON CONFLICT (sales_rep_id, shift_date) DO NOTHING
+                    INSERT INTO door_knock_shifts (sales_rep_id, shift_date, area, notes, created_by, kind)
+                    VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (sales_rep_id, shift_date, kind) DO NOTHING
                     """,
-                    (rep_id, shift_date, area, _text(form, "notes", MAX_NOTES), user["id"]),
+                    (rep_id, shift_date, area, _text(form, "notes", MAX_NOTES), user["id"], kind),
                 )
                 if cur.rowcount == 0:
+                    if kind == "weekend":
+                        return False, "That rep already has a weekend shift booked that day."
                     return False, ("That rep already has a door-knocking shift booked that day -- "
                                    "remove it first, or list every area in one shift.")
         return True, None

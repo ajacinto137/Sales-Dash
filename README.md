@@ -2187,6 +2187,12 @@ Top nav → **Staffing** (`/staffing`, added 2026-10-20). A month calendar
   by request). Each rep can have one shift per day; list several areas in
   that one shift. The rep, whoever booked the shift, or an Admin can
   remove it.
+- **Weekend shifts** (added 2026-10-21). On a Saturday or Sunday, the day
+  panel also has "+ Add a weekend shift". Anyone can book one for any sales
+  rep; the area is optional. They are purple on the calendar. These are the
+  same `door_knock_shifts` rows with `kind = 'weekend'` (migration 15). A
+  rep can have one weekend shift and one door-knocking shift on the same
+  day. Removal follows the same rules as other shifts.
 
 **Rules** (`staffing_store.py` + `permissions.can_manage_staffing` /
 `can_staff_self` / `can_post_events` / `can_delete_event` /
@@ -2197,7 +2203,7 @@ be removed by that rep, whoever booked it, or an Admin. Only Admins can
 add non-rep accounts to events or delete anyone's event. Nothing can be booked on a past date, and non-admins can't change
 past entries. "Today" is Eastern time.
 
-**Tables** (migrations 9–11): `staffing_events`, `staffing_event_signups`
+**Tables** (migrations 9–11, 15): `staffing_events`, `staffing_event_signups`
 (one row per person per event: `sales_rep_id` or `staff_user_id`), and
 `door_knock_shifts` (unique per rep and date).
 

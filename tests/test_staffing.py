@@ -246,3 +246,21 @@ def test_anyone_books_a_shift_for_any_rep(test_db):
     assert store.delete_shift(blakes["id"], UNLINKED, TODAY) == (True, None)
     assert store.delete_shift(alexs["id"], REP_A, TODAY) == (True, None)
     assert permissions.can_remove_shift(REP_B, 2, None) and not permissions.can_remove_shift(REP_B, 1, 1)
+
+
+@integration
+def test_weekend_shifts(test_db):
+    sunday = {"kind": "weekend", "shift_date": "2026-11-08"}
+    # Anyone books any rep; area is optional; weekdays are refused.
+    assert store.add_shift({**sunday, "sales_rep_id": "2"}, REP_A, TODAY) == (True, None)
+    assert "Saturday or Sunday" in store.add_shift({**sunday, "shift_date": "2026-11-09"}, REP_A, TODAY)[1]
+    assert "already has a weekend shift" in store.add_shift({**sunday, "sales_rep_id": "2"}, UNLINKED, TODAY)[1]
+    assert "Unknown shift type" in store.add_shift({**sunday, "kind": "party"}, REP_A, TODAY)[1]
+    # A weekend shift and a door-knocking shift can share the same day.
+    assert store.add_shift({"shift_date": "2026-11-08", "area": "Hoboken", "sales_rep_id": "2"}, REP_A, TODAY) == (True, None)
+
+    day = store.get_calendar(2026, 11, date(2026, 11, 8), TODAY)["day"]
+    assert [(s["rep_name"], s["area"]) for s in day["weekend_shifts"]] == [("Blake Chen", None)]
+    assert [s["kind"] for s in day["shifts"]] == ["door_knock"]
+    for s in day["weekend_shifts"] + day["shifts"]:
+        assert store.delete_shift(s["id"], REP_A, TODAY) == (True, None)

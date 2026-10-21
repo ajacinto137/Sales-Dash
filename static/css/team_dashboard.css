@@ -3036,6 +3036,7 @@ a.td-record-rep:hover {
 .td-staff-dot--open { background: var(--td-orange); }
 .td-staff-dot--full { background: var(--td-green); }
 .td-staff-dot--shift { background: var(--td-cyan); }
+.td-staff-dot--weekend { background: var(--td-purple); }
 
 .td-staff-inner { min-width: 640px; }
 .td-staff-weekend-label { color: var(--td-cyan) !important; }
@@ -3079,6 +3080,7 @@ a.td-record-rep:hover {
 .td-staff-chip--open { color: var(--td-orange); background: var(--td-orange-bg); }
 .td-staff-chip--full { color: var(--td-green); background: var(--td-green-bg); }
 .td-staff-chip--shift { color: var(--td-cyan); background: var(--td-cyan-bg); }
+.td-staff-chip--weekend { color: var(--td-purple); background: var(--td-purple-bg); }
 .td-staff-more { font-size: 10.5px; color: var(--td-text-muted); }
 
 .td-staff-panel {
@@ -3124,6 +3126,7 @@ a.td-record-rep:hover {
     align-items: flex-start;
     gap: 10px;
 }
+.td-staff-shift--weekend { border-left-color: var(--td-purple); }
 
 .td-staff-event-title { display: flex; justify-content: space-between; gap: 10px; color: var(--td-text-primary); }
 .td-staff-fill { font-size: 12px; font-weight: 700; white-space: nowrap; }

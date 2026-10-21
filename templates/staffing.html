@@ -95,6 +95,7 @@
                 <span><i class="td-staff-dot td-staff-dot--open"></i>Event needs reps</span>
                 <span><i class="td-staff-dot td-staff-dot--full"></i>Event fully staffed</span>
                 <span><i class="td-staff-dot td-staff-dot--shift"></i>Door-knocking shift</span>
+                <span><i class="td-staff-dot td-staff-dot--weekend"></i>Weekend shift</span>
             </div>
 
             <div class="td-calendar-scroll">
@@ -118,7 +119,11 @@
                                    href="{{ event_url(e) }}" title="{{ e.title }} — {{ e.filled }}/{{ e.staff_needed }} reps{{ ' (you’re on it)' if my_staff_key in e.staff_keys else '' }}">{{ e.title }} <b>{{ e.filled }}/{{ e.staff_needed }}</b></a>
                                 {% endfor %}
                                 {% for s in cell.shifts[:(3 - cell.events[:2]|length)] %}
+                                {% if s.kind == 'weekend' %}
+                                <span class="td-staff-chip td-staff-chip--weekend" title="{{ s.rep_name }} · Weekend shift{{ ' · ' ~ s.area if s.area else '' }}">{{ s.rep_name.split(' ')[0] }} · Weekend</span>
+                                {% else %}
                                 <span class="td-staff-chip td-staff-chip--shift" title="{{ s.rep_name }} · {{ s.area }}">{{ s.rep_name.split(' ')[0] }} · {{ s.area }}</span>
+                                {% endif %}
                                 {% endfor %}
                                 {% set shown = cell.events[:2]|length + cell.shifts[:(3 - cell.events[:2]|length)]|length %}
                                 {% if total > shown %}<span class="td-staff-more">+{{ total - shown }} more</span>{% endif %}
@@ -209,6 +214,50 @@
             <p class="td-empty">No events on this day.</p>
             {% endfor %}
 
+            {% if day.is_weekend %}
+            <!-- Weekend shifts (added 2026-10-21): Saturday/Sunday only;
+                 anyone can book one for any sales rep. -->
+            <h4 class="td-staff-subhead">Weekend shifts</h4>
+            {% for s in day.weekend_shifts %}
+            <div class="td-staff-shift td-staff-shift--weekend">
+                <div>
+                    <strong class="{{ 'td-purple' if s.rep_id == my_rep_id else '' }}">{{ s.rep_name }}</strong>
+                    {% if s.area %}<div class="td-staff-meta"><span>{{ s.area }}</span></div>{% endif %}
+                    {% if s.notes %}<p class="td-staff-notes">{{ s.notes }}</p>{% endif %}
+                </div>
+                {% if permissions.can_remove_shift(current_user, s.rep_id, s.created_by) and (is_admin or not day.is_past) %}
+                <form method="post" action="{{ url_for('staffing_delete_shift', shift_id=s.id) }}" data-confirm-twice>
+                    <input type="hidden" name="return_day" value="{{ day.date.isoformat() }}">
+                    <button type="submit" class="td-btn td-btn-ghost">Remove</button>
+                </form>
+                {% endif %}
+            </div>
+            {% else %}
+            <p class="td-empty">No one is on a weekend shift this day yet.</p>
+            {% endfor %}
+
+            {% if not day.is_past and sales_reps %}
+            <details class="td-staff-form-card" {{ 'open' if not day.weekend_shifts and can_staff_self else '' }}>
+                <summary>+ Add a weekend shift</summary>
+                <form method="post" action="{{ url_for('staffing_add_shift') }}" class="td-staff-form">
+                    <input type="hidden" name="kind" value="weekend">
+                    <input type="hidden" name="shift_date" value="{{ day.date.isoformat() }}">
+                    <label>Sales rep
+                        <select name="sales_rep_id" class="td-admin-inline-select" required>
+                            {% if my_rep_id not in sales_reps|map(attribute='id') %}<option value="">— Choose a sales rep —</option>{% endif %}
+                            {% for rep in sales_reps %}
+                            <option value="{{ rep.id }}" {{ 'selected' if rep.id == my_rep_id else '' }}>{{ rep.name }}{{ ' (you)' if rep.id == my_rep_id else '' }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>Area <input type="text" name="area" class="td-search-input" maxlength="200" placeholder="Optional"></label>
+                    <label>Notes <textarea name="notes" class="td-search-input" rows="2" maxlength="1000" placeholder="Optional"></textarea></label>
+                    <button type="submit" class="td-btn td-btn-primary">Add weekend shift — {{ day.date.strftime('%a %b %-d') }}</button>
+                </form>
+            </details>
+            {% endif %}
+            {% endif %}
+
             <h4 class="td-staff-subhead">Door-knocking shifts</h4>
             {% for s in day.shifts %}
             <div class="td-staff-shift">
@@ -229,7 +278,7 @@
             {% endfor %}
 
             {% if not day.is_past and sales_reps %}
-            <details class="td-staff-form-card" {{ 'open' if not day.shifts and can_staff_self else '' }}>
+            <details class="td-staff-form-card" {{ 'open' if not day.shifts and can_staff_self and not day.is_weekend else '' }}>
                 <summary>+ Add a door-knocking shift</summary>
                 <form method="post" action="{{ url_for('staffing_add_shift') }}" class="td-staff-form">
                     <label>Sales rep
