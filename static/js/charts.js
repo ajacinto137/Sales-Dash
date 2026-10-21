@@ -941,7 +941,7 @@ document.addEventListener("DOMContentLoaded", () => {
     wireChartToggle(document.getElementById("team-sales-volume-group-toggle"), ".td-volume-group");
 
     // Team Outbound Calls (dashboard.html) -- generic line series.
-    const teamCallsEl = document.getElementById("team-daily-calls-chart");
+    const teamCallsEl = document.getElementById("team-today-calls-chart");
     if (teamCallsEl) createBucketSeriesChart(teamCallsEl, tokens);
 
     // Passings & Leads (templates/passings.html) -- every chart on that

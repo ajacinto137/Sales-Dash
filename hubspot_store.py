@@ -922,6 +922,9 @@ def get_call_history(rep_name, start_date, end_date, page=1, outcome=None, newes
 # Team Outbound Calls (Team Leaderboard /dashboard, added 2026-10-20)
 # ================================================================
 
+TEAM_CALLS_DAY_START_HOUR = 8
+
+
 def _last_call_display(call_at, today):
     """"Today 2:14 PM" / "Yesterday 4:05 PM" / "Mon 10/12 3:00 PM", in
     the business timezone."""
@@ -934,16 +937,16 @@ def _last_call_display(call_at, today):
     return local.strftime("%a %-m/%-d ") + clock
 
 
-def get_team_call_overview(today, days=30, last_call_team="NJ - Sales Reps"):
-    """Dashboard context: the whole sales team's daily outbound call
-    volume for the last `days` days (every HubSpot owner mapped to a sales
-    rep, zero-filled), plus each `last_call_team` rep's most recent
-    outbound call. Reads appdb only -- never HubSpot live -- and never
-    raises: {"available": False, ...} when appdb is unreachable."""
-    start_date = today - timedelta(days=days - 1)
+def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
+    """Dashboard context: the whole sales team's outbound calls for the
+    current day only (by request, 2026-10-20), hour by hour (every HubSpot
+    owner mapped to a sales rep, zero-filled), plus each `last_call_team`
+    rep's most recent outbound call. Reads appdb only -- never HubSpot
+    live -- and never raises: {"available": False, ...} when appdb is
+    unreachable."""
     ctx = {"available": False, "ever_synced": False, "configured": hubspot_client.is_configured(),
-           "series": [], "total_calls": 0, "today_calls": 0, "last_calls": [],
-           "last_call_team": last_call_team, "days": days, "last_success_display": None}
+           "series": [], "today_calls": 0, "last_calls": [],
+           "last_call_team": last_call_team, "last_success_display": None}
     conn = None
     try:
         conn = _connect()
@@ -956,10 +959,18 @@ def get_team_call_overview(today, days=30, last_call_team="NJ - Sales Reps"):
                     ctx["last_success_display"] = _last_call_display(row[0], today)
             cur.execute("SELECT hubspot_owner_id FROM hubspot_user_mappings WHERE sales_rep_id IS NOT NULL")
             team_owner_ids = [r[0] for r in cur.fetchall()]
-            series = _volume_series(cur, team_owner_ids, start_date, today, "daily")
-            ctx["series"] = [{"label": b["label"], "value": b["count"]} for b in series]
-            ctx["total_calls"] = sum(b["count"] for b in series)
-            ctx["today_calls"] = series[-1]["count"] if series else 0
+            hours = _volume_series(cur, team_owner_ids, today, today, "hourly")
+            # Show from 8 AM (or the first call, if earlier) up to the
+            # current hour -- future hours would plot as a misleading drop
+            # to zero.
+            called = [i for i, b in enumerate(hours) if b["count"]]
+            first = min([TEAM_CALLS_DAY_START_HOUR] + called[:1])
+            last = max([datetime.now(BUSINESS_TZ).hour] + called[-1:])
+            ctx["series"] = [
+                {"label": datetime.fromisoformat(b["start"]).strftime("%-I %p"), "value": b["count"]}
+                for b in hours[first:last + 1]
+            ]
+            ctx["today_calls"] = sum(b["count"] for b in hours)
 
             cur.execute(
                 f"""
