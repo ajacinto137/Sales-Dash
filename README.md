@@ -1941,17 +1941,16 @@ Data below.
   first, then folds the result in as a chunked `PlaceID IN (...)`/
   `NOT IN (...)` clause (`passings_data._membership_sql()`, chunked to
   stay under SQL Server's ~2100-parameter ceiling).
-- **KPIs and the Global Time Range**: Total Passings/Total Leads/Lead
-  Penetration/Residential Leads/Commercial Hot Leads/Commercial Field
-  Targets/Outreach Coverage reflect every active filter **except** the
-  Global Time Range (independent of it, same convention the Team
-  Leaderboard's Records/Calendar sections already use). **New Passings**
-  is the one KPI scoped to the selected AuxVar1 range — see
-  `passings_data.get_kpis()`'s docstring for why (otherwise it would be
-  redundant with Total Passings under any non-"All Time" range). Time
-  range options: 7 Days / 30 Days / 90 Days / YTD / 1 Year / All Time /
-  Custom Range (`passings_data.resolve_time_range()`); charts
-  auto-aggregate by day/week/month based on range length
+- **KPIs and the Became Available filter** (changed 2026-10-20, by
+  request): the labeled **Became Available** filter in the filters panel
+  (formerly the unlabeled top-right "Global Time Range" dropdown) scopes
+  the list, the charts AND every KPI by each passing's AuxVar1 /
+  BecameAvailable date. It defaults to All Time, so the KPIs show the
+  whole footprint until a range is picked; with a range set, New
+  Passings equals Total Passings. Options: 7 Days / 30 Days / 90 Days /
+  YTD / 1 Year / All Time / Custom Range
+  (`passings_data.resolve_time_range()`); charts auto-aggregate by
+  day/week/month based on range length
   (`passings_data.auto_granularity()`).
 
 ### Outreach / Activity Tracking

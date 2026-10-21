@@ -350,7 +350,8 @@ def get_page(filters, search, sort_key, sort_dir, page):
 
 def get_kpis(filters, search=None, activity_place_ids=None):
     df = _state["df"]
-    footprint_filters = {k: v for k, v in (filters or {}).items() if k not in ("became_from", "became_to")}
+    # The Became Available filter scopes every KPI (2026-10-20, by request).
+    footprint_filters = dict(filters or {})
     footprint = _filter(df, footprint_filters, search)
     timed = _filter(df, dict(footprint_filters,
                              became_from=(filters or {}).get("became_from"),

@@ -529,7 +529,9 @@ def get_kpis(filters, search=None, activity_place_ids=None):
     place_ids_with_activity()) is used only to compute Outreach Coverage's
     numerator -- see _membership_sql()'s docstring for why this can't be a
     single cross-database join."""
-    footprint_filters = {k: v for k, v in (filters or {}).items() if k not in ("became_from", "became_to")}
+    # Since 2026-10-20 (by request) the Became Available filter scopes
+    # EVERY KPI, so the footprint query keeps became_from/became_to.
+    footprint_filters = dict(filters or {})
     where_sql, params = _build_where(footprint_filters, search)
 
     time_filters = dict(footprint_filters)

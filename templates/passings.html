@@ -19,34 +19,20 @@
         <div class="td-header-titles">
             <h1 class="td-title">Passings & Leads</h1>
             <p class="td-subtitle">
-                {{ "{:,}".format(kpis.total_passings) }} Passing{{ '' if kpis.total_passings == 1 else 's' }} in the current footprint &middot;
+                {{ "{:,}".format(kpis.total_passings) }} Passing{{ '' if kpis.total_passings == 1 else 's' }} matching the current filters &middot;
                 {{ "{:,}".format(kpis.total_leads) }} with a Lead email.
             </p>
         </div>
 
-        <form class="td-period-form" method="get" action="{{ url_for('passings_page') }}" id="passings-time-range-select-form">
-            {% for key, value in request.args.items() %}{% if key not in ('time_range', 'start', 'end', 'page') %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
-            <select name="time_range" id="passings-time-range-select" class="td-select">
-                {% for key, label in time_range_options %}
-                <option value="{{ key }}" {{ 'selected' if selected.time_range == key else '' }}>{{ label }}</option>
-                {% endfor %}
-            </select>
-            <span class="td-custom-dates" id="passings-custom-dates" style="display: {{ 'flex' if selected.time_range == 'custom' else 'none' }};">
-                <input type="date" name="start" class="td-date-input" value="{{ selected.start }}">
-                <input type="date" name="end" class="td-date-input" value="{{ selected.end }}">
-            </span>
-            <button type="submit" class="td-btn td-btn-primary">Apply</button>
-        </form>
     </header>
 
     <!-- ================= KPI bar (spec #10) =================
          Total Passings/Total Leads/Lead Penetration/Residential Leads/
          Commercial Hot Leads/Commercial Field Targets/Outreach Coverage
-         reflect every active filter EXCEPT the Global Time Range above
-         (independent of it, same convention dashboard.html's Records/
-         Calendar sections use); New Passings is the one KPI that IS
-         scoped to the Global Time Range -- see passings_data.get_kpis()'s
-         docstring. Category KPI cards link into the matching quick-tab
+         reflect every active filter, INCLUDING the Became Available
+         filter (changed 2026-10-20, by request -- they used to ignore the
+         time range). New Passings therefore equals Total Passings
+         whenever a Became Available range is set. Category KPI cards link into the matching quick-tab
          (spec: "clicking a KPI should filter/drill into the relevant
          records"). -->
     {% if not kpis.ok %}
@@ -162,16 +148,6 @@
         {% endif %}
         {% include "_chart_card.html" %}
 
-        {% set chart_id = "passings-availability" %}
-        {% set chart_title = "Passings by Availability" %}
-        {% set chart_subtitle = "" %}
-        {% set chart_empty = not kpis.ok or kpis.total_passings == 0 %}
-        {% set chart_empty_message = "No Passings match the current filters." %}
-        {% if not chart_empty %}
-        {% set chart_canvas_attrs %}data-passing-chart="donut" data-labels='{{ ["Available Now", "Pre-Order"]|tojson }}' data-values='{{ [kpis.available_now, kpis.pre_order]|tojson }}' data-colors='["green", "yellow"]'{% endset %}
-        {% endif %}
-        {% include "_chart_card.html" %}
-
         {% set chart_id = "passings-prospecting-mix" %}
         {% set chart_title = "Prospecting Opportunity Mix" %}
         {% set chart_subtitle = "" %}
@@ -215,9 +191,6 @@
 
     <!-- ================= Filters + Search (spec #15/#16) ================= -->
     <form class="td-marketing-filters" method="get" action="{{ url_for('passings_page') }}">
-        <input type="hidden" name="time_range" value="{{ selected.time_range }}">
-        <input type="hidden" name="start" value="{{ selected.start }}">
-        <input type="hidden" name="end" value="{{ selected.end }}">
         <input type="hidden" name="category" value="{{ selected.category }}">
 
         <div class="td-marketing-filter-field td-marketing-filter-search">
@@ -240,6 +213,23 @@
                 <option value="desc" {{ 'selected' if selected.dir == 'desc' else '' }}>Descending</option>
                 <option value="asc" {{ 'selected' if selected.dir == 'asc' else '' }}>Ascending</option>
             </select>
+        </div>
+
+        {# Became Available (2026-10-20): filters the list, charts AND KPI
+           totals by each passing's became-available date. Replaces the
+           old unlabeled header dropdown; passings.js shows the From/To
+           inputs for Custom Range and submits on any other choice. #}
+        <div class="td-marketing-filter-field">
+            <label for="passings-time-range-select">Became Available</label>
+            <select name="time_range" id="passings-time-range-select" class="td-admin-inline-select">
+                {% for key, label in time_range_options %}
+                <option value="{{ key }}" {{ 'selected' if selected.time_range == key else '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <span class="td-custom-dates" id="passings-custom-dates" style="display: {{ 'flex' if selected.time_range == 'custom' else 'none' }};">
+                <input type="date" name="start" class="td-date-input" value="{{ selected.start }}" aria-label="Became available from">
+                <input type="date" name="end" class="td-date-input" value="{{ selected.end }}" aria-label="Became available to">
+            </span>
         </div>
 
         <div class="td-marketing-filter-field">

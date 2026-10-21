@@ -82,12 +82,15 @@ def test_rows_come_back_as_plain_python_values():
 def test_kpis():
     k = pc.get_kpis({"became_from": date(2026, 10, 1), "became_to": date(2026, 10, 31)},
                     activity_place_ids=[3, 99])
-    assert k["total_passings"] == 5          # footprint ignores the time range
-    assert k["new_passings"] == 3            # 1, 2, 3 became available in October
-    assert k["total_leads"] == 2
-    assert k["residential_leads"] == 1 and k["commercial_hot_leads"] == 1 and k["commercial_field_targets"] == 1
-    assert k["available_now"] == 3 and k["pre_order"] == 2
-    assert k["actionable_total"] == 3 and k["actionable_with_activity"] == 1
+    # The Became Available range scopes every KPI: places 1, 2, 3.
+    assert k["total_passings"] == 3
+    assert k["new_passings"] == 3
+    assert k["total_leads"] == 1
+    assert k["residential_leads"] == 1 and k["commercial_hot_leads"] == 0 and k["commercial_field_targets"] == 1
+    assert k["available_now"] == 2 and k["pre_order"] == 1
+    assert k["actionable_total"] == 2 and k["actionable_with_activity"] == 1
+    everything = pc.get_kpis({}, activity_place_ids=[])
+    assert everything["total_passings"] == 5 and everything["actionable_total"] == 3
 
 
 def test_week_buckets_follow_sql_servers_sunday_boundary():

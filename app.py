@@ -1738,7 +1738,9 @@ def passings_page():
     Activity-based filters are resolved against appdb FIRST
     (_resolve_passings_activity_filters(), passings_activity_store.py),
     then folded into the PlanetWeb query as a place_id allow-/deny-list."""
-    time_range = request.args.get("time_range", "30d")
+    # Became Available filter. All Time by default since it now scopes the
+    # KPI totals too (2026-10-20); the list still sorts newest-first.
+    time_range = request.args.get("time_range", "all_time")
     custom_start_raw = request.args.get("start", "")
     custom_end_raw = request.args.get("end", "")
     became_from, became_to = passings_data.resolve_time_range(time_range, custom_start_raw, custom_end_raw)
