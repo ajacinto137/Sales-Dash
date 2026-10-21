@@ -976,6 +976,11 @@ def dashboard_page():
     if volume_view not in valid_volume_keys:
         volume_view = default_volume_view
 
+    # Team Outbound Calls (added 2026-10-20) -- last 30 days of the whole
+    # team's HubSpot outbound calls + each NJ rep's latest call. appdb only
+    # (synced HubSpot data), independent of the period filter.
+    team_calls = hubspot_store.get_team_call_overview(_today())
+
     return render_template(
         "dashboard.html",
         active_page="dashboard",
@@ -1007,6 +1012,7 @@ def dashboard_page():
         volume_view=volume_view,
         team_view_options=team_view_options,
         team_has_reps=team_has_reps,
+        team_calls=team_calls,
         last_refreshed=data_store["last_refreshed"],
     )
 

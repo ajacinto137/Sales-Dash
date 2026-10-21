@@ -602,6 +602,64 @@
         </div>
     </section>
 
+    <!-- ================= Team Outbound Calls =================
+         Canonical name: "Team Outbound Calls" (added 2026-10-20). Left:
+         the whole team's daily HubSpot outbound call volume (every owner
+         mapped to a sales rep), last 30 days, line chart. Right: each
+         NJ - Sales Reps rep's most recent outbound call. Synced appdb data
+         (hubspot_store.get_team_call_overview()), independent of the
+         period filter. -->
+    {% set tc = team_calls %}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Team Outbound Calls</h2>
+            <span class="td-muted-inline">
+                HubSpot outbound calls &middot; last {{ tc.days }} days
+                {% if tc.last_success_display %}&middot; last synced {{ tc.last_success_display }}{% endif %}
+            </span>
+        </div>
+
+        {% if not tc.available %}
+        <p class="td-empty">Call data is temporarily unavailable (the app database couldn't be reached).</p>
+        {% elif not tc.ever_synced %}
+        <p class="td-empty">HubSpot calls haven't synced yet{% if permissions.is_admin(current_user) %} &mdash; see <a href="{{ url_for('admin_hubspot') }}">Admin &rsaquo; HubSpot Integration</a>{% endif %}.</p>
+        {% else %}
+        <div class="td-activity-split td-team-calls">
+            <div class="td-chart-card">
+                <div class="td-chart-card-head">
+                    <h3>Daily Outbound Call Volume</h3>
+                    <span class="td-muted-inline"><span class="td-cyan">{{ "{:,}".format(tc.today_calls) }}</span> today &middot; <span class="td-purple">{{ "{:,}".format(tc.total_calls) }}</span> in {{ tc.days }} days</span>
+                </div>
+                <div class="td-chart-canvas-wrap">
+                    <canvas id="team-daily-calls-chart" data-chart-style="line" data-color="cyan" data-series-label="Outbound calls" data-buckets='{{ tc.series|tojson }}'></canvas>
+                </div>
+            </div>
+
+            <div class="td-record-card td-team-last-calls">
+                <h3>{{ tc.last_call_team }} &middot; Last Call</h3>
+                {% if tc.last_calls %}
+                <ol class="td-record-list">
+                    {% for r in tc.last_calls %}
+                    <li>
+                        <span class="td-record-body">
+                            <a class="td-record-rep" href="{{ url_for('rep_profile', rep_name=r.rep) }}#outbound-calls">{{ r.rep }}</a>
+                        </span>
+                        {% if r.display %}
+                        <span class="td-last-call {{ 'td-cyan' if r.is_today else 'td-orange' }}">{{ r.display }}</span>
+                        {% else %}
+                        <span class="td-last-call td-record-meta">{{ 'No calls yet' if r.mapped else 'Not linked to HubSpot' }}</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="td-empty">No reps are assigned to {{ tc.last_call_team }}.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
     <!-- ================= Individual Rep Leaderboard =================
          Canonical name: "Individual Rep Leaderboard" (aka
          "Rep Leaderboard", "Leaderboard Table" / "Rep

@@ -940,6 +940,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // team-monthly-trend-toggle already relies on).
     wireChartToggle(document.getElementById("team-sales-volume-group-toggle"), ".td-volume-group");
 
+    // Team Outbound Calls (dashboard.html) -- generic line series.
+    const teamCallsEl = document.getElementById("team-daily-calls-chart");
+    if (teamCallsEl) createBucketSeriesChart(teamCallsEl, tokens);
+
     // Passings & Leads (templates/passings.html) -- every chart on that
     // page is one of these 4 generic factories, looked up by a shared
     // [data-passing-chart] marker rather than one getElementById per

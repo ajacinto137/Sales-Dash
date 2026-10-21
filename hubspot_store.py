@@ -919,6 +919,76 @@ def get_call_history(rep_name, start_date, end_date, page=1, outcome=None, newes
 
 
 # ================================================================
+# Team Outbound Calls (Team Leaderboard /dashboard, added 2026-10-20)
+# ================================================================
+
+def _last_call_display(call_at, today):
+    """"Today 2:14 PM" / "Yesterday 4:05 PM" / "Mon 10/12 3:00 PM", in
+    the business timezone."""
+    local = call_at.astimezone(BUSINESS_TZ)
+    clock = local.strftime("%-I:%M %p")
+    if local.date() == today:
+        return f"Today {clock}"
+    if local.date() == today - timedelta(days=1):
+        return f"Yesterday {clock}"
+    return local.strftime("%a %-m/%-d ") + clock
+
+
+def get_team_call_overview(today, days=30, last_call_team="NJ - Sales Reps"):
+    """Dashboard context: the whole sales team's daily outbound call
+    volume for the last `days` days (every HubSpot owner mapped to a sales
+    rep, zero-filled), plus each `last_call_team` rep's most recent
+    outbound call. Reads appdb only -- never HubSpot live -- and never
+    raises: {"available": False, ...} when appdb is unreachable."""
+    start_date = today - timedelta(days=days - 1)
+    ctx = {"available": False, "ever_synced": False, "configured": hubspot_client.is_configured(),
+           "series": [], "total_calls": 0, "today_calls": 0, "last_calls": [],
+           "last_call_team": last_call_team, "days": days, "last_success_display": None}
+    conn = None
+    try:
+        conn = _connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT last_success_at, initial_sync_completed_at FROM hubspot_sync_state WHERE id = 1")
+            row = cur.fetchone()
+            if row:
+                ctx["ever_synced"] = row[1] is not None
+                if row[0]:
+                    ctx["last_success_display"] = _last_call_display(row[0], today)
+            cur.execute("SELECT hubspot_owner_id FROM hubspot_user_mappings WHERE sales_rep_id IS NOT NULL")
+            team_owner_ids = [r[0] for r in cur.fetchall()]
+            series = _volume_series(cur, team_owner_ids, start_date, today, "daily")
+            ctx["series"] = [{"label": b["label"], "value": b["count"]} for b in series]
+            ctx["total_calls"] = sum(b["count"] for b in series)
+            ctx["today_calls"] = series[-1]["count"] if series else 0
+
+            cur.execute(
+                f"""
+                SELECT r.name, bool_or(m.hubspot_owner_id IS NOT NULL), max(c.call_timestamp)
+                FROM sales_reps r
+                LEFT JOIN hubspot_user_mappings m ON m.sales_rep_id = r.id
+                LEFT JOIN hubspot_calls c ON c.hubspot_owner_id = m.hubspot_owner_id AND {_OUTBOUND}
+                WHERE r.team = %s
+                GROUP BY r.name
+                ORDER BY max(c.call_timestamp) DESC NULLS LAST, r.name
+                """,
+                (last_call_team,),
+            )
+            ctx["last_calls"] = [
+                {"rep": name, "mapped": mapped,
+                 "display": _last_call_display(call_at, today) if call_at else None,
+                 "is_today": bool(call_at) and call_at.astimezone(BUSINESS_TZ).date() == today}
+                for name, mapped, call_at in cur.fetchall()
+            ]
+        ctx["available"] = True
+    except Exception as exc:
+        ctx["error"] = db.sanitize_error(exc)
+    finally:
+        if conn is not None:
+            conn.close()
+    return ctx
+
+
+# ================================================================
 # Connectivity diagnostic (Admin "Test Connection")
 # ================================================================
 

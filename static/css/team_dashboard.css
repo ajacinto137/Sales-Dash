@@ -3285,3 +3285,12 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
 .td-staff-open-foot form { margin: 0; }
 
 .td-staff-posted { font-size: 11.5px; }
+
+/* ---------------- Team Outbound Calls (dashboard.html, 2026-10-20) ----------------
+   Chart left, NJ reps' last-call list right; the list scrolls inside a
+   card the chart's height so a big team never stretches the row. */
+.td-team-calls .td-team-last-calls { display: flex; flex-direction: column; min-height: 0; }
+.td-team-last-calls .td-record-list { max-height: 290px; overflow-y: auto; padding-right: 4px; }
+.td-team-last-calls { border-top: 2px solid var(--td-cyan); }
+.td-last-call { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.td-last-call.td-record-meta { font-weight: 400; }
