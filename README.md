@@ -1929,6 +1929,20 @@ Data below.
   the first snapshot loads after a restart, the page uses the live SQL
   functions. The Admin raw-row browser and validation metrics still read
   PlanetWeb live.
+- **"Residential Address" marks** (added 2026-10-20) — Commercial Hot
+  Lead / Commercial Field Target cards have a **Residential Address**
+  button for places that are really houses. A mark (appdb
+  `passing_residential_marks`, migration 14, who + when) makes
+  `passings_cache.py` classify the place as residential — a Residential
+  Lead if it has a valid email, otherwise no category — so it leaves both
+  commercial lists and their KPIs for everyone. The card shows a "Marked
+  Residential" badge and an **Undo Residential** button. The raw
+  Prequal-as-Business filter still reflects what the customer submitted.
+  Marks are read per request, so they take effect immediately. Only the
+  in-memory path applies them, so the page waits up to 20s for the first
+  snapshot after a restart rather than falling back to live SQL right away.
+- **"Worked" filter** — the filter formerly labeled "Activity": Worked =
+  any Call/Email/Field Visit logged on the passing (`has_activity`).
 - **`passings_classification.py`** — pure functions, no I/O:
   `is_valid_email()`, the commercial-keyword mapping, and `classify()`
   (the full decision tree above). Unit tests: `tests/test_passings_classification.py`.

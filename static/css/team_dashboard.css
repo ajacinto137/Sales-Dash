@@ -1538,6 +1538,7 @@ a.td-record-rep:hover {
 .td-passing-badge-commercial-hot-lead { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
 .td-passing-badge-commercial-field-target { color: var(--td-orange); background: var(--td-orange-bg); }
 .td-passing-badge-prequal-business { color: var(--td-purple); background: var(--td-purple-bg); }
+.td-passing-badge-residential { color: var(--td-orange); background: var(--td-orange-bg); }
 .td-passing-badge-available-now { color: var(--td-green); background: var(--td-green-bg); }
 .td-passing-badge-pre-order { color: var(--td-yellow); background: var(--td-yellow-bg); }
 .td-passing-badge-called { color: var(--td-cyan); background: var(--td-cyan-bg); }
@@ -3317,3 +3318,7 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
 .td-installs-bar-col { width: 45%; }
 .td-installs-bar { display: block; height: 8px; min-width: 0; border-radius: 4px; background: var(--td-green); opacity: 0.75; }
 .td-installs-note { display: block; margin-top: 10px; }
+
+/* "Residential Address" quick action on commercial Passing cards (2026-10-20). */
+.td-quick-action-btn--residential { color: var(--td-orange); border-color: var(--td-orange); }
+.td-quick-action-btn--residential:hover { color: var(--td-text-primary); border-color: var(--td-orange); background: var(--td-orange-bg); }

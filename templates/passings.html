@@ -264,12 +264,15 @@
                 <option value="no" {{ 'selected' if selected.has_lead == 'no' else '' }}>No Lead</option>
             </select>
         </div>
+        {# "Worked" (renamed from "Activity", 2026-10-20, by request): a
+           passing is worked once anyone has logged a Call, Email or Field
+           Visit on it -- the same "worked" as Outreach Coverage. #}
         <div class="td-marketing-filter-field">
-            <label for="passings-has-activity">Activity</label>
+            <label for="passings-has-activity">Worked</label>
             <select id="passings-has-activity" name="has_activity" class="td-admin-inline-select">
                 <option value="" {{ 'selected' if selected.has_activity == '' else '' }}>Any</option>
-                <option value="yes" {{ 'selected' if selected.has_activity == 'yes' else '' }}>Has Activity</option>
-                <option value="no" {{ 'selected' if selected.has_activity == 'no' else '' }}>No Activity</option>
+                <option value="yes" {{ 'selected' if selected.has_activity == 'yes' else '' }}>Worked</option>
+                <option value="no" {{ 'selected' if selected.has_activity == 'no' else '' }}>Not Worked</option>
             </select>
         </div>
         <div class="td-marketing-filter-field">

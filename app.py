@@ -1801,12 +1801,19 @@ def passings_page():
         "place_id_in": place_id_in,
         "place_id_not_in": place_id_not_in,
     }
+    # "Residential Address" marks: classified as residential, so they
+    # leave Commercial Hot Leads / Field Targets (passings_cache only --
+    # the live-SQL fallback below can't see appdb marks).
+    _, residential_marks = passings_activity_store.get_residential_marks()
+    filters["residential_ids"] = set(residential_marks)
 
     # In-memory snapshot (passings_cache.py, refreshed in the background)
     # once it has loaded; the live PlanetWeb queries only until then, e.g.
     # right after a restart. Same functions, same results either way.
+    # Right after a restart the first snapshot takes ~5s; wait for it so
+    # marks apply, and only fall back to live SQL if PlanetWeb is slow/down.
     passings_cache.start_scheduler()
-    source = passings_cache if passings_cache.ready() else passings_data
+    source = passings_cache if passings_cache.wait_until_ready(20) else passings_data
 
     page_result = source.get_page(filters, search, sort_key, sort_dir, page)
 
@@ -1845,6 +1852,17 @@ def passings_page():
         if activity is not None:
             activity = {**activity, "activity_at_display": _format_note_timestamp(activity["activity_at"])}
         row["last_activity"] = activity
+        # Offer "Residential Address" on commercial cards; once marked, the
+        # card shows as residential with an Undo.
+        row["can_mark_residential"] = row["category"] in ("commercial_hot_lead", "commercial_field_target")
+        mark = residential_marks.get(row["PlaceID"])
+        row["residential_mark"] = mark
+        if mark:
+            reclassified = passings_classification.classify(
+                {"email": row["EmailAddress"], "prequal_as_business": 0, "class_name": None}
+            )
+            row.update({k: reclassified[k] for k in ("category", "category_label", "primary_action", "property_type_label")})
+            row["can_mark_residential"] = False
 
     reps_with_activity = passings_activity_store.get_reps_with_activity()
     filter_options = source.get_filter_options()
@@ -1884,6 +1902,22 @@ def passings_page():
         category_labels=passings_classification.CATEGORY_LABELS,
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+@app.route("/passings/residential", methods=["POST"])
+@auth.login_required
+def passings_mark_residential():
+    """Marks a Commercial Hot Lead / Field Target card as a "Residential
+    Address" (or undoes it) -- any logged-in user, same as logging
+    activity. The page reloads afterwards so the card leaves (or returns
+    to) the commercial lists and every count updates."""
+    payload = request.get_json(silent=True) or {}
+    ok, error = passings_activity_store.set_residential_mark(
+        payload.get("place_id"), bool(payload.get("residential")), auth.current_user()
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/passings/activity", methods=["POST"])

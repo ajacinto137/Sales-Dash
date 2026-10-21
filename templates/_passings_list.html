@@ -42,6 +42,9 @@
                 {% if row.is_prequal_business %}
                 <span class="td-passing-badge td-passing-badge-prequal-business">Prequal as Business</span>
                 {% endif %}
+                {% if row.residential_mark %}
+                <span class="td-passing-badge td-passing-badge-residential" title="Marked by {{ row.residential_mark.marked_by_name or 'Unknown' }}{% if row.residential_mark.marked_at %} on {{ row.residential_mark.marked_at.strftime('%-m/%-d/%Y') }}{% endif %} -- hidden from the commercial lists">Marked Residential</span>
+                {% endif %}
                 <span class="td-passing-badge td-passing-badge-{{ 'available-now' if row.AvailabilityID == 1 else 'pre-order' }}">{{ row.availability_label }}</span>
                 <span data-activity-badge>
                     {% if row.last_activity %}
@@ -76,7 +79,18 @@
                 <button type="button" class="td-quick-action-btn" data-log-activity="{{ activity_type }}">Log {{ activity_type }}</button>
                 {% endfor %}
                 <button type="button" class="td-quick-action-btn" data-open-note-panel>+ Note</button>
+                {# "Residential Address" (2026-10-20): a commercial card that's
+                   really a house -- marking it moves it out of Commercial Hot
+                   Leads / Field Targets for everyone. Undo restores it. #}
+                {% if row.can_mark_residential %}
+                <button type="button" class="td-quick-action-btn td-quick-action-btn--residential" data-mark-residential="1"
+                        title="This is a house -- remove it from the commercial lists">Residential Address</button>
+                {% elif row.residential_mark %}
+                <button type="button" class="td-quick-action-btn" data-mark-residential="0"
+                        title="Put this back in the commercial lists">Undo Residential</button>
+                {% endif %}
             </div>
+            <p class="td-error-panel-message" data-mark-residential-error style="display: none;"></p>
 
             <div class="td-attention-panel" data-note-panel style="display: none;">
                 <select class="td-select" data-note-activity-type>

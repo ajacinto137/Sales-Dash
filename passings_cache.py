@@ -83,14 +83,9 @@ def _prepare(df):
     df["PrequalAsBusiness"] = df["PrequalAsBusiness"].fillna(0).astype(int)
     df["BecameAvailable"] = pd.to_datetime(df["BecameAvailable"], errors="coerce")
     df["EmailInsertDate"] = pd.to_datetime(df["EmailInsertDate"], errors="coerce")
-    valid = _email_valid(df["EmailAddress"])
-    business = df["PrequalAsBusiness"] == 1
-    typed = df["PropertyTypeLabel"].notna()
-    df["_email_valid"] = valid
-    df["_residential"] = ~business & ~typed & valid
-    df["_field_target"] = ~business & typed
-    df["_none"] = ~business & ~typed & ~valid
-    df["_actionable"] = business | typed | valid
+    df["_email_valid"] = _email_valid(df["EmailAddress"])
+    df["_marked"] = False
+    _classify(df)
     df["_city_l"] = df["City"].fillna("").astype(str).str.lower()
     df["_state_l"] = df["State"].fillna("").astype(str).str.lower()
     df["_zip_l"] = df["ZipCode"].fillna("").astype(str).str.lower()
@@ -102,6 +97,46 @@ def _prepare(df):
         blob = blob + "\n" + part
     df["_search"] = blob.str.lower()
     return df
+
+
+def _classify(df):
+    """(Re)computes the category columns in place. `_business`/`_type_label`
+    are the Prequal-as-Business flag and property type as classification
+    sees them -- cleared for places marked "Residential Address"
+    (passings_activity_store.get_residential_marks()), which therefore
+    land in Residential Leads (valid email) or no category."""
+    marked = df["_marked"]
+    df["_business"] = (df["PrequalAsBusiness"] == 1) & ~marked
+    df["_type_label"] = df["PropertyTypeLabel"].where(~marked, None)
+    business, typed, valid = df["_business"], df["_type_label"].notna(), df["_email_valid"]
+    df["_residential"] = ~business & ~typed & valid
+    df["_field_target"] = ~business & typed
+    df["_none"] = ~business & ~typed & ~valid
+    df["_actionable"] = business | typed | valid
+
+
+def _with_marks(df, residential_ids):
+    """The snapshot as classification sees it right now: marks are read
+    per request (they change on a click, not on a PlanetWeb refresh), so
+    they're applied to a copy here rather than baked into the snapshot."""
+    if not residential_ids:
+        return df
+    marked = df["PlaceID"].isin({int(i) for i in residential_ids})
+    if not marked.any():
+        return df
+    df = df.copy()
+    df["_marked"] = marked
+    _classify(df)
+    return df
+
+
+def wait_until_ready(timeout):
+    """Blocks up to `timeout` seconds for the first snapshot (right after a
+    restart it loads in ~5s). Returns ready()."""
+    deadline = time.time() + timeout
+    while _state["df"] is None and time.time() < deadline:
+        time.sleep(0.25)
+    return ready()
 
 
 def _load_full():
@@ -241,7 +276,7 @@ def _filter(df, filters, search):
 
     category = filters.get("category")
     if category == "commercial_hot_lead":
-        mask &= df["PrequalAsBusiness"] == 1
+        mask &= df["_business"]
     elif category == "commercial_field_target":
         mask &= df["_field_target"]
     elif category == "residential_lead":
@@ -254,7 +289,7 @@ def _filter(df, filters, search):
 
     property_type = filters.get("property_type")
     if property_type in passings_data._COMMERCIAL_LABELS:
-        mask &= df["PropertyTypeLabel"] == property_type
+        mask &= df["_type_label"] == property_type
 
     has_lead = filters.get("has_lead")
     if has_lead is True:
@@ -325,7 +360,7 @@ def _sort_key(series):
 
 
 def get_page(filters, search, sort_key, sort_dir, page):
-    filtered = _filter(_state["df"], filters, search)
+    filtered = _filter(_with_marks(_state["df"], (filters or {}).get("residential_ids")), filters, search)
     page_size = passings_data.PAGE_SIZE
     total = int(len(filtered))
     total_pages = max(1, -(-total // page_size))
@@ -349,7 +384,7 @@ def get_page(filters, search, sort_key, sort_dir, page):
 
 
 def get_kpis(filters, search=None, activity_place_ids=None):
-    df = _state["df"]
+    df = _with_marks(_state["df"], (filters or {}).get("residential_ids"))
     # The Became Available filter scopes every KPI (2026-10-20, by request).
     footprint_filters = dict(filters or {})
     footprint = _filter(df, footprint_filters, search)
@@ -370,7 +405,7 @@ def get_kpis(filters, search=None, activity_place_ids=None):
         "lead_penetration_pct": (total_leads / total_passings * 100) if total_passings else 0.0,
         "new_passings": int(timed["PlaceID"].nunique()),
         "residential_leads": int(footprint["_residential"].sum()),
-        "commercial_hot_leads": int((footprint["PrequalAsBusiness"] == 1).sum()),
+        "commercial_hot_leads": int(footprint["_business"].sum()),
         "commercial_field_targets": int(footprint["_field_target"].sum()),
         "available_now": int((footprint["AvailabilityID"] == 1).sum()),
         "pre_order": int((footprint["AvailabilityID"] == 3).sum()),
@@ -395,7 +430,7 @@ def _bucket(series, granularity):
 
 
 def get_passings_over_time(filters, search, granularity):
-    filtered = _filter(_state["df"], filters, search)
+    filtered = _filter(_with_marks(_state["df"], (filters or {}).get("residential_ids")), filters, search)
     filtered = filtered[filtered["BecameAvailable"].notna()]
     if filtered.empty:
         return {"ok": True, "error": None, "buckets": []}
@@ -420,7 +455,7 @@ def get_passings_over_time(filters, search, granularity):
 
 def get_market_breakdown(filters, search, dimension="city", top_n=15):
     column = "State" if dimension == "state" else "City"
-    filtered = _filter(_state["df"], filters, search)
+    filtered = _filter(_with_marks(_state["df"], (filters or {}).get("residential_ids")), filters, search)
     filtered = filtered[filtered[column].notna() & (filtered[column].astype(str) != "")]
     if filtered.empty:
         return {"ok": True, "error": None, "markets": []}

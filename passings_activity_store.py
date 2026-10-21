@@ -305,3 +305,62 @@ def get_reps_with_activity():
     finally:
         if conn is not None:
             conn.close()
+
+
+# ================================================================
+# "Residential Address" marks (added 2026-10-20, by request)
+# ================================================================
+# The one deliberate exception to "nothing here influences
+# classification": a rep can mark a Commercial Hot Lead / Field Target as
+# really being a house, and passings_cache.py then classifies that place
+# as residential (Residential Lead if it has a valid email, else none) so
+# the commercial team isn't sent there. Undo deletes the mark.
+
+def get_residential_marks():
+    """(available, {place_id: {"marked_by_name", "marked_at"}}). Never
+    raises; available=False when appdb is unreachable."""
+    conn = None
+    try:
+        conn = db.get_appdb_connection()
+        _ensure_ready(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT place_id, marked_by_name, marked_at FROM passing_residential_marks")
+            return True, {
+                place_id: {"marked_by_name": name, "marked_at": marked_at}
+                for place_id, name, marked_at in cur.fetchall()
+            }
+    except Exception:
+        return False, {}
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def set_residential_mark(place_id, residential, user):
+    """Marks (residential=True) or un-marks a place. Returns (ok, error)."""
+    try:
+        place_id = int(place_id)
+    except (TypeError, ValueError):
+        return False, "Invalid Passing."
+    conn = None
+    try:
+        conn = db.get_appdb_connection()
+        _ensure_ready(conn)
+        with conn, conn.cursor() as cur:
+            if residential:
+                cur.execute(
+                    """
+                    INSERT INTO passing_residential_marks (place_id, marked_by_user_id, marked_by_name)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (place_id) DO NOTHING
+                    """,
+                    (place_id, user.get("id") if user else None, _display_name(user)),
+                )
+            else:
+                cur.execute("DELETE FROM passing_residential_marks WHERE place_id = %s", (place_id,))
+        return True, None
+    except Exception as exc:
+        return False, db.sanitize_error(exc)
+    finally:
+        if conn is not None:
+            conn.close()

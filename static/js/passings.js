@@ -32,6 +32,37 @@ document.addEventListener("DOMContentLoaded", function () {
     var cards = document.querySelectorAll("[data-passing-card]");
     if (!cards.length) return;
 
+    // "Residential Address" / "Undo Residential": saves the mark, then
+    // reloads so the card leaves (or rejoins) the commercial lists and
+    // every KPI/chart count reflects it.
+    document.querySelectorAll("[data-mark-residential]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var card = btn.closest("[data-passing-card]");
+            var errorEl = card.querySelector("[data-mark-residential-error]");
+            btn.disabled = true;
+            fetch("/passings/residential", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    place_id: card.getAttribute("data-place-id"),
+                    residential: btn.getAttribute("data-mark-residential") === "1",
+                }),
+            })
+                .then(function (resp) { return resp.json(); })
+                .then(function (result) {
+                    if (!result.ok) throw new Error(result.error || "Could not save.");
+                    window.location.reload();
+                })
+                .catch(function (err) {
+                    btn.disabled = false;
+                    if (errorEl) {
+                        errorEl.textContent = err.message || "Could not save.";
+                        errorEl.style.display = "block";
+                    }
+                });
+        });
+    });
+
     function formatNow() {
         // Best-effort immediate display before the server's own
         // Eastern-formatted timestamp round-trips back -- overwritten by

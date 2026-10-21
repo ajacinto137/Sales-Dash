@@ -619,6 +619,22 @@ MIGRATIONS = [
         UPDATE external_rep_sales SET referral_code = lower(referral_code) WHERE referral_code <> lower(referral_code);
         """,
     ),
+    (
+        14,
+        "passing_residential_marks (Passings & Leads 'Residential Address', 2026-10-20)",
+        """
+        -- A rep's call that a Commercial Hot Lead / Field Target is really
+        -- a house, so the commercial team stops being sent there. One row
+        -- per marked place; deleting it (Undo) restores the PlanetWeb
+        -- classification. See passings_activity_store.mark_residential().
+        CREATE TABLE IF NOT EXISTS passing_residential_marks (
+            place_id BIGINT PRIMARY KEY,
+            marked_by_user_id INTEGER REFERENCES users(id),
+            marked_by_name TEXT,
+            marked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """,
+    ),
 ]
 
 _schema_ready = False

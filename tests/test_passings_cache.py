@@ -130,3 +130,20 @@ def test_filter_options_are_distinct_and_sorted():
     options = pc.get_filter_options()
     assert options["state"] == ["NJ", "NY"]
     assert options["city"] == ["ALBANY", "NEWARK", "TRENTON", "Trenton"]
+
+
+def test_residential_marks_move_commercial_places_out_of_commercial_categories():
+    marks = {"residential_ids": {3, 4}}  # 3 = field target (email 'none'), 4 = hot lead with an email
+    page = lambda cat: ids(pc.get_page(dict(marks, category=cat), "", "place_id", "asc", 1))
+    assert page("commercial_hot_lead") == []
+    assert page("commercial_field_target") == []
+    assert page("residential_lead") == [1, 4]   # 4 has a valid email
+    assert page("none") == [2, 3, 5]
+    assert ids(pc.get_page(dict(marks, property_type="Commercial"), "", "place_id", "asc", 1)) == []
+    k = pc.get_kpis(marks, activity_place_ids=[])
+    assert k["commercial_hot_leads"] == 0 and k["commercial_field_targets"] == 0
+    assert k["residential_leads"] == 2 and k["actionable_total"] == 2
+    # Prequal-as-Business itself is what the customer submitted -- unchanged.
+    assert ids(pc.get_page(dict(marks, prequal_only=True), "", "place_id", "asc", 1)) == [4]
+    # The shared snapshot is untouched; unmarked queries see it as before.
+    assert ids(pc.get_page({"category": "commercial_hot_lead"}, "", "place_id", "asc", 1)) == [4]
