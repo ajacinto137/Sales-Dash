@@ -25,6 +25,7 @@ import marketing_data
 import marketing_metrics
 import needs_attention_service
 import passings_activity_store
+import passings_cache
 import passings_classification
 import passings_data
 import permissions
@@ -514,6 +515,8 @@ def ensure_data_loaded():
         # External Rep Sales: PlanetWeb -> appdb every
         # EXTERNAL_SALES_SYNC_INTERVAL_SECONDS (default 5 min).
         external_sales_store.start_scheduler()
+        # Passings & Leads in-memory snapshot (passings_cache.py).
+        passings_cache.start_scheduler()
     if not _initial_load_done:
         load_all_data()
 
@@ -1797,14 +1800,20 @@ def passings_page():
         "place_id_not_in": place_id_not_in,
     }
 
-    page_result = passings_data.get_page(filters, search, sort_key, sort_dir, page)
+    # In-memory snapshot (passings_cache.py, refreshed in the background)
+    # once it has loaded; the live PlanetWeb queries only until then, e.g.
+    # right after a restart. Same functions, same results either way.
+    passings_cache.start_scheduler()
+    source = passings_cache if passings_cache.ready() else passings_data
+
+    page_result = source.get_page(filters, search, sort_key, sort_dir, page)
 
     activity_place_ids = passings_activity_store.get_all_place_ids_with_activity()
-    kpis = passings_data.get_kpis(filters, search=search, activity_place_ids=activity_place_ids)
+    kpis = source.get_kpis(filters, search=search, activity_place_ids=activity_place_ids)
 
     granularity = passings_data.auto_granularity(became_from, became_to)
-    over_time = passings_data.get_passings_over_time(filters, search, granularity)
-    market_by_city = passings_data.get_market_breakdown(filters, search, dimension="city", top_n=15)
+    over_time = source.get_passings_over_time(filters, search, granularity)
+    market_by_city = source.get_market_breakdown(filters, search, dimension="city", top_n=15)
     # Same rows as market_by_city, just re-sorted lowest-penetration-first
     # (spec #13: "High Passings + Low Lead Penetration" markets) -- one
     # query, two views, rather than a second query with a different
@@ -1836,7 +1845,7 @@ def passings_page():
         row["last_activity"] = activity
 
     reps_with_activity = passings_activity_store.get_reps_with_activity()
-    filter_options = passings_data.get_filter_options()
+    filter_options = source.get_filter_options()
 
     return render_template(
         "passings.html",

@@ -1914,6 +1914,21 @@ Data below.
   commercial" is a plain column reference everywhere downstream rather
   than a repeated, easy-to-mis-parameterize `LIKE` predicate) backs every
   query function.
+- **`passings_cache.py`** (added 2026-10-20) — the `/passings` page no
+  longer queries PlanetWeb on each view. The `_BASE_CTE` rows (~one row
+  per qualifying Passing) are held in memory as a pandas DataFrame, and
+  the page's KPIs, charts, filter dropdowns and paginated list are
+  computed from it, with the same semantics as the SQL functions above
+  (`tests/test_passings_cache.py`). Kept current by a background thread:
+  every `PASSINGS_INCREMENTAL_SECONDS` (default 120) it fetches only
+  `FTTPFormData` rows with an `ID` above the last one seen and folds in
+  their newer emails / Prequal-as-Business flags; every
+  `PASSINGS_FULL_REFRESH_SECONDS` (default 1800) it re-runs the full base
+  query, which is what picks up new or changed `View_Places` rows
+  (availability, addresses, class, places leaving the footprint). Until
+  the first snapshot loads after a restart, the page uses the live SQL
+  functions. The Admin raw-row browser and validation metrics still read
+  PlanetWeb live.
 - **`passings_classification.py`** — pure functions, no I/O:
   `is_valid_email()`, the commercial-keyword mapping, and `classify()`
   (the full decision tree above). Unit tests: `tests/test_passings_classification.py`.

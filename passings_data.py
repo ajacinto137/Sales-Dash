@@ -176,11 +176,12 @@ WITH latest_email AS (
     -- semantics (most recent InsertDate among rows with a real,
     -- non-blank email, per PlaceID), computed ONCE as a single windowed
     -- pass over FTTPFormData instead of once per View_Places row.
-    SELECT NJPR_PlaceID, EmailAddress
+    SELECT NJPR_PlaceID, EmailAddress, InsertDate
     FROM (
         SELECT
             fd.NJPR_PlaceID,
             fd.EmailAddress,
+            fd.InsertDate,
             ROW_NUMBER() OVER (PARTITION BY fd.NJPR_PlaceID ORDER BY fd.InsertDate DESC) AS rn
         FROM [PlanetWeb].[dbo].[FTTPFormData] fd
         WHERE fd.NJPR_PlaceID IS NOT NULL
@@ -201,6 +202,9 @@ passings_base AS (
     SELECT
         p.ID AS PlaceID,
         le.EmailAddress AS EmailAddress,
+        -- Lets passings_cache.py decide whether a newer FTTPFormData row
+        -- replaces this email without re-running this whole query.
+        le.InsertDate AS EmailInsertDate,
         ISNULL(p.USPSPropertyAddress, p.PropertyLocation) AS FullAddress,
         ISNULL(p.USPSPropertyStreetName + ' ' + p.USPSPropertyStreetSuffix, p.PropertyLocation) AS Street,
         ISNULL(p.USPSPropertyCity, p.PropertyCity) AS City,
