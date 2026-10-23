@@ -33,6 +33,30 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
+    // Team Leaderboard overview KPIs: Team / Door Knockers / Total toggle
+    // (2026-10-23). Remembers the last choice in this browser.
+    document.querySelectorAll("[data-kpi-switch]").forEach(function (root) {
+        var buttons = root.querySelectorAll("[data-kpi-view]");
+        if (!buttons.length) return;
+        function show(view) {
+            if (!root.querySelector('[data-kpi-panel="' + view + '"]')) view = "team";
+            buttons.forEach(function (b) {
+                var on = b.getAttribute("data-kpi-view") === view;
+                b.classList.toggle("td-chart-toggle-active", on);
+                b.setAttribute("aria-pressed", on ? "true" : "false");
+            });
+            root.querySelectorAll("[data-kpi-panel]").forEach(function (p) { p.hidden = p.getAttribute("data-kpi-panel") !== view; });
+            root.querySelectorAll("[data-kpi-hint]").forEach(function (h) { h.hidden = h.getAttribute("data-kpi-hint") !== view; });
+            try { localStorage.setItem("td-kpi-view", view); } catch (e) { /* storage unavailable */ }
+        }
+        buttons.forEach(function (b) {
+            b.addEventListener("click", function () { show(b.getAttribute("data-kpi-view")); });
+        });
+        var saved = null;
+        try { saved = localStorage.getItem("td-kpi-view"); } catch (e) { /* storage unavailable */ }
+        if (saved) show(saved);
+    });
+
     // Click-to-sort for plain tables marked <table data-sortable> (added
     // 2026-10-22, Door Knockers pages). Each header sorts its column --
     // first click descending for numbers, ascending for text; again to

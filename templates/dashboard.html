@@ -83,19 +83,28 @@
          period filter, same convention as Records/Calendar.
          See README.md "Team Leaderboard Page — Section
          Names". -->
-    <div class="td-kpi-rows">
-        <div class="td-kpi-row-label"><span>Team</span></div>
-        {{ kpi_bar(monthly_forecast, total_daily_sales, daily_averages) }}
-        {# Door Knockers row (added 2026-10-23, by request): the same five
-           KPIs from the door-knocker (External Rep Sales) data -- a
-           separate dataset, mostly website-entered orders that aren't in
-           the Team numbers above. #}
+    {# Overview KPIs: one bar, toggled between Team / Door Knockers / Total
+       (2026-10-23, by request -- replaced three stacked rows to save
+       space). Door Knockers = the same five KPIs from the External Rep
+       Sales data (mostly website-entered orders not in Team); Total =
+       Team + Door Knockers, each order once. All three bars are rendered;
+       team_dashboard.js shows one and remembers the choice per browser. #}
+    <div class="td-kpi-switch" data-kpi-switch>
         {% if knocker_kpis %}
-        <div class="td-kpi-row-label"><a href="{{ url_for('knockers_page') }}">Door Knockers &rarr;</a></div>
-        {{ kpi_bar(knocker_kpis.forecast, knocker_kpis.daily, knocker_kpis.averages) }}
-        {# Total (added 2026-10-23): Team + Door Knockers, each order once. #}
-        <div class="td-kpi-row-label"><span>Total</span> <span class="td-kpi-row-hint">Team + Door Knockers</span></div>
-        {{ kpi_bar(total_kpis.forecast, total_kpis.daily, total_kpis.averages) }}
+        <div class="td-kpi-switch-head">
+            <div class="td-chart-toggle" role="group" aria-label="Show overview for">
+                <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-kpi-view="team" aria-pressed="true">Team</button>
+                <button type="button" class="td-chart-toggle-btn" data-kpi-view="knockers" aria-pressed="false">Door Knockers</button>
+                <button type="button" class="td-chart-toggle-btn" data-kpi-view="total" aria-pressed="false">Total</button>
+            </div>
+            <span class="td-kpi-row-hint" data-kpi-hint="knockers" hidden><a href="{{ url_for('knockers_page') }}">Open Door Knockers &rarr;</a></span>
+            <span class="td-kpi-row-hint" data-kpi-hint="total" hidden>Team + Door Knockers, each order counted once</span>
+        </div>
+        {% endif %}
+        <div data-kpi-panel="team">{{ kpi_bar(monthly_forecast, total_daily_sales, daily_averages) }}</div>
+        {% if knocker_kpis %}
+        <div data-kpi-panel="knockers" hidden>{{ kpi_bar(knocker_kpis.forecast, knocker_kpis.daily, knocker_kpis.averages) }}</div>
+        <div data-kpi-panel="total" hidden>{{ kpi_bar(total_kpis.forecast, total_kpis.daily, total_kpis.averages) }}</div>
         {% endif %}
     </div>
 
