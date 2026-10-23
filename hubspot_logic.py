@@ -7,6 +7,7 @@ permissions.py)."""
 import os
 import re
 import unicodedata
+import urllib.parse
 from datetime import date, datetime, timedelta, timezone
 
 # ---------------------------------------------------------------- matching
@@ -191,6 +192,15 @@ def hubspot_contact_url(ui_domain, portal_id, contact_id):
         return None
     domain = ui_domain if ui_domain and re.fullmatch(r"[a-z0-9.-]+\.hubspot\.com", ui_domain) else "app.hubspot.com"
     return f"https://{domain}/contacts/{portal_id}/record/0-1/{contact_id}"
+
+
+def hubspot_contact_search_url(ui_domain, portal_id, query):
+    """HubSpot's own contacts list, searched for `query` -- the fallback
+    when no contact record could be matched."""
+    if not portal_id:
+        return None
+    domain = ui_domain if ui_domain and re.fullmatch(r"[a-z0-9.-]+\.hubspot\.com", ui_domain) else "app.hubspot.com"
+    return f"https://{domain}/contacts/{portal_id}/objects/0-1/views/all/list?" + urllib.parse.urlencode({"query": query})
 
 
 # ---------------------------------------------------------------- connected outcome

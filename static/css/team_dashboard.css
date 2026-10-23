@@ -3344,6 +3344,10 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
 .td-installs-bar { display: block; height: 8px; min-width: 0; border-radius: 4px; background: var(--td-green); opacity: 0.75; }
 .td-installs-note { display: block; margin-top: 10px; }
 
+/* "Open in HubSpot" on Passing cards with an email (2026-10-23) -- a link styled as a quick action. */
+.td-quick-action-btn--hubspot { text-decoration: none; color: var(--td-cyan); }
+.td-quick-action-btn--hubspot:hover { color: var(--td-text-primary); border-color: var(--td-cyan); }
+
 /* "Residential Address" quick action on commercial Passing cards (2026-10-20). */
 .td-quick-action-btn--residential { color: var(--td-orange); border-color: var(--td-orange); }
 .td-quick-action-btn--residential:hover { color: var(--td-text-primary); border-color: var(--td-orange); background: var(--td-orange-bg); }

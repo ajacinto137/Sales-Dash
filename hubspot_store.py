@@ -1070,6 +1070,51 @@ def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
 # Connectivity diagnostic (Admin "Test Connection")
 # ================================================================
 
+def contact_url_for_email(email):
+    """(url, matched) for the HubSpot contact with this email -- Passings
+    & Leads' "Open in HubSpot" button. Contacts already cached from call
+    syncs are used first; otherwise HubSpot is searched by email and the
+    match cached. With no match (or no API key), the url is HubSpot's
+    contacts list searched for the email and `matched` is False. The url
+    is None only when the portal id isn't known yet (no sync has run)."""
+    email = (email or "").strip()
+    if not email:
+        return None, False
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT portal_id, ui_domain FROM hubspot_sync_state WHERE id = 1")
+            portal_id, ui_domain = cur.fetchone() or (None, None)
+            cur.execute(
+                "SELECT contact_id FROM hubspot_contacts WHERE lower(email) = lower(%s) "
+                "ORDER BY length(contact_id), contact_id LIMIT 1",
+                (email,),
+            )
+            row = cur.fetchone()
+        contact_id = row[0] if row else None
+        if not contact_id and hubspot_client.is_configured():
+            try:
+                found = hubspot_client.HubSpotClient().find_contacts_by_email(email)
+            except hubspot_client.HubSpotError as exc:
+                _log(f"HubSpot contact search failed: {exc}")
+                found = []
+            if found:
+                contact = found[0]
+                contact_id = contact["id"]
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO hubspot_contacts (contact_id, name, email) VALUES (%s, %s, %s) "
+                            "ON CONFLICT (contact_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, updated_at = now()",
+                            (contact_id, contact["name"], contact["email"] or email),
+                        )
+    finally:
+        conn.close()
+    if contact_id:
+        return logic.hubspot_contact_url(ui_domain, portal_id, contact_id), True
+    return logic.hubspot_contact_search_url(ui_domain, portal_id, email), False
+
+
 def test_connection():
     """Hits each endpoint the sync needs with a minimal read and reports
     per-endpoint results -- the precise "which endpoint / status / scope"

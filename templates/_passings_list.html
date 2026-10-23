@@ -79,6 +79,10 @@
                 <button type="button" class="td-quick-action-btn" data-log-activity="{{ activity_type }}">Log {{ activity_type }}</button>
                 {% endfor %}
                 <button type="button" class="td-quick-action-btn" data-open-note-panel>+ Note</button>
+                {% if row.is_lead %}
+                <a class="td-quick-action-btn td-quick-action-btn--hubspot" href="{{ url_for('passings_open_hubspot', place_id=row.PlaceID) }}"
+                   target="_blank" rel="noopener" title="Open this email's contact in HubSpot">Open in HubSpot &#8599;</a>
+                {% endif %}
                 {# "Residential Address" (2026-10-20): a commercial card that's
                    really a house -- marking it moves it out of Commercial Hot
                    Leads / Field Targets for everyone. Undo restores it. #}

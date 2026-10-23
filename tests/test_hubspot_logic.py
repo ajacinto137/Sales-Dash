@@ -285,6 +285,13 @@ def test_safe_https_url_and_contact_url():
     assert logic.hubspot_contact_url(None, None, "5") is None
 
 
+def test_contact_search_url():
+    assert (logic.hubspot_contact_search_url("app.hubspot.com", "99", "a+b@x.com")
+            == "https://app.hubspot.com/contacts/99/objects/0-1/views/all/list?query=a%2Bb%40x.com")
+    assert logic.hubspot_contact_search_url("evil.com", "99", "a@x.com").startswith("https://app.hubspot.com/")
+    assert logic.hubspot_contact_search_url("app.hubspot.com", None, "a@x.com") is None
+
+
 def test_format_hours_minutes():
     assert logic.format_hours_minutes(22320) == "6h 12m"
     assert logic.format_hours_minutes(900) == "15m"

@@ -2026,6 +2026,30 @@ def passings_mark_residential():
     return jsonify({"ok": True})
 
 
+@app.route("/passings/<int:place_id>/hubspot")
+@auth.login_required
+def passings_open_hubspot(place_id):
+    """"Open in HubSpot" on a Passings & Leads card: redirects to the
+    HubSpot contact with the passing's email (or HubSpot's contact search
+    for it when there's no match). Keyed by Passing ID so the email never
+    appears in a dashboard URL; looked up server-side at click time so
+    rendering a page of cards costs no HubSpot calls."""
+    source = passings_cache if passings_cache.ready() else passings_data
+    result = source.get_page({"place_id_in": [place_id]}, None, "email", "asc", 1)
+    row = (result.get("rows") or [None])[0]
+    if not row or not row.get("is_lead"):
+        abort(404)
+    try:
+        url, _matched = hubspot_store.contact_url_for_email(row["EmailAddress"])
+    except Exception as exc:
+        print(f"[hubspot] Open in HubSpot failed for passing {place_id}: {hubspot_client.sanitize(exc)}")
+        url = None
+    if not url:
+        return Response("HubSpot isn't connected yet, so this contact can't be opened. "
+                        "Run a HubSpot sync from Admin first.", status=503, mimetype="text/plain")
+    return redirect(url)
+
+
 @app.route("/passings/activity", methods=["POST"])
 @auth.login_required
 def passings_log_activity():

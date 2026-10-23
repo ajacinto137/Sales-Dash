@@ -326,6 +326,29 @@ class HubSpotClient:
                 result[str(row["id"])] = {"name": name or None, "email": (props.get("email") or "").strip() or None}
         return result
 
+    def find_contacts_by_email(self, email):
+        """[{"id", "name", "email"}] for contacts whose primary email is
+        `email`, oldest first -- HubSpot matches it case-insensitively."""
+        wait = SEARCH_MIN_INTERVAL_SECONDS - (time.monotonic() - self._last_search_at)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            page = self._request("POST", "/crm/v3/objects/contacts/search", body={
+                "filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}],
+                "properties": ["firstname", "lastname", "email"],
+                "limit": 10,
+            })
+        finally:
+            self._last_search_at = time.monotonic()
+        contacts = []
+        for row in page.get("results") or []:
+            if not row.get("id"):
+                continue
+            props = row.get("properties") or {}
+            name = " ".join(p for p in ((props.get("firstname") or "").strip(), (props.get("lastname") or "").strip()) if p)
+            contacts.append({"id": str(row["id"]), "name": name or None, "email": (props.get("email") or "").strip() or None})
+        return sorted(contacts, key=lambda c: int(c["id"]))
+
     def get_account_details(self):
         """{"portalId", "uiDomain", ...} -- for building HubSpot UI links."""
         return self._request("GET", "/account-info/v3/details")
