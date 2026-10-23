@@ -1,0 +1,34 @@
+{# The 5-card overview KPI bar (Monthly Sales, Daily Sales, 7/30 Day
+   Average, Monthly Projection), shared by the Team Leaderboard's Team
+   Overview + Door Knockers rows and the Door Knockers page (extracted
+   2026-10-23). Import with {% from "_kpi_bar.html" import kpi_bar %}.
+   forecast = calculate_monthly_forecast(), averages =
+   calculate_daily_averages(), daily = calculate_total_daily_sales(). #}
+{% macro kpi_bar(forecast, daily, averages) -%}
+<section class="td-kpi-bar">
+    <div class="td-kpi">
+        <span class="td-kpi-label">Monthly Sales</span>
+        <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(forecast.month_to_date) }}</span>
+        <span class="td-kpi-note">{{ forecast.month_label }} to date</span>
+    </div>
+    <div class="td-kpi">
+        <span class="td-kpi-label">Daily Sales</span>
+        <span class="td-kpi-value td-purple">{{ "{:,}".format(daily) }}</span>
+    </div>
+    <div class="td-kpi">
+        <span class="td-kpi-label">7 Day Average</span>
+        <span class="td-kpi-value td-yellow">{{ "%.1f"|format(averages.avg_7_day) }}</span>
+        <span class="td-kpi-note">sales per day</span>
+    </div>
+    <div class="td-kpi">
+        <span class="td-kpi-label">30 Day Average</span>
+        <span class="td-kpi-value td-orange">{{ "%.1f"|format(averages.avg_30_day) }}</span>
+        <span class="td-kpi-note">sales per day</span>
+    </div>
+    <div class="td-kpi">
+        <span class="td-kpi-label">Monthly Projection</span>
+        <span class="td-kpi-value td-cyan">{{ "{:,}".format(forecast.projected_total) }}</span>
+        <span class="td-kpi-note">{{ forecast.month_label }} pace</span>
+    </div>
+</section>
+{%- endmacro %}

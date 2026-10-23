@@ -3477,3 +3477,11 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-th-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 .td-th-sortable:hover, .td-th-sortable:focus-visible { color: var(--td-accent-blue); outline: none; }
 .td-th-sortable .td-sort-arrow { margin-left: 4px; display: inline-block; min-width: 8px; }
+
+/* Team Overview + Door Knockers KPI rows on the Team Leaderboard (2026-10-23) */
+.td-kpi-rows { display: flex; flex-direction: column; gap: 8px; }
+.td-kpi-row-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--td-text-secondary); }
+.td-kpi-row-label:not(:first-child) { margin-top: 6px; }
+.td-kpi-row-label a { color: var(--td-text-secondary); text-decoration: none; }
+.td-kpi-row-label a:hover { color: var(--td-accent-blue); }
+.td-kpi-row-hint { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--td-text-muted); margin-left: 6px; }

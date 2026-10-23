@@ -1035,8 +1035,33 @@ def dashboard_page():
         row["sales_today"] = sales_today.get(row["rep"], 0)
         row["calls_per_sale"] = row["calls_today"] / row["sales_today"] if row["sales_today"] else None
 
+    # Door Knockers KPI row (added 2026-10-23) -- same five numbers from
+    # the knocker dataset; omitted if appdb is unreachable.
+    knocker_df, _knocker_error = _load_knockers_or_error()
+    knocker_kpis = total_kpis = None
+    if knocker_df is not None:
+        knocker_kpis = {
+            "forecast": calculate_monthly_forecast(knocker_df),
+            "daily": calculate_total_daily_sales(knocker_df),
+            "averages": calculate_daily_averages(knocker_df),
+        }
+        # Total row = Team + Door Knockers, each order counted once (a
+        # knocker order a rep entered is in both datasets). Follows the
+        # Team row's own rules: Monthly Sales/Projection include Web,
+        # Daily Sales/averages don't (reps_only).
+        def _union(team_df):
+            frames = [f[["sale_id", "sale_date"]] for f in (team_df, knocker_df) if f is not None and not f.empty]
+            return pd.concat(frames).drop_duplicates("sale_id") if frames else knocker_df
+        total_kpis = {
+            "forecast": calculate_monthly_forecast(_union(normalized)),
+            "daily": calculate_total_daily_sales(_union(reps_only)),
+            "averages": calculate_daily_averages(_union(reps_only)),
+        }
+
     return render_template(
         "dashboard.html",
+        knocker_kpis=knocker_kpis,
+        total_kpis=total_kpis,
         active_page="dashboard",
         period=period,
         custom_start=custom_start,

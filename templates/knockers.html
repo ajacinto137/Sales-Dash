@@ -12,6 +12,7 @@
 </head>
 <body class="td-body">
 {% include "_topnav.html" %}
+{% from "_kpi_bar.html" import kpi_bar %}
 
 {# Door Knockers dashboard (added 2026-10-22) -- internal view of the
    External Rep Sales data, one row per referral code. Data and status
@@ -43,32 +44,7 @@
     {% endif %}
 
     {# ---------- Knocker Overview (all-time / today-based, like Team Overview) ---------- #}
-    <section class="td-kpi-bar">
-        <div class="td-kpi">
-            <span class="td-kpi-label">Monthly Sales</span>
-            <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(monthly_forecast.month_to_date) }}</span>
-            <span class="td-kpi-note">{{ monthly_forecast.month_label }} to date</span>
-        </div>
-        <div class="td-kpi">
-            <span class="td-kpi-label">Daily Sales</span>
-            <span class="td-kpi-value td-purple">{{ "{:,}".format(today_sales) }}</span>
-        </div>
-        <div class="td-kpi">
-            <span class="td-kpi-label">7 Day Average</span>
-            <span class="td-kpi-value td-yellow">{{ "%.1f"|format(daily_averages.avg_7_day) }}</span>
-            <span class="td-kpi-note">sales per day</span>
-        </div>
-        <div class="td-kpi">
-            <span class="td-kpi-label">30 Day Average</span>
-            <span class="td-kpi-value td-orange">{{ "%.1f"|format(daily_averages.avg_30_day) }}</span>
-            <span class="td-kpi-note">sales per day</span>
-        </div>
-        <div class="td-kpi">
-            <span class="td-kpi-label">Monthly Projection</span>
-            <span class="td-kpi-value td-cyan">{{ "{:,}".format(monthly_forecast.projected_total) }}</span>
-            <span class="td-kpi-note">{{ monthly_forecast.month_label }} pace</span>
-        </div>
-    </section>
+    {{ kpi_bar(monthly_forecast, today_sales, daily_averages) }}
 
     {# ---------- Account Status (period-filtered) ---------- #}
     {% set acct_args = {'period': period, 'start': custom_start, 'end': custom_end} %}
