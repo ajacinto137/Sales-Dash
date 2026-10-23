@@ -559,8 +559,8 @@ function createMonthToDateChart(canvasEl, tokens) {
 // wireChartToggle() (a canvas created while display:none sizes to 0).
 function wireMonthlyTrendCard(card) {
     if (!card) return;
-    const rangeRoot = card.querySelector("#team-monthly-trend-range-toggle");
-    const viewRoot = card.querySelector("#team-monthly-trend-toggle");
+    const rangeRoot = card.querySelector("[data-trend-range-toggle]");
+    const viewRoot = card.querySelector("[data-trend-view-toggle]");
     const panels = card.querySelectorAll("[data-trend-view][data-trend-range]");
     const subtitles = card.querySelectorAll("[data-trend-subtitle]");
     const tokens = getChartTokens();
@@ -1171,6 +1171,21 @@ function createHorizontalBarChart(canvasEl, tokens) {
     return chart;
 }
 
+function wireVisibleCalendarAndTrendCards() {
+    document.querySelectorAll("[data-calendar-toggle], [data-trend-card]").forEach((el) => {
+        if (el.dataset.wired || el.closest("[data-kpi-follow][hidden]")) return;
+        el.dataset.wired = "1";
+        if (el.hasAttribute("data-calendar-toggle")) wireCalendarToggle(el);
+        else wireMonthlyTrendCard(el);
+    });
+}
+
+// Fired by team_dashboard.js when the overview Team / Door Knockers /
+// Total toggle changes (after it un-hides the matching panels).
+document.addEventListener("td:kpi-view", () => {
+    if (typeof Chart !== "undefined" && document.readyState !== "loading") wireVisibleCalendarAndTrendCards();
+});
+
 document.addEventListener("DOMContentLoaded", () => {
     if (typeof Chart === "undefined") return;
     const tokens = getChartTokens();
@@ -1183,8 +1198,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     wireChartToggle(document.getElementById("channel-hourly-toggle"));
     wireChartToggle(document.getElementById("team-channel-hourly-toggle"));
-    wireCalendarToggle(document.getElementById("team-calendar-toggle"));
-    wireMonthlyTrendCard(document.getElementById("team-monthly-trend-card"));
+    // Sales Calendar & Monthly Sales Trend: wire every calendar/trend card
+    // that's visible now. Copies inside a hidden [data-kpi-follow]
+    // dataset panel (Team Leaderboard: Door Knockers / Total) are wired
+    // the first time they're shown -- see the td:kpi-view listener below
+    // (a chart created while hidden would size to 0).
+    wireVisibleCalendarAndTrendCards();
     wireChartToggle(document.getElementById("knocker-rates-toggle"));
     // Sales Volume tab's own nested Team/NJ/NY/VA toggle -- wired
     // unconditionally like team-monthly-trend-toggle above, not lazily

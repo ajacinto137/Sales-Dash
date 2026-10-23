@@ -140,10 +140,15 @@
             <span class="td-muted-inline">Total sales per day &amp; per month, by state &middot; independent of the period filter above</span>
         </div>
 
-        <div class="td-activity-split">
+        {# One calendar + trend per dataset (Team / Door Knockers / Total),
+           shown to match the overview KPI toggle above (2026-10-23, by
+           request). Only the visible one is drawn; charts.js wires the
+           others the first time they're shown. #}
+        {% for ds in dataset_views %}
+        <div class="td-activity-split" data-kpi-follow="{{ ds.key }}"{% if not loop.first %} hidden{% endif %}>
             <div class="td-calendar-card">
                 <div class="td-calendar-card-head">
-                    <div class="td-chart-toggle" id="team-calendar-toggle">
+                    <div class="td-chart-toggle" id="{{ ds.key }}-calendar-toggle" data-calendar-toggle>
                         {% for opt in dashboard_view_options %}
                         <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == cal_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
                         {% endfor %}
@@ -151,7 +156,7 @@
                 </div>
 
                 {% for opt in dashboard_view_options %}
-                {% set cal = calendar_views[opt.key] %}
+                {% set cal = ds.calendar[opt.key] %}
                 <div data-chart-panel="{{ opt.key }}" style="{{ '' if opt.key == cal_view else 'display:none;' }}">
                     <div class="td-calendar-nav">
                         <a class="td-btn td-btn-ghost"
@@ -172,9 +177,12 @@
                                     {% if cell %}
                                     <div class="td-calendar-cell {{ 'td-calendar-today' if cell.is_today else '' }}{{ ' td-calendar-cell-empty' if cell.count == 0 else '' }}">
                                         <span class="td-calendar-day">{{ cell.day }}</span>
-                                        {% if cell.count %}
+                                        {% if cell.count and ds.key == 'total' %}
+                                        {# No combined Team + Door Knockers account list -- show the split instead. #}
+                                        <span class="td-calendar-count" title="{{ cell.team_count }} Team + {{ cell.knocker_count }} Door Knockers">{{ cell.count }}</span>
+                                        {% elif cell.count %}
                                         <a class="td-calendar-count td-calendar-count-link"
-                                           href="{{ url_for('all_sales_view', view='date', year=cal.year, month=cal.month, day=cell.day, cal_view=opt.key) }}"
+                                           href="{{ url_for('knocker_accounts', status='all', year=cal.year, month=cal.month, day=cell.day, state=(opt_state_codes[opt.key] if opt_state_codes[opt.key] is string else None)) if ds.key == 'knockers' else url_for('all_sales_view', view='date', year=cal.year, month=cal.month, day=cell.day, cal_view=opt.key) }}"
                                            title="{{ cell.count }} sale{{ '' if cell.count == 1 else 's' }} — view accounts"
                                            aria-label="View {{ cell.count }} sale{{ '' if cell.count == 1 else 's' }} for {{ cal.month_label.split(' ')[0] }} {{ cell.day }}, {{ cal.month_label.split(' ')[1] }}">{{ cell.count }}</a>
                                         {% else %}
@@ -201,8 +209,12 @@
                  range toggle and the Team/NJ/NY/VA toggle are independent;
                  one panel per (view, range) pair, wired by
                  wireMonthlyTrendCard() in charts.js. -->
+            {% set monthly_trend_views = ds.trend %}
+            {% set mtd_trend_views = ds.mtd %}
+            {% set trend_prefix = ds.key %}
             {% include "_monthly_trend_card.html" %}
         </div>
+        {% endfor %}
     </section>
 
     <!-- ================= Channel & Time-of-Day Performance =================

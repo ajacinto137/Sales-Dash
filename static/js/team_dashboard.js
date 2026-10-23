@@ -47,6 +47,10 @@ document.addEventListener("DOMContentLoaded", function () {
             });
             root.querySelectorAll("[data-kpi-panel]").forEach(function (p) { p.hidden = p.getAttribute("data-kpi-panel") !== view; });
             root.querySelectorAll("[data-kpi-hint]").forEach(function (h) { h.hidden = h.getAttribute("data-kpi-hint") !== view; });
+            // Other sections that follow this toggle (Sales Calendar &
+            // Monthly Sales Trend) -- charts.js draws them on first show.
+            document.querySelectorAll("[data-kpi-follow]").forEach(function (p) { p.hidden = p.getAttribute("data-kpi-follow") !== view; });
+            document.dispatchEvent(new CustomEvent("td:kpi-view", { detail: { view: view } }));
             try { localStorage.setItem("td-kpi-view", view); } catch (e) { /* storage unavailable */ }
         }
         buttons.forEach(function (b) {

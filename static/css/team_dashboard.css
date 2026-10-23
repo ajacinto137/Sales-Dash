@@ -1,3 +1,9 @@
+/* The `hidden` attribute must always win: author rules like
+   .td-activity-split { display: grid } otherwise override the browser's
+   [hidden] { display: none }, so toggled panels (Team / Door Knockers /
+   Total) would all show at once. */
+[hidden] { display: none !important; }
+
 :root {
     --td-bg: #0a0a0b;
     --td-panel: #131316;

@@ -1050,7 +1050,7 @@ def dashboard_page():
         # Team row's own rules: Monthly Sales/Projection include Web,
         # Daily Sales/averages don't (reps_only).
         def _union(team_df):
-            frames = [f[["sale_id", "sale_date"]] for f in (team_df, knocker_df) if f is not None and not f.empty]
+            frames = [f[["sale_id", "sale_date", "state"]] for f in (team_df, knocker_df) if f is not None and not f.empty]
             return pd.concat(frames).drop_duplicates("sale_id") if frames else knocker_df
         total_kpis = {
             "forecast": calculate_monthly_forecast(_union(normalized)),
@@ -1058,10 +1058,45 @@ def dashboard_page():
             "averages": calculate_daily_averages(_union(reps_only)),
         }
 
+    # Sales Calendar & Monthly Sales Trend follow the KPI bar's Team /
+    # Door Knockers / Total toggle (2026-10-23, by request): the same
+    # calendar + trend views, computed once per dataset. "team" is the
+    # existing views above, unchanged; Total = Team + Door Knockers, each
+    # order once (Web included, like Team's calendar/trend).
+    dataset_views = [{
+        "key": "team", "label": "Team",
+        "calendar": calendar_views, "trend": monthly_trend_views, "mtd": mtd_trend_views,
+    }]
+    if knocker_df is not None:
+        for ds_key, ds_label, ds_df in (("knockers", "Door Knockers", knocker_df), ("total", "Total", _union(normalized))):
+            by_state = {key: _state_filtered(ds_df, code) for key, _, code in DASHBOARD_STATE_VIEWS}
+            dataset_views.append({
+                "key": ds_key, "label": ds_label,
+                "calendar": {key: calculate_calendar_sales(v, cal_year, cal_month) for key, v in by_state.items()},
+                "trend": {key: calculate_monthly_sales_trend(v) for key, v in by_state.items()},
+                "mtd": {key: calculate_month_to_date_comparison(v) for key, v in by_state.items()},
+            })
+        # Total calendar cells carry their Team / Door Knockers split for
+        # the hover title (there's no combined account list to link to).
+        team_cal, knocker_cal, total_cal = (dataset_views[i]["calendar"] for i in range(3))
+        for key in total_cal:
+            split = {}
+            for part, cal in (("team_count", team_cal[key]), ("knocker_count", knocker_cal[key])):
+                for week in cal["weeks"]:
+                    for cell in week:
+                        if cell:
+                            split.setdefault(cell["day"], {})[part] = cell["count"]
+            for week in total_cal[key]["weeks"]:
+                for cell in week:
+                    if cell:
+                        cell.update(split.get(cell["day"], {}))
+
     return render_template(
         "dashboard.html",
         knocker_kpis=knocker_kpis,
         total_kpis=total_kpis,
+        dataset_views=dataset_views,
+        opt_state_codes={key: code for key, _, code in DASHBOARD_STATE_VIEWS},
         active_page="dashboard",
         period=period,
         custom_start=custom_start,
