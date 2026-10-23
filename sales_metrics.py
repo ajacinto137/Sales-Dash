@@ -12,6 +12,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from queries import DOOR_KNOCKER_CODES, WEB_SALES_SOURCE_TOKEN
+
 # InsertDate on the PlanetWeb SQL Server is already written in
 # America/New_York local time, not UTC -- so sale_datetime only needs this
 # attached for correct EST/EDT display (%Z), never an astimezone() convert.
@@ -69,6 +71,43 @@ def extract_rep_name(source_token):
     return name or "Unknown"
 
 
+# "Web" (added 2026-10-22, by request): website (GetPlanetFiber.com
+# map-pin) orders whose referral code is NOT a door-knocker code. Shown
+# as a pseudo-rep named "Web" with its own "Web" channel. Counts in the
+# Individual Rep Leaderboard, Channel & Time-of-Day Performance, Sales
+# Calendar & Monthly Sales Trend, and the Monthly Sales/Projection KPIs
+# -- but Web isn't a person, so every other team-wide number (Records,
+# Daily Sales, averages, Latest Accounts Sold) runs on exclude_web(df)
+# instead. Channel Breakdown by State also counts Web (its own column).
+WEB_REP = "Web"
+WEB_CHANNEL = "Web"
+# Channel vocabulary for the channel charts/drill-downs: the real
+# SalesChannel_ID channels plus Web.
+CHART_CHANNELS = list(SALES_CHANNELS.values()) + [WEB_CHANNEL]
+
+
+def _is_door_knocker_code(referral_data):
+    return isinstance(referral_data, str) and referral_data.strip().lower() in DOOR_KNOCKER_CODES
+
+
+def web_sale_mask(df):
+    """True for rows that are Web sales: SourceToken is the website's
+    map-pin token and ReferralData is not a door-knocker code. Takes a
+    raw PlanetWeb frame (SourceToken/ReferralData columns)."""
+    tokens = df["SourceToken"] if "SourceToken" in df.columns else pd.Series(None, index=df.index)
+    referrals = df["ReferralData"] if "ReferralData" in df.columns else pd.Series(None, index=df.index)
+    is_web_token = tokens.astype(str).str.strip() == WEB_SALES_SOURCE_TOKEN
+    return is_web_token & ~referrals.apply(_is_door_knocker_code)
+
+
+def exclude_web(df):
+    """The normalized dataset minus Web sales -- for every team-wide number
+    Web shouldn't count toward (see WEB_REP above)."""
+    if df is None or "is_web" not in df.columns:
+        return df
+    return df[~df["is_web"]]
+
+
 def map_sales_channel(channel_id):
     try:
         key = int(channel_id)
@@ -77,8 +116,10 @@ def map_sales_channel(channel_id):
     return SALES_CHANNELS.get(key, "Unknown")
 
 
-def build_sales_dataset(main_sales, vision_packages, service_cancellations):
-    """Builds one normalized row per Main Sales record.
+def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_sales=None):
+    """Builds one normalized row per Main Sales record, plus one per Web
+    sale (web_sales rows that pass web_sale_mask() -- door-knocker-coded
+    website orders are dropped here, they belong to External Rep Sales).
 
     Installed is read off the existing "Install Status" column (already
     computed elsewhere as a deduped match against Vision Packages, which the
@@ -89,6 +130,12 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
     """
     if main_sales is None:
         return None
+
+    web_count = 0
+    if web_sales is not None and not web_sales.empty:
+        web_rows = web_sales[web_sale_mask(web_sales)]
+        web_count = len(web_rows)
+        main_sales = pd.concat([main_sales, web_rows], ignore_index=True)
 
     original_count = len(main_sales)
     df = main_sales.copy()
@@ -143,6 +190,9 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
 
     source_tokens = df["SourceToken"] if "SourceToken" in df.columns else pd.Series([None] * len(df), index=df.index)
     channel_ids = df["SalesChannel_ID"] if "SalesChannel_ID" in df.columns else pd.Series([None] * len(df), index=df.index)
+    # Also catches a map-pin order that somehow has an InsertByEmployeeID
+    # (so came in via main_sales) -- it's still a website order.
+    is_web = web_sale_mask(df)
 
     normalized = pd.DataFrame({
         "sale_id": df["ID"] if "ID" in df.columns else df.index,
@@ -152,9 +202,10 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
         # display formatting. Used by the "Latest Sales" record card.
         "sale_datetime": pd.to_datetime(df["DateTime"], errors="coerce") if "DateTime" in df.columns else pd.NaT,
         "source_token": source_tokens,
-        "sales_rep": source_tokens.apply(extract_rep_name),
+        "sales_rep": source_tokens.apply(extract_rep_name).where(~is_web, WEB_REP),
         "sales_channel_id": channel_ids,
-        "sales_channel": channel_ids.apply(map_sales_channel),
+        "sales_channel": channel_ids.apply(map_sales_channel).where(~is_web, WEB_CHANNEL),
+        "is_web": is_web.values,
         "subscriber_uuid": subscriber_uuids,
         "scheduled": df["Scheduled"] if "Scheduled" in df.columns else None,
         "scheduled_date": df["StartDate"] if "StartDate" in df.columns else None,
@@ -178,13 +229,14 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations):
     print("=" * 60)
     print("DASHBOARD DATA PIPELINE")
     print("=" * 60)
-    print(f"Main rows loaded:            {original_count:,}")
+    print(f"Main rows loaded:            {original_count - web_count:,}")
     print(f"Vision rows loaded:          {len(vision_packages):,}" if vision_packages is not None else "Vision rows loaded:          0")
     print(
         f"Cancellation rows loaded:    {len(service_cancellations):,}"
         if service_cancellations is not None
         else "Cancellation rows loaded:    0"
     )
+    print(f"Web sales rows loaded:       {web_count:,}")
     print(f"Normalized sales rows:       {len(normalized):,}")
     print(f"Unique reps:                 {normalized['sales_rep'].nunique():,}")
     print(f"Installed count:             {int(installed_mask.sum()):,}")
@@ -306,6 +358,11 @@ def calculate_rep_metrics(df):
         # based) -- only Install Rate's formula and the visible Cancels
         # count column (now Needs Attention) changed.
         install_rate = (1 - (needs_attention / sales_count)) * 100 if sales_count else None
+        if rep == WEB_REP:
+            # By request (2026-10-22): every Web sale counts as Inbound;
+            # the outbound columns don't apply (shown as N/A).
+            inbound = sales_count
+            outbound = outbound_installs = None
         rows.append({
             "sales_rep": rep,
             "sales": sales_count,
@@ -629,6 +686,55 @@ def calculate_month_to_date_comparison(df):
     }
 
 
+def calculate_week_to_date_comparison(df, weeks=8):
+    """Cumulative sales by day of week (Mon-Sun) for the Monthly Sales
+    card's "Week to Date" mode (added 2026-10-22, Door Knockers
+    dashboard): this week so far vs the average of the previous `weeks`
+    COMPLETED Monday-Sunday weeks, so a partial week never drags the
+    average down. Same all-time / period-filter-independent convention
+    as calculate_month_to_date_comparison(). The current-week series
+    stops at today (None afterwards)."""
+    today = _today()
+    week_start = today - timedelta(days=today.weekday())
+    first_start = week_start - timedelta(weeks=weeks)
+
+    daily = {}
+    if df is not None and not df.empty:
+        valid = df.dropna(subset=["sale_date"])
+        dates = valid["sale_date"].dt.date
+        valid = valid[(dates >= first_start) & (dates <= today)]
+        if not valid.empty:
+            for d, count in valid["sale_date"].dt.date.value_counts().items():
+                daily[d] = int(count)
+
+    def cumulative(counts):
+        running, out = 0, []
+        for c in counts:
+            running += c
+            out.append(running)
+        return out
+
+    current_daily = [daily.get(week_start + timedelta(days=i), 0) for i in range(today.weekday() + 1)]
+    past_weeks = [
+        cumulative([daily.get(first_start + timedelta(weeks=w, days=i), 0) for i in range(7)])
+        for w in range(weeks)
+    ]
+    average = [round(sum(week[i] for week in past_weeks) / weeks, 1) for i in range(7)]
+    pad = [None] * (7 - len(current_daily))
+
+    return {
+        "week_label": f"Week of {week_start.strftime('%b %-d')}",
+        "days": [(week_start + timedelta(days=i)).strftime("%a %-m/%-d") for i in range(7)],
+        "current": cumulative(current_daily) + pad,
+        "current_daily": current_daily + pad,
+        "average": average,
+        "average_weeks": weeks,
+        "average_week_total": average[-1],
+        "total": sum(current_daily),
+        "has_data": bool(daily),
+    }
+
+
 def calculate_sales_volume_trend(df):
     """Cumulative OUTBOUND sales volume per rep for the current calendar
     month to date, for the Channel & Time-of-Day Performance section's
@@ -757,7 +863,7 @@ def calculate_channel_breakdown(df):
         if df is not None and not df.empty
         else {}
     )
-    return [
+    rows = [
         {
             "channel": name,
             "count": int(counts.get(name, 0)),
@@ -765,6 +871,12 @@ def calculate_channel_breakdown(df):
         }
         for name in SALES_CHANNELS.values()
     ]
+    # Web counts as inbound (same rule as the leaderboard), and is only
+    # shown when it has sales -- so a real rep's profile never gets an
+    # always-zero Web bar.
+    if counts.get(WEB_CHANNEL, 0):
+        rows.append({"channel": WEB_CHANNEL, "count": int(counts[WEB_CHANNEL]), "direction": "inbound"})
+    return rows
 
 
 CHANNEL_STATE_ROWS = ["NJ", "NY", "PA", "VA"]
@@ -780,14 +892,15 @@ def calculate_channel_state_breakdown(df):
     NJ/NY/PA/VA (even at zero), then "Other" only when some sale's state
     is blank or outside those four, then a "Total" row. Outbound Call and
     Door to Door lead the column order (by request, 2026-10-12); the rest
-    follow SALES_CHANNELS order."""
+    follow SALES_CHANNELS order, then Web last (added 2026-10-22, by
+    request -- counted as inbound, same as the leaderboard)."""
     leading = ["Outbound Call", "Door to Door"]
-    channels = leading + [name for name in SALES_CHANNELS.values() if name not in leading]
+    channels = leading + [name for name in SALES_CHANNELS.values() if name not in leading] + [WEB_CHANNEL]
 
     def summarize(label, slice_df):
         counts = slice_df["sales_channel"].value_counts().to_dict() if not slice_df.empty else {}
         by_channel = {name: int(counts.get(name, 0)) for name in channels}
-        inbound = sum(c for name, c in by_channel.items() if name in INBOUND_CHANNELS)
+        inbound = sum(c for name, c in by_channel.items() if name in INBOUND_CHANNELS or name == WEB_CHANNEL)
         outbound = sum(c for name, c in by_channel.items() if name in OUTBOUND_CHANNELS)
         return {"state": label, "channels": by_channel, "inbound": inbound,
                 "outbound": outbound, "total": int(len(slice_df))}
@@ -908,7 +1021,7 @@ def calculate_rep_monthly_activity(df, rep, year, month):
             "count": counts[day],
             "channels": [
                 {"channel": name, "count": channel_counts[day][name]}
-                for name in SALES_CHANNELS.values()
+                for name in CHART_CHANNELS
                 if channel_counts[day].get(name, 0) > 0
             ],
         }
@@ -1098,7 +1211,7 @@ def get_channel_account_view(df, rep, channel, period, start, end):
     so results are shaped identically to every other Bulk Account View.
     Returns (title, []) for an unknown channel or empty scope, never
     raises."""
-    if channel not in SALES_CHANNELS.values():
+    if channel not in CHART_CHANNELS:
         return channel, []
     title = f"{channel} Accounts"
     if df is None or df.empty:
@@ -1131,7 +1244,8 @@ LEADERBOARD_METRIC_FILTERS = {
     "sales": lambda df: df,
     "outbound": lambda df: df[df["sales_channel"].isin(OUTBOUND_CHANNELS)],
     "outbound_installs": lambda df: df[df["sales_channel"].isin(OUTBOUND_CHANNELS) & (df["status"] == "Installed")],
-    "inbound": lambda df: df[df["sales_channel"].isin(INBOUND_CHANNELS)],
+    # Web sales are all Inbound on the leaderboard (see calculate_rep_metrics()).
+    "inbound": lambda df: df[df["sales_channel"].isin(INBOUND_CHANNELS) | (df["sales_channel"] == WEB_CHANNEL)],
     "installs": _bulk_status_filter("Installed"),
     "pending": _bulk_status_filter("Pending"),
     "needs_attention": _bulk_status_filter("Needs Attention"),

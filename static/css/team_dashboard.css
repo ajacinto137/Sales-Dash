@@ -50,6 +50,21 @@
     --td-chart-channel-6: #008300;
     --td-chart-channel-7: #9085e9;
     --td-chart-channel-8: #e66767;
+    /* Web (website orders) -- always the last channel bar when present. */
+    --td-chart-channel-9: #2bb7c4;
+    /* Account-status fills for charts (Door Knockers blitzes, 2026-10-22).
+       Darker than the --td-green/yellow/... text colors so fills sit in the
+       validated lightness band on this surface; Cancelled is a deeper
+       orange so it stays distinct from Needs Attention's magenta. Order
+       Installed/Pending/Needs Attention/Cancelled passes the dataviz
+       palette validator (dark, surface #131316). */
+    --td-chart-status-installed: #199e70;
+    --td-chart-status-pending: #c98500;
+    --td-chart-status-needs-attention: #d55181;
+    --td-chart-status-cancelled: #a35a2a;
+    /* Service cancellations (left after install) -- third line of the
+       Door Knockers rate trend; validated all-pairs with the two above. */
+    --td-chart-service-cancel: #9085e9;
 
     --td-accent-blue: #3987e5;
     --td-accent-blue-bg: rgba(57, 135, 229, 0.12);
@@ -399,6 +414,7 @@ html, body.td-body {
 .td-purple { color: var(--td-purple); }
 .td-cyan { color: var(--td-cyan); }
 .td-magenta { color: var(--td-accent-magenta); }
+.td-web { color: var(--td-chart-channel-9); }
 
 /* ---------------- Glow / gradient utilities ----------------
    Used selectively (a handful of specific elements below), not applied
@@ -3325,3 +3341,139 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
 /* "Residential Address" quick action on commercial Passing cards (2026-10-20). */
 .td-quick-action-btn--residential { color: var(--td-orange); border-color: var(--td-orange); }
 .td-quick-action-btn--residential:hover { color: var(--td-text-primary); border-color: var(--td-orange); background: var(--td-orange-bg); }
+
+/* ---------------- Customer Profile (added 2026-10-22) ---------------- */
+
+.td-bulk-card-link { cursor: pointer; transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+.td-bulk-card-link:hover { border-color: var(--td-accent-blue); box-shadow: 0 0 var(--td-chart-glow-blur) var(--td-accent-blue-bg); }
+a.td-bulk-name { text-decoration: none; }
+a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline; }
+
+.td-cp-status { vertical-align: middle; margin-left: 10px; font-size: 11px; }
+.td-cp-subline { margin: 6px 0 0 0; font-size: 13px; color: var(--td-text-secondary); }
+.td-cp-subline a, .td-cp-link { color: var(--td-accent-blue); text-decoration: none; }
+.td-cp-subline a:hover, .td-cp-link:hover { text-decoration: underline; }
+.td-cp-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.td-cp-glance {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+}
+.td-cp-glance-value { font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
+
+.td-cp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+.td-cp-grid-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+
+.td-cp-fields {
+    display: grid;
+    grid-template-columns: minmax(110px, 40%) 1fr;
+    gap: 7px 14px;
+    margin: 0;
+    font-size: 13px;
+}
+.td-cp-fields dt { color: var(--td-text-secondary); }
+.td-cp-fields dd { margin: 0; color: var(--td-text-primary); overflow-wrap: anywhere; }
+
+.td-cp-table td { vertical-align: top; }
+.td-cp-wrap { white-space: normal !important; min-width: 180px; }
+.td-cp-sub { display: block; font-size: 11.5px; color: var(--td-text-muted); white-space: normal; margin-top: 2px; }
+.td-cp-voided { color: var(--td-text-muted); text-decoration: line-through; }
+
+.td-cp-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.td-cp-timeline > li {
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-left: 3px solid var(--td-accent-violet);
+    border-radius: var(--td-radius);
+    padding: 10px 14px;
+}
+.td-cp-timeline-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--td-text-secondary); }
+.td-cp-timeline-head strong { color: var(--td-text-primary); font-size: 13px; }
+.td-cp-note { margin: 6px 0 0 0; font-size: 13px; color: var(--td-text-primary); white-space: pre-line; overflow-wrap: anywhere; }
+.td-cp-tag {
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--td-accent-violet);
+    background: var(--td-accent-violet-bg);
+}
+.td-cp-tag-cyan { color: var(--td-cyan); background: var(--td-cyan-bg); }
+
+.td-cp-notice {
+    margin: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--td-border);
+    border-left: 3px solid var(--td-yellow);
+    border-radius: var(--td-radius);
+    background: var(--td-yellow-bg);
+    font-size: 13px;
+    color: var(--td-text-primary);
+}
+
+@media (max-width: 640px) {
+    .td-cp-fields { grid-template-columns: 1fr; gap: 2px; }
+    .td-cp-fields dd { margin-bottom: 8px; }
+}
+
+/* ---------------- Door Knockers (added 2026-10-22) ---------------- */
+
+.td-kn-status {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+}
+.td-kn-areas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+.td-kn-search { margin-left: auto; }
+.td-kn-search input { min-width: 180px; }
+
+@media (max-width: 640px) {
+    .td-kn-areas { grid-template-columns: 1fr; }
+    .td-kn-search { margin-left: 0; width: 100%; }
+    .td-kn-search input { width: 100%; min-width: 0; }
+}
+
+/* Blitzes (added 2026-10-22) */
+.td-kn-blitz-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 16px;
+}
+.td-kn-blitz-daily { height: 190px; }
+.td-kn-blitz-total { font-size: 22px; font-weight: 700; color: var(--td-text-primary); line-height: 1; text-align: right; }
+.td-kn-blitz-total small { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--td-text-secondary); margin-top: 3px; }
+.td-kn-status-table { margin-top: 10px; }
+.td-kn-status-table td { padding-top: 6px; padding-bottom: 6px; }
+.td-kn-header-links { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+@media (max-width: 640px) {
+    .td-kn-blitz-grid { grid-template-columns: 1fr; }
+}
+.td-kn-combine { margin-left: auto; }
+.td-kn-combine:disabled { opacity: 0.45; cursor: not-allowed; }
+.td-kn-check-col { width: 34px; text-align: center; }
+.td-kn-check-col input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--td-accent-blue); }
+.td-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.td-kn-rate-chart { height: 300px; }
+.td-kn-rate-table { margin-top: 12px; }
+.td-kn-rate-table summary { cursor: pointer; font-size: 12.5px; color: var(--td-text-secondary); }
+.td-kn-rate-table summary:hover { color: var(--td-accent-blue); }
+.td-kn-rate-table .td-table-scroll { margin-top: 10px; }
+
+/* Click-to-sort plain tables (table[data-sortable], team_dashboard.js) */
+.td-th-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.td-th-sortable:hover, .td-th-sortable:focus-visible { color: var(--td-accent-blue); outline: none; }
+.td-th-sortable .td-sort-arrow { margin-left: 4px; display: inline-block; min-width: 8px; }

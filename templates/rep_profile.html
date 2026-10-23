@@ -92,8 +92,12 @@
             </div>
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Outbound</span>
+                {% if rep_metrics.outbound is none %}
+                <span class="td-profile-metric-value td-cyan">N/A</span>
+                {% else %}
                 <a class="td-profile-metric-value td-profile-metric-link td-cyan"
                    href="{{ url_for('bulk_account_view', rep_name=rep_name, view='metric', metric='outbound', period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(rep_metrics.outbound) }}</a>
+                {% endif %}
             </div>
             <div class="td-profile-metric">
                 <span class="td-profile-metric-label">Pending</span>

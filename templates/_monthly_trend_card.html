@@ -1,0 +1,61 @@
+{# Monthly Sales trend card (12 Months / Month to Date x Team/state
+   views), wired by wireMonthlyTrendCard() in charts.js. Shared by the
+   Team Leaderboard and the Door Knockers dashboard (extracted
+   2026-10-22). Expects monthly_trend_views, mtd_trend_views,
+   dashboard_view_options, trend_view and trend_range in context.
+   Optional wtd_trend_views adds a "Week to Date" mode (Door Knockers). #}
+<div class="td-chart-card" id="team-monthly-trend-card">
+    <div class="td-chart-card-head">
+        <div>
+            <h3>Monthly Sales</h3>
+            <span class="td-muted-inline" data-trend-subtitle="12m"{% if trend_range != '12m' %} style="display:none;"{% endif %}>Trailing 12 months</span>
+            <span class="td-muted-inline" data-trend-subtitle="mtd"{% if trend_range != 'mtd' %} style="display:none;"{% endif %}>Cumulative by day &middot; {{ mtd_trend_views['team'].month_short }} vs {{ mtd_trend_views['team'].prev_month_short }} vs YTD avg</span>
+            {% if wtd_trend_views is defined %}
+            <span class="td-muted-inline" data-trend-subtitle="wtd"{% if trend_range != 'wtd' %} style="display:none;"{% endif %}>Cumulative Mon&ndash;Sun &middot; {{ wtd_trend_views['team'].week_label }} vs average of last {{ wtd_trend_views['team'].average_weeks }} weeks</span>
+            {% endif %}
+        </div>
+        <div class="td-trend-toggles">
+            <div class="td-chart-toggle" id="team-monthly-trend-range-toggle">
+                <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if trend_range == '12m' else '' }}" data-chart-toggle="12m">12 Months</button>
+                <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if trend_range == 'mtd' else '' }}" data-chart-toggle="mtd">Month to Date</button>
+            {% if wtd_trend_views is defined %}
+            <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if trend_range == 'wtd' else '' }}" data-chart-toggle="wtd">Week to Date</button>
+            {% endif %}
+            </div>
+            <div class="td-chart-toggle" id="team-monthly-trend-toggle">
+                {% for opt in dashboard_view_options %}
+                <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if opt.key == trend_view else '' }}" data-chart-toggle="{{ opt.key }}">{{ opt.label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {% for opt in dashboard_view_options %}
+    {% set trend = monthly_trend_views[opt.key] %}
+    <div class="td-chart-canvas-wrap" data-trend-view="{{ opt.key }}" data-trend-range="12m" style="{{ '' if opt.key == trend_view and trend_range == '12m' else 'display:none;' }}">
+        {% if trend|sum(attribute='count') == 0 %}
+        <p class="td-empty">No sales recorded yet.</p>
+        {% else %}
+        <canvas id="team-monthly-trend-chart-{{ opt.key }}" data-chart-type="monthlyTrend" data-months='{{ trend|tojson }}'></canvas>
+        {% endif %}
+    </div>
+    {% set mtd = mtd_trend_views[opt.key] %}
+    <div class="td-chart-canvas-wrap" data-trend-view="{{ opt.key }}" data-trend-range="mtd" style="{{ '' if opt.key == trend_view and trend_range == 'mtd' else 'display:none;' }}">
+        {% if mtd.total == 0 and mtd.ytd_months == 0 %}
+        <p class="td-empty">No sales recorded this month or last month.</p>
+        {% else %}
+        <canvas id="team-mtd-trend-chart-{{ opt.key }}" data-chart-type="monthToDate" data-mtd='{{ mtd|tojson }}'></canvas>
+        {% endif %}
+    </div>
+    {% if wtd_trend_views is defined %}
+    {% set wtd = wtd_trend_views[opt.key] %}
+    <div class="td-chart-canvas-wrap" data-trend-view="{{ opt.key }}" data-trend-range="wtd" style="{{ '' if opt.key == trend_view and trend_range == 'wtd' else 'display:none;' }}">
+        {% if not wtd.has_data %}
+        <p class="td-empty">No sales recorded in the last {{ wtd.average_weeks }} weeks.</p>
+        {% else %}
+        <canvas id="team-wtd-trend-chart-{{ opt.key }}" data-chart-type="weekToDate" data-wtd='{{ wtd|tojson }}'></canvas>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>

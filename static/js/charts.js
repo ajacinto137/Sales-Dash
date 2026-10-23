@@ -34,6 +34,14 @@ function getChartTokens() {
         purpleBg: read("--td-purple-bg"),
         cyan: read("--td-cyan"),
         cyanBg: read("--td-cyan-bg"),
+        panel: read("--td-panel"),
+        statusColors: {
+            installed: read("--td-chart-status-installed"),
+            pending: read("--td-chart-status-pending"),
+            needs_attention: read("--td-chart-status-needs-attention"),
+            cancelled: read("--td-chart-status-cancelled"),
+        },
+        serviceCancel: read("--td-chart-service-cancel"),
         channelPalette: [
             read("--td-chart-channel-1"),
             read("--td-chart-channel-2"),
@@ -43,6 +51,7 @@ function getChartTokens() {
             read("--td-chart-channel-6"),
             read("--td-chart-channel-7"),
             read("--td-chart-channel-8"),
+            read("--td-chart-channel-9"),
         ],
     };
 }
@@ -211,6 +220,244 @@ function createMonthlySalesTrendChart(canvasEl, tokens) {
 // today), the full previous month, and the YTD average month (mean
 // cumulative curve of this year's completed months). Data comes from
 // calculate_month_to_date_comparison(); null entries are gaps.
+// ---------------- Door Knocker blitzes (added 2026-10-22) ----------------
+
+const BLITZ_STATUSES = [
+    ["installed", "Installed"],
+    ["pending", "Pending"],
+    ["needs_attention", "Needs Attention"],
+    ["cancelled", "Cancelled"],
+];
+
+// Sales per calendar day across one blitz. Click a bar -> that day's accounts.
+function createBlitzDailyChart(canvasEl, tokens) {
+    const days = JSON.parse(canvasEl.dataset.days || "[]");
+    const base = canvasEl.dataset.drilldownBase;
+    return new Chart(canvasEl, {
+        type: "bar",
+        data: {
+            labels: days.map((d) => d.label),
+            datasets: [{
+                label: "Sales",
+                data: days.map((d) => d.count),
+                backgroundColor: tokens.accentBlue,
+                borderRadius: tokens.barRadius,
+                borderSkipped: false,
+                maxBarThickness: 22,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            onClick: (_evt, elements) => {
+                if (!elements.length || !base) return;
+                const [y, m, d] = days[elements[0].index].date.split("-").map(Number);
+                window.location.href = `${base}&year=${y}&month=${m}&day=${d}`;
+            },
+            onHover: (evt, elements) => {
+                evt.native.target.style.cursor = elements.length && base ? "pointer" : "default";
+            },
+            scales: {
+                x: { ...baseScaleOptions(tokens), grid: { display: false }, ticks: { ...baseScaleOptions(tokens).ticks, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+                y: { ...baseScaleOptions(tokens), beginAtZero: true, ticks: { ...baseScaleOptions(tokens).ticks, precision: 0 } },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: buildTooltipConfig(tokens, {
+                    title: (items) => days[items[0].dataIndex].label,
+                    label: (item) => `${item.raw} sale${item.raw === 1 ? "" : "s"}`,
+                }),
+            },
+        },
+    });
+}
+
+// Account status per blitz as horizontal stacked bars (one row per blitz,
+// or one row for a single blitz). Click a segment -> those accounts.
+function createStatusStackedChart(canvasEl, tokens) {
+    const rows = JSON.parse(canvasEl.dataset.rows || "[]");
+    return new Chart(canvasEl, {
+        type: "bar",
+        data: {
+            labels: rows.map((r) => r.name),
+            datasets: BLITZ_STATUSES.map(([key, label]) => ({
+                label,
+                key,
+                data: rows.map((r) => r[key]),
+                backgroundColor: tokens.statusColors[key],
+                borderColor: tokens.panel,
+                borderWidth: { right: 2 },
+                borderSkipped: false,
+                borderRadius: 0,
+                maxBarThickness: 26,
+            })),
+        },
+        options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "nearest", axis: "y", intersect: true },
+            onClick: (_evt, elements) => {
+                if (!elements.length) return;
+                const row = rows[elements[0].index];
+                const key = BLITZ_STATUSES[elements[0].datasetIndex][0];
+                if (row.url) window.location.href = `${row.url}&status=${key}`;
+            },
+            onHover: (evt, elements) => {
+                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+            },
+            scales: {
+                x: { ...baseScaleOptions(tokens), stacked: true, beginAtZero: true, ticks: { ...baseScaleOptions(tokens).ticks, precision: 0 } },
+                y: { ...baseScaleOptions(tokens), stacked: true, grid: { display: false } },
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: { color: tokens.axisText, font: { size: 11, weight: "600" }, boxWidth: 10, boxHeight: 10, padding: 14 },
+                },
+                tooltip: buildTooltipConfig(tokens, {
+                    title: (items) => rows[items[0].dataIndex].name,
+                    label: (item) => {
+                        const total = rows[item.dataIndex].sales;
+                        const pct = total ? ` (${((item.raw / total) * 100).toFixed(1)}%)` : "";
+                        return `${item.dataset.label}: ${item.raw}${pct}`;
+                    },
+                }),
+            },
+        },
+    });
+}
+
+// Door Knockers team rates by sale month (added 2026-10-22): order cancel,
+// needs attention and service cancel %, one % axis. Months still
+// "maturing" (too recent for installs/cancels to have happened) draw
+// dashed. Rows come from knockers.monthly_rates().
+function createRateTrendChart(canvasEl, tokens) {
+    const rows = JSON.parse(canvasEl.dataset.rows || "[]");
+    const series = [
+        ["order_cancel_rate", "Order cancel rate", tokens.statusColors.cancelled, "cancelled", "sales"],
+        ["needs_attention_rate", "Needs attention rate", tokens.statusColors.needs_attention, "needs_attention", "sales"],
+        ["service_cancel_rate", "Service cancel rate", tokens.serviceCancel, "service_cancelled", "installed"],
+    ];
+    const dashedIfMaturing = (ctx) => (rows[ctx.p1DataIndex] && rows[ctx.p1DataIndex].maturing ? [5, 4] : undefined);
+    return new Chart(canvasEl, {
+        type: "line",
+        data: {
+            labels: rows.map((r) => r.label),
+            datasets: series.map(([key, label, color, countKey, baseKey]) => ({
+                label,
+                key,
+                countKey,
+                baseKey,
+                data: rows.map((r) => (r[key] === null ? null : Math.round(r[key] * 10) / 10)),
+                borderColor: color,
+                backgroundColor: color,
+                borderWidth: 2,
+                tension: 0.25,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBorderColor: tokens.panel,
+                pointBorderWidth: 2,
+                segment: { borderDash: dashedIfMaturing },
+                spanGaps: false,
+            })),
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ...baseScaleOptions(tokens), grid: { display: false } },
+                y: {
+                    ...baseScaleOptions(tokens),
+                    beginAtZero: true,
+                    ticks: { ...baseScaleOptions(tokens).ticks, callback: (v) => `${v}%` },
+                },
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: { color: tokens.axisText, font: { size: 11, weight: "600" }, boxWidth: 10, boxHeight: 2, padding: 14 },
+                },
+                tooltip: buildTooltipConfig(tokens, {
+                    title: (items) => {
+                        const row = rows[items[0].dataIndex];
+                        return `${row.label} sales${row.maturing ? " (still maturing)" : ""}`;
+                    },
+                    label: (item) => {
+                        if (item.raw === null || item.raw === undefined) return null;
+                        const row = rows[item.dataIndex];
+                        const ds = item.dataset;
+                        return `${ds.label}: ${item.raw.toFixed(1)}% (${row[ds.countKey]} of ${row[ds.baseKey]})`;
+                    },
+                }),
+            },
+        },
+    });
+}
+
+// "Week to Date" mode of the Monthly Sales card (added 2026-10-22, Door
+// Knockers dashboard): cumulative sales Mon-Sun this week vs the average
+// of the last N completed weeks -- see calculate_week_to_date_comparison().
+function createWeekToDateChart(canvasEl, tokens) {
+    const wtd = JSON.parse(canvasEl.dataset.wtd || "{}");
+    const line = (extra) => ({
+        fill: false, tension: 0.25, pointRadius: 0, pointHoverRadius: 4, pointHoverBorderWidth: 0, ...extra,
+    });
+    return new Chart(canvasEl, {
+        type: "line",
+        data: {
+            labels: wtd.days,
+            datasets: [
+                line({
+                    label: "This week", key: "current", data: wtd.current,
+                    borderColor: tokens.accentBlue, borderWidth: tokens.lineWidth + 1,
+                    backgroundColor: tokens.accentBlueBg, fill: true,
+                    pointRadius: 3, pointBackgroundColor: tokens.accentBlue,
+                    pointHoverBackgroundColor: tokens.accentBlue, order: 1,
+                }),
+                line({
+                    label: `Average week (last ${wtd.average_weeks})`, key: "average", data: wtd.average,
+                    borderColor: tokens.teamAverage, borderWidth: tokens.lineWidth, borderDash: [5, 4],
+                    pointHoverBackgroundColor: tokens.teamAverage, order: 2,
+                }),
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "index", intersect: false },
+            spanGaps: false,
+            scales: {
+                x: { ...baseScaleOptions(tokens), grid: { display: false } },
+                y: { ...baseScaleOptions(tokens), beginAtZero: true },
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: { color: tokens.axisText, font: { size: 11, weight: "600" }, boxWidth: 10, boxHeight: 2, padding: 14 },
+                },
+                tooltip: buildTooltipConfig(tokens, {
+                    title: (items) => wtd.days[items[0].dataIndex],
+                    label: (item) => {
+                        const value = item.raw;
+                        if (value === null || value === undefined) return null;
+                        if (item.dataset.key === "average") return `Average: ${value.toLocaleString("en-US")} by this day`;
+                        return `This week: ${value} total (+${wtd.current_daily[item.dataIndex]} that day)`;
+                    },
+                }),
+            },
+        },
+    });
+}
+
 function createMonthToDateChart(canvasEl, tokens) {
     const mtd = JSON.parse(canvasEl.dataset.mtd || "{}");
     const datasets = [
@@ -644,6 +891,8 @@ const CHART_TOGGLE_FACTORIES = {
     hourly: createHourlyChart,
     monthlyTrend: createMonthlySalesTrendChart,
     monthToDate: createMonthToDateChart,
+    weekToDate: createWeekToDateChart,
+    rateTrend: createRateTrendChart,
     salesVolume: createSalesVolumeChart,
     bucketSeries: createBucketSeriesChart,
 };
@@ -929,10 +1178,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const monthlyEl = document.getElementById("monthly-sales-chart");
     if (monthlyEl) createMonthlySalesChart(monthlyEl, tokens);
 
+    document.querySelectorAll('canvas[data-chart-type="blitzDaily"]').forEach((el) => createBlitzDailyChart(el, tokens));
+    document.querySelectorAll('canvas[data-chart-type="statusStacked"]').forEach((el) => createStatusStackedChart(el, tokens));
+
     wireChartToggle(document.getElementById("channel-hourly-toggle"));
     wireChartToggle(document.getElementById("team-channel-hourly-toggle"));
     wireCalendarToggle(document.getElementById("team-calendar-toggle"));
     wireMonthlyTrendCard(document.getElementById("team-monthly-trend-card"));
+    wireChartToggle(document.getElementById("knocker-rates-toggle"));
     // Sales Volume tab's own nested Team/NJ/NY/VA toggle -- wired
     // unconditionally like team-monthly-trend-toggle above, not lazily
     // via the outer toggle, since Sales Volume is the outer toggle's

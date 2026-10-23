@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ blitz.name }} — Door Knockers — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# One blitz, or several combined (added 2026-10-22): results, daily
+   sales, account status, knockers, towns, and every account. When
+   `members` is non-empty this is a group (/knockers/blitzes/group). #}
+
+<div class="td-page">
+
+    <header class="td-profile-header">
+        <a class="td-back-link" href="{{ url_for('knocker_blitzes') }}">&larr; All Blitzes</a>
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">{{ blitz.state }} {{ 'Blitzes Combined' if members else 'Blitz' }}{% if blitz.ongoing %} &middot; {{ 'includes one ' if members else '' }}in progress{% endif %}</p>
+                <h1 class="td-profile-name">{{ blitz.name }}</h1>
+                <p class="td-cp-subline">
+                    {{ blitz.date_label }} &middot; {{ blitz.selling_days }} selling day{{ '' if blitz.selling_days == 1 else 's' }} &middot; {{ blitz.knockers }} knocker{{ '' if blitz.knockers == 1 else 's' }}
+                    {% if blitz.cities %}&middot; {{ blitz.cities|map(attribute='city')|join(', ') }}{% endif %}
+                </p>
+            </div>
+        </div>
+    </header>
+
+    {% if load_error %}
+    <p class="td-cp-notice">Door-knocker data is unavailable right now ({{ load_error }}).</p>
+    {% endif %}
+
+    {% set base = url_for('knocker_accounts', **acct_args) %}
+    {% set s = blitz.stats %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Results</h2><span class="td-muted-inline">click a number to see the accounts</span></div>
+        <div class="td-kn-status">
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Sales</span>
+                <a class="td-profile-metric-value td-profile-metric-link td-text-primary td-gradient-text" href="{{ base }}&status=all">{{ "{:,}".format(s.sales) }}</a>
+                <span class="td-muted-inline">{{ "%.1f"|format(blitz.per_day) if blitz.per_day is not none else '—' }} per selling day{% if blitz.best_day and blitz.best_day.count %} &middot; best {{ blitz.best_day.label }} ({{ blitz.best_day.count }}){% endif %}</span>
+            </div>
+            {% for key, label, value, color in [
+                ('installed', 'Installed', s.installed, 'td-green'),
+                ('pending', 'Pending', s.pending, 'td-yellow'),
+                ('needs_attention', 'Needs Attention', s.needs_attention, 'td-magenta'),
+                ('cancelled', 'Cancelled', s.cancelled, 'td-orange'),
+                ('service_cancelled', 'Service Cancels', s.service_cancelled, 'td-purple'),
+                ('card_on_file', 'Card on File', s.card_on_file, 'td-cyan')] %}
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">{{ label }}</span>
+                <a class="td-profile-metric-value td-profile-metric-link {{ color }}" href="{{ base }}&status={{ key }}">{{ "{:,}".format(value) }}</a>
+                {% if s.sales %}<span class="td-muted-inline">{{ "%.1f"|format(value / s.sales * 100) }}% of sales</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    {% if members %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Blitzes in this Group</h2><span class="td-muted-inline">{{ members|length }}</span></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table data-sortable class="td-table">
+                <thead><tr><th>Blitz</th><th>Dates</th><th>Sales</th><th>Per Day</th><th>Installed</th><th>Install Rate</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th><th>Card on File</th></tr></thead>
+                <tbody>
+                {% for m in members + [blitz] %}
+                <tr class="{{ 'td-channel-state-total' if loop.last else '' }}"{% if loop.last %} data-sort-fixed{% endif %}>
+                    <td class="td-rep-cell">{% if not loop.last %}<a class="td-rep-link" href="{{ m.detail_url }}">{{ m.name }}</a><span class="td-cp-sub">{{ m.state }}</span>{% else %}Combined{% endif %}</td>
+                    <td data-sort-value="{{ m.start.isoformat() }}">{{ m.date_label }}</td>
+                    <td class="td-text-primary"><a class="td-metric-link" href="{{ m.accounts_url }}&status=all">{{ m.stats.sales }}</a></td>
+                    <td class="td-purple">{{ "%.1f"|format(m.per_day) if m.per_day is not none else '—' }}</td>
+                    <td class="td-green">{{ m.stats.installed }}</td>
+                    <td class="td-green">{{ "%.1f"|format(m.stats.install_rate) ~ '%' if m.stats.install_rate is not none else '—' }}</td>
+                    <td class="td-yellow">{{ m.stats.pending }}</td>
+                    <td class="td-magenta">{{ m.stats.needs_attention }}</td>
+                    <td class="td-orange">{{ m.stats.cancelled }}</td>
+                    <td class="td-cyan">{{ "%.1f"|format(m.stats.card_on_file_rate) ~ '%' if m.stats.card_on_file_rate is not none else '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+
+    <section class="td-section">
+        <div class="td-kn-areas">
+            <div class="td-chart-card">
+                <div class="td-chart-card-head"><h3>Daily Sales</h3><span class="td-muted-inline">click a bar for that day's accounts</span></div>
+                {% if s.sales %}
+                <div class="td-chart-canvas-wrap"><canvas data-chart-type="blitzDaily" data-days='{{ blitz.daily|tojson }}' data-drilldown-base="{{ daily_drilldown }}" aria-label="Daily sales for {{ blitz.name }}"></canvas></div>
+                {% else %}<p class="td-empty">No sales yet.</p>{% endif %}
+            </div>
+            <div class="td-chart-card">
+                <div class="td-chart-card-head"><h3>Account Status</h3><span class="td-muted-inline">of {{ s.sales }} sales &middot; click a segment</span></div>
+                {% if s.sales %}
+                <div class="td-chart-canvas-wrap" style="height: {{ 86 + 40 * status_chart|length }}px;"><canvas data-chart-type="statusStacked" data-rows='{{ status_chart|tojson }}' aria-label="Account status for {{ blitz.name }}"></canvas></div>
+                <table class="td-table td-kn-status-table">
+                    <tbody>
+                        {% for key, label, color in [('installed', 'Installed', 'td-green'), ('pending', 'Pending', 'td-yellow'), ('needs_attention', 'Needs Attention', 'td-magenta'), ('cancelled', 'Cancelled', 'td-orange')] %}
+                        <tr><td>{{ label }}</td><td class="{{ color }}">{{ s[key] }}</td><td>{{ "%.1f"|format(s[key] / s.sales * 100) }}%</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}<p class="td-empty">No sales yet.</p>{% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="td-section">
+        <div class="td-kn-areas">
+            <div>
+                <div class="td-section-heading"><h2>Knockers</h2><span class="td-muted-inline">{{ knocker_rows|length }}</span></div>
+                <div class="td-table-card"><div class="td-table-scroll">
+                    <table data-sortable class="td-table">
+                        <thead><tr><th>Code</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th><th>Card on File</th></tr></thead>
+                        <tbody>
+                        {% for r in knocker_rows %}
+                        <tr>
+                            <td class="td-rep-cell"><a class="td-rep-link" href="{{ url_for('knocker_profile', code=r.code) }}">{{ r.code }}</a></td>
+                            <td class="td-text-primary"><a class="td-metric-link" href="{{ base }}&status=all&code={{ r.code }}">{{ r.sales }}</a></td>
+                            <td class="td-green">{{ r.installed }}</td>
+                            <td class="td-green">{{ "%.1f"|format(r.install_rate) ~ '%' if r.install_rate is not none else '—' }}</td>
+                            <td class="td-yellow">{{ r.pending }}</td>
+                            <td class="td-magenta">{{ r.needs_attention }}</td>
+                            <td class="td-orange">{{ r.cancelled }}</td>
+                            <td class="td-cyan">{{ "%.1f"|format(r.card_on_file_rate) ~ '%' if r.card_on_file_rate is not none else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div></div>
+            </div>
+            <div>
+                <div class="td-section-heading"><h2>Towns</h2></div>
+                <div class="td-table-card"><div class="td-table-scroll">
+                    <table data-sortable class="td-table">
+                        <thead><tr><th>Town</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Needs Attention</th></tr></thead>
+                        <tbody>
+                        {% for r in town_rows %}
+                        <tr>
+                            <td class="td-rep-cell">{{ r.municipality }}</td>
+                            <td class="td-text-primary"><a class="td-metric-link" href="{{ base }}&status=all&municipality={{ r.municipality|urlencode }}">{{ r.sales }}</a></td>
+                            <td class="td-green">{{ r.installed }}</td>
+                            <td class="td-green">{{ "%.1f"|format(r.install_rate) ~ '%' if r.install_rate is not none else '—' }}</td>
+                            <td class="td-magenta">{{ r.needs_attention }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Accounts</h2><span class="td-muted-inline">{{ accounts|length }} &middot; click a card for the customer's full profile</span></div>
+        {% set empty_message = "No sales in this blitz yet." %}
+        {% include "_bulk_account_view.html" %}
+    </section>
+
+</div>
+</body>
+</html>

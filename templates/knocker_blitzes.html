@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Blitzes — Door Knockers — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Blitzes overview (added 2026-10-22) -- the NY and VA door-knocking
+   blitzes defined in knockers.BLITZES, compared side by side. A blitz's
+   sales = every door-knocker sale in its state during its dates. #}
+
+<div class="td-page">
+
+    <header class="td-profile-header">
+        <a class="td-back-link" href="{{ url_for('knockers_page') }}">&larr; Back to Door Knockers</a>
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">Door Knockers</p>
+                <h1 class="td-profile-name">Blitzes</h1>
+                <p class="td-cp-subline">Short, concentrated door-knocking pushes. Every door-knocker sale in the blitz's state during its dates counts toward it &mdash; in NJ, which is knocked year-round, that includes the normal day-to-day knocking too.{% if synced_at %} &middot; synced {{ synced_at }}{% endif %}</p>
+            </div>
+            <div class="td-kn-header-links">
+                <div class="td-chart-toggle" role="group" aria-label="Group blitzes">
+                    <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if group_by == 'blitz' else '' }}" href="{{ url_for('knocker_blitzes', state=state or None) }}">Each Blitz</a>
+                    <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if group_by == 'state' else '' }}" href="{{ url_for('knocker_blitzes', state=state or None, group_by='state') }}">Group by State</a>
+                </div>
+                <div class="td-chart-toggle" role="group" aria-label="Filter by state">
+                    <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if not state else '' }}" href="{{ url_for('knocker_blitzes', group_by=group_by if group_by != 'blitz' else None) }}">All</a>
+                    {% for st in states %}
+                    <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if state == st else '' }}" href="{{ url_for('knocker_blitzes', state=st, group_by=group_by if group_by != 'blitz' else None) }}">{{ st }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </header>
+
+    {% if load_error %}
+    <p class="td-cp-notice">Door-knocker data is unavailable right now ({{ load_error }}).</p>
+    {% endif %}
+
+    {# ---------- Account status by blitz ---------- #}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Account Status by {{ 'State' if group_by == 'state' else 'Blitz' }}</h2>
+            <span class="td-muted-inline">Installed, pending, cancelled and needs attention for each blitz's sales &middot; click a segment to see those accounts</span>
+        </div>
+        <div class="td-chart-card">
+            <div class="td-chart-canvas-wrap td-kn-status-chart" style="height: {{ 70 + 44 * status_chart|length }}px;">
+                <canvas data-chart-type="statusStacked" data-rows='{{ status_chart|tojson }}' aria-label="Account status by blitz, stacked bar chart; the same numbers are in the table below"></canvas>
+            </div>
+        </div>
+    </section>
+
+    {# ---------- Comparison table (also the chart's table view) ---------- #}
+    <section class="td-section">
+        <form method="get" action="{{ url_for('knocker_blitz_group') }}" data-blitz-group-form>
+        <div class="td-section-heading">
+            <h2>Blitz Comparison</h2>
+            <span class="td-muted-inline">{{ 'Tick two or more blitzes and combine them into one view' if group_by == 'blitz' else "Each state's blitzes combined" }}</span>
+            <button type="submit" class="td-btn td-btn-primary td-kn-combine" data-blitz-combine disabled>Combine selected</button>
+        </div>
+        <div class="td-table-card">
+            <div class="td-table-scroll">
+                <table data-sortable class="td-table">
+                    <thead>
+                        <tr>
+                            <th class="td-kn-check-col" data-no-sort><span class="td-sr-only">Select</span></th>
+                            <th>{{ 'State' if group_by == 'state' else 'Blitz' }}</th><th>Dates</th><th>Sales</th><th>Per Day</th><th>Knockers</th>
+                            <th>Installed</th><th>Install Rate</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th>
+                            <th>Service Cancels</th><th>Card on File</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in blitzes %}
+                        {% set base = b.accounts_url %}
+                        <tr>
+                            <td class="td-kn-check-col">{% for slug in b.slugs %}<input type="checkbox" name="b" value="{{ slug }}" aria-label="Select {{ b.name }}"{% if not loop.first %} hidden{% endif %} data-blitz-check{% if b.slugs|length > 1 %} data-blitz-multi="{{ b.slugs|join(',') }}"{% endif %}>{% endfor %}</td>
+                            <td class="td-rep-cell"><a class="td-rep-link" href="{{ b.detail_url }}">{{ b.name }}</a><span class="td-cp-sub">{{ b.state }}{% if b.top_city %} &middot; {{ b.cities|map(attribute='city')|list|batch(3)|first|join(', ') }}{% endif %}</span></td>
+                            <td data-sort-value="{{ b.start.isoformat() }}">{{ b.date_label }}<span class="td-cp-sub">{{ b.selling_days }} selling day{{ '' if b.selling_days == 1 else 's' }}</span></td>
+                            <td class="td-text-primary"><a class="td-metric-link" href="{{ base }}&status=all">{{ b.stats.sales }}</a></td>
+                            <td class="td-purple">{{ "%.1f"|format(b.per_day) if b.per_day is not none else '—' }}</td>
+                            <td>{{ b.knockers }}</td>
+                            <td class="td-green"><a class="td-metric-link" href="{{ base }}&status=installed">{{ b.stats.installed }}</a></td>
+                            <td class="td-green">{{ "%.1f"|format(b.stats.install_rate) ~ '%' if b.stats.install_rate is not none else '—' }}</td>
+                            <td class="td-yellow"><a class="td-metric-link" href="{{ base }}&status=pending">{{ b.stats.pending }}</a></td>
+                            <td class="td-magenta"><a class="td-metric-link" href="{{ base }}&status=needs_attention">{{ b.stats.needs_attention }}</a></td>
+                            <td class="td-orange"><a class="td-metric-link" href="{{ base }}&status=cancelled">{{ b.stats.cancelled }}</a></td>
+                            <td class="td-purple">{{ b.stats.service_cancelled }}</td>
+                            <td class="td-cyan">{{ "%.1f"|format(b.stats.card_on_file_rate) ~ '%' if b.stats.card_on_file_rate is not none else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        </form>
+    </section>
+
+    {# ---------- Daily sales, one small chart per blitz ---------- #}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Daily Sales</h2>
+            <span class="td-muted-inline">Each blitz on its own scale &middot; click a bar for that day's accounts</span>
+        </div>
+        <div class="td-kn-blitz-grid">
+            {% for b in blitzes %}
+            <div class="td-chart-card">
+                <div class="td-chart-card-head">
+                    <div>
+                        <h3><a class="td-cp-link" href="{{ b.detail_url }}">{{ b.name }}</a></h3>
+                        <span class="td-muted-inline">{{ b.state }} &middot; {{ b.date_label }}</span>
+                    </div>
+                    <span class="td-kn-blitz-total">{{ b.stats.sales }}<small>sales</small></span>
+                </div>
+                {% if b.stats.sales %}
+                <div class="td-chart-canvas-wrap td-kn-blitz-daily">
+                    <canvas data-chart-type="blitzDaily" data-days='{{ b.daily|tojson }}' data-drilldown-base="{{ url_for('knocker_accounts', blitz=b.slugs, status='all') }}" aria-label="Daily sales for {{ b.name }}"></canvas>
+                </div>
+                {% else %}
+                <p class="td-empty">No sales yet.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+</div>
+</body>
+</html>

@@ -22,13 +22,13 @@
 
     <div class="td-bulk-list" data-bulk-view-panel="cards">
         {% for account in accounts %}
-        <div class="td-bulk-card"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}"{% endif %}>
+        <div class="td-bulk-card td-bulk-card-link" data-href="{{ url_for('customer_profile_page', sale_id=account.sale_id) }}"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}"{% endif %}>
             <div class="td-bulk-card-head">
-                <span class="td-bulk-name">{{ account.first_name }} {{ account.last_name }}</span>
+                <a class="td-bulk-name" href="{{ url_for('customer_profile_page', sale_id=account.sale_id) }}">{{ account.first_name }} {{ account.last_name }}</a>
                 <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span>
             </div>
             {% if account.created %}<span class="td-bulk-created">{{ account.created }}</span>{% endif %}
-            {% if account.sales_rep %}<a class="td-bulk-rep" href="{{ url_for('rep_profile', rep_name=account.sales_rep, period=period, start=custom_start, end=custom_end) }}">Rep: {{ account.sales_rep }}</a>{% endif %}
+            {% if account.sales_rep %}<a class="td-bulk-rep" href="{{ account.rep_url or url_for('rep_profile', rep_name=account.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ account.rep_label or 'Rep' }}: {{ account.sales_rep }}</a>{% endif %}
             {% if account.sales_channel %}<span class="td-bulk-channel">{{ account.sales_channel }}</span>{% endif %}
             {% if account.address %}<span class="td-bulk-address">{{ account.address }}</span>{% endif %}
             {% if account.city_state_zip %}<span class="td-bulk-address">{{ account.city_state_zip }}</span>{% endif %}
@@ -73,7 +73,7 @@
 
                 {% for account in accounts %}
                 <div class="td-bulk-grid-row" role="row"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}"{% endif %}>
-                    <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ (account.last_name ~ ' ' ~ account.first_name)|lower|trim }}">{{ account.first_name }} {{ account.last_name }}</div>
+                    <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ (account.last_name ~ ' ' ~ account.first_name)|lower|trim }}"><a class="td-bulk-name" href="{{ url_for('customer_profile_page', sale_id=account.sale_id) }}">{{ account.first_name }} {{ account.last_name }}</a></div>
                     <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ (account.sales_channel or '')|lower }}">{{ account.sales_channel or '—' }}</div>
                     <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ account.status|lower }}"><span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span></div>
                     <div class="td-bulk-grid-cell" role="cell" data-sort-value="{{ ((account.address or '') ~ ' ' ~ (account.city_state_zip or ''))|lower|trim }}">{{ account.address or '—' }}{% if account.city_state_zip %}, {{ account.city_state_zip }}{% endif %}</div>

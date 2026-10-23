@@ -1007,6 +1007,106 @@ currently browsing to. The 7 Day Average and 30 Day Average cards read
 `calculate_daily_averages()` — trailing count-of-sales-in-window ÷ window
 size (7 or 30), window = today back N-1 days inclusive.
 
+## Web Sales (the "Web" pseudo-rep)
+
+Added 2026-10-22, by request. **Web** = website (GetPlanetFiber.com
+map-pin, `SourceToken = 'ORDER_PLANET_AUGUST-2025-NewMapPin'`) orders whose
+referral code is **not** a door-knocker code (`queries.DOOR_KNOCKER_CODES`,
+parsed from `EXTERNAL_REP_SALES_QUERY`'s list). Loaded by
+`WEB_SALES_QUERY` into `data_store["web_sales"]` (Main Sales' own query
+requires an `InsertByEmployeeID`, so it never had these) and merged into the
+normalized dataset with `sales_rep = "Web"`, `sales_channel = "Web"`,
+`is_web = True`.
+
+- **Counts in:** Individual Rep Leaderboard (its own "Web" row + Rep
+  Profile), Channel & Time-of-Day Performance (a "Web" channel bar),
+  Channel Breakdown by State (a "Web" column, last),
+  Sales Calendar & Monthly Sales Trend, and the Monthly Sales / Projection
+  KPIs.
+- **Leaderboard row:** every Web sale is Inbound; Outbound and Outbound
+  Installs show **N/A**. Not counted in the "N reps" total.
+- **Excluded (`exclude_web()`):** Records, Daily Sales, 7/30-day
+  averages, Latest Accounts Sold's View All
+  Sales, Sales Volume, and the `sales_reps` sync (Web is never added as a
+  sales rep).
+
+## Door Knockers Dashboard
+
+Added 2026-10-22. Internal (any logged-in Planet user) dashboard at
+`/knockers` over the External Rep Sales data (`external_rep_sales` in
+appdb, synced every 5 minutes). Knockers are shown **by referral code
+only** (by request). Data/status logic: `knockers.py`; routes
+`knockers_page()`, `knocker_profile()` (`/knockers/codes/<code>`),
+`knocker_accounts()` (`/knockers/accounts?code=&status=&state=&municipality=&period=`).
+
+- **Statuses:** Installed (Vision install date) · Cancelled (order
+  cancelled, never installed) · Pending (install appointment today or
+  later) · Needs Attention (no appointment / past appointment). Service
+  Cancels (left after install) are counted separately and stay Installed.
+  Install Rate = Installed / Sales (same as Admin → External Rep Sales).
+- **Card on File:** payment method at time of order (`payment_method` =
+  FTTPFormData.Cc_PayBy) is `card` or `ach` (ACH counts, by request);
+  `check` and `skip` are not on file. Shown as a count/% tile, a sortable
+  leaderboard column, state/town columns, and account-list filters
+  (`status=card_on_file` / `no_card_on_file`). `knockers.CARD_ON_FILE_METHODS`.
+- **Sections:** Knocker Overview KPIs (all-time based), Account Status,
+  Sales Calendar & Monthly Sales Trend (shared `_monthly_trend_card.html`),
+  Knocker Leaderboard, Sales by State, Top Towns. Every count links to an
+  account list (Bulk Account View); cards open the Customer Profile, which
+  falls back to the knocker data for website-entered knocker orders (most
+  of them -- they aren't in the main sales data).
+
+- **Cancellation & Needs Attention Rates:** team-level line chart by SALE
+  month (Team/NJ/NY/VA toggle), `knockers.monthly_rates()`: order cancel %
+  and needs attention % of sales, service cancel % of installs. Starts Mar
+  2026; no order-cancel rate before Apr 2026 (tracked reliably from Mar 24);
+  months with < 10 sales/installs aren't plotted; months ending < 45 days ago
+  are dashed ("still maturing"). The Account Status tiles also show each
+  count as a % of sales (service cancels as % of installs).
+
+### Blitzes
+
+`/knockers/blitzes` (overview) and `/knockers/blitzes/<slug>` (one blitz),
+added 2026-10-22. A blitz is a short door-knocking push in one state; every
+door-knocker sale in that state within its dates is attributed to it.
+Defined by hand in `knockers.BLITZES` (name, state, start, end; `end=None`
+= still running) -- add the next blitz by appending an entry. NJ is knocked
+year-round (~24 sales/day), so NJ blitzes are the surges above that and
+their windows include normal NJ knocking. Current list: NJ -- Butler Launch
+(Mar 10–14), Wantage–Vernon May (May 18–30), Jefferson June (Jun 22–27),
+Jefferson August (Aug 17–28), Fall All-Hands (Sep 21–Oct 3); NY -- New Paltz Spring (Apr 6–26), New Paltz Summer (Jul 13–19), Saugerties
+Fall (Oct 2–12); VA -- Farmville July (Jul 21–26), Farmville–Prospect
+September (Sep 7–20), Farmville October (Oct 15–, running). Charts: Account
+Status by Blitz (stacked bars, `statusStacked`) and per-blitz Daily Sales
+(`blitzDaily`); status fill colors are the `--td-chart-status-*` tokens.
+**Grouping:** the overview's "Group by State" toggle rolls each state's
+blitzes into one row; ticking 2+ rows and "Combine selected" opens
+`/knockers/blitzes/group?b=<slug>&b=<slug>` (union of their sales, with a
+per-blitz + Combined table). Account lists take `?blitz=<slug>` (repeatable).
+
+## Customer Profile
+
+Added 2026-10-22. Clicking any Bulk Account View card (or the customer's
+name in the card or table view) opens `/dashboard/customers/<sale_id>`
+(`customer_profile_page()` in `app.py`, `templates/customer_profile.html`).
+Data is gathered per request by `customer_profile.load_customer_profile()`:
+
+- **PlanetWeb:** order details, package/pricing, contact + consent, source
+  & referral (incl. door-knocker name, UTM tags), location, Vision order
+  sync status, order line items, install jobs + cancelled jobs, schedule
+  notes (with author), follow-ups, other orders by the same email/Vision
+  account.
+- **KPI / Vision:** account status + balance, packages, service items,
+  payments, credits, support tickets, tasks + task notes, phones/emails on
+  file (VA uses the `virginia_*` tables; VA has no payments/tickets tables).
+- **appdb:** Needs Attention status/notes; HubSpot calls to/from the
+  customer's phone (Admins and the owning rep only, same rule as Rep
+  Profile call history).
+
+Each source fails independently (a notice replaces its sections). Card
+number/CVV/expiry/bank fields are never queried; only pay method + last 4.
+To drop a field, delete its line in the matching `_fields([...])` list.
+
 ## Rep Profile Page — Section Names
 
 Clicking a rep's name in the Individual Rep Leaderboard table (`.td-rep-link`) opens

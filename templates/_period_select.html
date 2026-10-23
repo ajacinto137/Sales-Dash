@@ -1,0 +1,12 @@
+{# Period dropdown + custom dates (same options as the Team Leaderboard),
+   for use inside a .td-period-form. Expects period/custom_start/custom_end. #}
+<select name="period" id="period-select" class="td-select">
+    {% for value, label in [('today', 'Today'), ('yesterday', 'Yesterday'), ('this_week', 'This Week'), ('last_week', 'Last Week'), ('this_month', 'This Month'), ('last_month', 'Last Month'), ('this_year', 'This Year'), ('all_time', 'All Time'), ('custom', 'Custom')] %}
+    <option value="{{ value }}" {{ 'selected' if period == value else '' }}>{{ label }}</option>
+    {% endfor %}
+</select>
+<span class="td-custom-dates" id="custom-dates" style="display: {{ 'flex' if period == 'custom' else 'none' }};">
+    <input type="date" name="start" class="td-date-input" value="{{ custom_start }}">
+    <input type="date" name="end" class="td-date-input" value="{{ custom_end }}">
+</span>
+<button type="submit" class="td-btn td-btn-primary">Apply</button>

@@ -33,6 +33,116 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
+    // Click-to-sort for plain tables marked <table data-sortable> (added
+    // 2026-10-22, Door Knockers pages). Each header sorts its column --
+    // first click descending for numbers, ascending for text; again to
+    // flip. Values come from a cell's data-sort-value, else its text:
+    // "1,316", "71.3%" and "43.2" sort as numbers; "—"/"n/a"/blank go
+    // last either way. Rows with data-sort-fixed (Total/Combined) stay
+    // at the bottom; headers with data-no-sort are skipped.
+    function sortValue(cell) {
+        if (!cell) return null;
+        var raw = cell.hasAttribute("data-sort-value") ? cell.getAttribute("data-sort-value") : cell.textContent;
+        raw = raw.trim();
+        if (!raw || raw === "—" || raw.toLowerCase() === "n/a") return null;
+        var numeric = raw.replace(/[,%$]/g, "");
+        if (/^-?\d+(\.\d+)?$/.test(numeric)) return parseFloat(numeric);
+        return raw.toLowerCase();
+    }
+
+    document.querySelectorAll("table[data-sortable]").forEach(function (table) {
+        var headers = table.querySelectorAll("thead th");
+        var tbody = table.tBodies[0];
+        if (!tbody) return;
+        var state = { index: null, dir: null };
+
+        headers.forEach(function (th, index) {
+            if (th.hasAttribute("data-no-sort")) return;
+            th.classList.add("td-th-sortable");
+            th.setAttribute("tabindex", "0");
+            th.setAttribute("aria-sort", "none");
+            var arrow = document.createElement("span");
+            arrow.className = "td-sort-arrow";
+            th.appendChild(arrow);
+
+            function sortBy() {
+                var rows = Array.prototype.slice.call(tbody.rows);
+                var fixed = rows.filter(function (r) { return r.hasAttribute("data-sort-fixed"); });
+                var movable = rows.filter(function (r) { return !r.hasAttribute("data-sort-fixed"); });
+                var sample = movable.map(function (r) { return sortValue(r.cells[index]); }).filter(function (v) { return v !== null; })[0];
+                var numeric = typeof sample === "number";
+                var dir = state.index === index ? (state.dir === "asc" ? "desc" : "asc") : (numeric ? "desc" : "asc");
+                state = { index: index, dir: dir };
+
+                movable.sort(function (a, b) {
+                    var va = sortValue(a.cells[index]);
+                    var vb = sortValue(b.cells[index]);
+                    if (va === null && vb === null) return 0;
+                    if (va === null) return 1;
+                    if (vb === null) return -1;
+                    var cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
+                    return dir === "asc" ? cmp : -cmp;
+                });
+                movable.concat(fixed).forEach(function (r) { tbody.appendChild(r); });
+
+                headers.forEach(function (h) {
+                    var a = h.querySelector(".td-sort-arrow");
+                    if (a) a.textContent = "";
+                    if (!h.hasAttribute("data-no-sort")) h.setAttribute("aria-sort", "none");
+                });
+                arrow.textContent = dir === "asc" ? "▲" : "▼";
+                th.setAttribute("aria-sort", dir === "asc" ? "ascending" : "descending");
+            }
+
+            th.addEventListener("click", sortBy);
+            th.addEventListener("keydown", function (e) {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(); }
+            });
+        });
+    });
+
+    // Blitzes: "Combine selected" (added 2026-10-22). A row can stand for
+    // several blitzes (Group by State) -- its extra checkboxes are hidden
+    // and follow the visible one. The button needs 2+ blitzes selected.
+    document.querySelectorAll("[data-blitz-group-form]").forEach(function (form) {
+        var button = form.querySelector("[data-blitz-combine]");
+        function refresh() {
+            var picked = {};
+            form.querySelectorAll("[data-blitz-check]:checked").forEach(function (box) { picked[box.value] = true; });
+            var count = Object.keys(picked).length;
+            button.disabled = count < 2;
+            button.textContent = count >= 2 ? "Combine " + count + " blitzes" : "Combine selected";
+        }
+        form.querySelectorAll("[data-blitz-check]").forEach(function (box) {
+            box.addEventListener("change", function () {
+                box.parentElement.querySelectorAll("[data-blitz-check]").forEach(function (sibling) {
+                    sibling.checked = box.checked;
+                });
+                refresh();
+            });
+        });
+        refresh();
+    });
+
+    // Bulk Account View cards open that customer's Customer Profile
+    // (added 2026-10-22). Clicks on anything interactive inside the card
+    // (rep link, Vision link, Needs Attention controls) keep their own
+    // behavior; the name itself is a real link for cmd/ctrl-click.
+    document.querySelectorAll(".td-bulk-card-link").forEach(function (card) {
+        card.addEventListener("click", function (e) {
+            if (e.target.closest("a, button, input, select, textarea, label, details, [data-attention-block]")) {
+                return;
+            }
+            if (window.getSelection && String(window.getSelection())) {
+                return;  // let people select/copy text without navigating
+            }
+            var href = card.getAttribute("data-href");
+            if (href) {
+                window.location = href;
+            }
+        });
+    });
+
     // Rep name links and metric-cell drill-down links inside leaderboard
     // rows navigate elsewhere; stop the click from also bubbling to the
     // row's own select-this-rep handler above.

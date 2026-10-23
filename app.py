@@ -13,6 +13,7 @@ from flask import (
 import app_secrets
 import attention_store
 import auth
+import customer_profile
 import db
 import email_service
 import external_sales_store
@@ -20,6 +21,7 @@ import hubspot_client
 import hubspot_logic
 import hubspot_store
 import import_service
+import knockers
 import marketing_cleaning
 import marketing_data
 import marketing_metrics
@@ -33,6 +35,7 @@ import staffing_store
 import user_store
 from queries import (
     MAIN_SALES_QUERY,
+    WEB_SALES_QUERY,
     SERVICE_CANCELLATIONS_QUERY,
     VISION_PACKAGES_QUERY,
 )
@@ -41,6 +44,8 @@ from sales_metrics import (
     _today,
     REP_SORT_KEYS,
     REP_TABLE_COLUMNS,
+    WEB_REP,
+    build_bulk_account_rows,
     build_sales_dataset,
     calculate_calendar_sales,
     calculate_channel_breakdown,
@@ -57,6 +62,8 @@ from sales_metrics import (
     calculate_rep_monthly_installs,
     calculate_sales_volume_trend,
     calculate_total_daily_sales,
+    calculate_week_to_date_comparison,
+    exclude_web,
     filter_by_period,
     get_bulk_account_view,
     get_calendar_day_account_view,
@@ -131,6 +138,11 @@ data_store = {
     "main_sales": None,
     "main_sales_status": None,
     "main_sales_error": None,
+    # Website orders for the "Web" pseudo-rep (WEB_SALES_QUERY) -- kept
+    # apart from main_sales so the raw Main Sales views are unchanged.
+    "web_sales": None,
+    "web_sales_status": None,
+    "web_sales_error": None,
     "service_cancellations": None,
     "service_cancellations_status": None,
     "service_cancellations_error": None,
@@ -180,21 +192,29 @@ def _load_planetweb(store):
     store["planetweb_error"] = error
 
     if not connected:
-        store["main_sales"] = None
-        store["main_sales_status"] = "FAILED"
-        store["main_sales_error"] = "Skipped: PlanetWeb SQL Server connection failed."
+        for key in ("main_sales", "web_sales"):
+            store[key] = None
+            store[f"{key}_status"] = "FAILED"
+            store[f"{key}_error"] = "Skipped: PlanetWeb SQL Server connection failed."
         return
 
     conn = None
     try:
         conn = db.get_planetweb_connection()
-        store["main_sales"] = pd.read_sql(MAIN_SALES_QUERY, conn)
-        store["main_sales_status"] = "SUCCESS"
-        store["main_sales_error"] = None
+        for key, query in (("main_sales", MAIN_SALES_QUERY), ("web_sales", WEB_SALES_QUERY)):
+            try:
+                store[key] = pd.read_sql(query, conn)
+                store[f"{key}_status"] = "SUCCESS"
+                store[f"{key}_error"] = None
+            except Exception as exc:
+                store[key] = None
+                store[f"{key}_status"] = "FAILED"
+                store[f"{key}_error"] = db.sanitize_error(exc)
     except Exception as exc:
-        store["main_sales"] = None
-        store["main_sales_status"] = "FAILED"
-        store["main_sales_error"] = db.sanitize_error(exc)
+        for key in ("main_sales", "web_sales"):
+            store[key] = None
+            store[f"{key}_status"] = "FAILED"
+            store[f"{key}_error"] = db.sanitize_error(exc)
     finally:
         if conn is not None:
             conn.close()
@@ -269,28 +289,10 @@ def _print_install_validation(store):
     print("=" * 60)
 
 
-def _apply_install_date(store):
-    """Reproduces the existing Excel 'Main' worksheet Install Date formula:
-
-        =IFNA(INDEX('Vision Packages'!$Y:$Y,
-                     MATCH(Main!$R2, 'Vision Packages'!$B:$B, 0)),
-              "Not Yet Installed")
-
-    i.e. Main.vi_subscriber_uuid -> Vision Packages.subscriber_uuid (first
-    match only, exactly like Excel's MATCH) -> subscriber_first_invoice_date.
-    Adds "Install Date" and "Install Status" to main_sales without ever
-    changing the row count.
-    """
-    main_sales = store["main_sales"]
-    vision_packages = store["vision_packages"]
-
-    if main_sales is None:
-        store["install_validation"] = None
-        store["install_error"] = None
-        return
-
-    original_count = len(main_sales)
-    merged = main_sales.copy()
+def _merge_install_date(sales_df, vision_packages):
+    """Adds "Install Date"/"Install Status" to a PlanetWeb sales frame --
+    the Excel-formula lookup described in _apply_install_date() below."""
+    merged = sales_df.copy()
 
     has_lookup_data = (
         vision_packages is not None
@@ -317,14 +319,43 @@ def _apply_install_date(store):
     else:
         install_dates = pd.Series(pd.NaT, index=merged.index)
 
-    final_count = len(merged)
-    duplicate_rows_created = final_count - original_count
-
     formatted_dates = install_dates.dt.strftime("%m/%d/%Y")
     merged["Install Date"] = formatted_dates.fillna("Not Yet Installed")
     merged["Install Status"] = merged["Install Date"].apply(
         lambda v: "Not Yet Installed" if v == "Not Yet Installed" else "Installed"
     )
+    return merged
+
+
+def _apply_install_date(store):
+    """Reproduces the existing Excel 'Main' worksheet Install Date formula:
+
+        =IFNA(INDEX('Vision Packages'!$Y:$Y,
+                     MATCH(Main!$R2, 'Vision Packages'!$B:$B, 0)),
+              "Not Yet Installed")
+
+    i.e. Main.vi_subscriber_uuid -> Vision Packages.subscriber_uuid (first
+    match only, exactly like Excel's MATCH) -> subscriber_first_invoice_date.
+    Adds "Install Date" and "Install Status" to main_sales without ever
+    changing the row count.
+    """
+    main_sales = store["main_sales"]
+    vision_packages = store["vision_packages"]
+
+    if main_sales is None:
+        store["install_validation"] = None
+        store["install_error"] = None
+        return
+
+    original_count = len(main_sales)
+    merged = _merge_install_date(main_sales, vision_packages)
+    # Web sales get the same Install Date/Status lookup (no validation
+    # report -- that one describes Main Sales only).
+    if store["web_sales"] is not None:
+        store["web_sales"] = _merge_install_date(store["web_sales"], vision_packages)
+
+    final_count = len(merged)
+    duplicate_rows_created = final_count - original_count
 
     store["main_sales"] = reorder_main_sales_columns(merged)
 
@@ -371,7 +402,8 @@ def _sync_reps_and_needs_attention(store):
     normalized = store["normalized_sales"]
     if normalized is None or normalized.empty:
         return
-    user_store.sync_sales_reps(normalized["sales_rep"].dropna().unique().tolist())
+    # Web isn't a person -- never add it to sales_reps.
+    user_store.sync_sales_reps([r for r in normalized["sales_rep"].dropna().unique() if r != WEB_REP])
     needs_attention_ids = normalized.loc[normalized["status"] == "Needs Attention", "sale_id"].tolist()
     needs_attention_service.sync_tracking(needs_attention_ids)
 
@@ -410,7 +442,7 @@ def _bootstrap_initial_admin():
 
 
 _SOURCE_DATASETS = {
-    "planetweb": ("main_sales",),
+    "planetweb": ("main_sales", "web_sales"),
     "kpi": ("service_cancellations", "vision_packages"),
 }
 
@@ -454,6 +486,7 @@ def load_all_data(sources=("planetweb", "kpi")):
             store["main_sales"],
             store["vision_packages"],
             store["service_cancellations"],
+            store["web_sales"],
         )
         store["normalized_for_date"] = _today()
         _sync_reps_and_needs_attention(store)
@@ -534,6 +567,7 @@ def get_normalized_sales():
                     data_store["main_sales"],
                     data_store["vision_packages"],
                     data_store["service_cancellations"],
+                    data_store["web_sales"],
                 )
                 data_store["normalized_for_date"] = _today()
     normalized = data_store["normalized_sales"]
@@ -828,8 +862,16 @@ def dashboard_page():
 
     period_df = filter_by_period(normalized, period, custom_start, custom_end)
 
+    # Web (website orders) is in normalized for the sections that count it
+    # -- the Individual Rep Leaderboard, Channel & Time-of-Day
+    # Performance, Channel Breakdown by State, Sales Calendar & Monthly
+    # Sales Trend, and the Monthly Sales/Projection KPIs (by request,
+    # 2026-10-22). Everything else on
+    # this page uses reps_only, since Web isn't a sales rep.
+    reps_only = exclude_web(normalized)
+
     rep_rows = calculate_rep_metrics(period_df)
-    total_rep_count = len(rep_rows)
+    total_rep_count = sum(1 for r in rep_rows if r["sales_rep"] != WEB_REP)
 
     if search:
         rep_rows = [r for r in rep_rows if search.lower() in r["sales_rep"].lower()]
@@ -863,9 +905,9 @@ def dashboard_page():
     # ALL TIME / current-month / today, regardless of the selected
     # dashboard period -- same reasoning as Records: they answer questions
     # the period filter isn't meant to control.
-    records = calculate_records(normalized)
-    total_daily_sales = calculate_total_daily_sales(normalized)
-    daily_averages = calculate_daily_averages(normalized)
+    records = calculate_records(reps_only)
+    total_daily_sales = calculate_total_daily_sales(reps_only)
+    daily_averages = calculate_daily_averages(reps_only)
 
     # Eastern, not the container's raw UTC clock -- the Sales Calendar's
     # default month must agree with calculate_calendar_sales()'s own
@@ -1244,7 +1286,7 @@ def rep_call_summary(rep_name):
     # business-timezone days as the call range.
     period_df = filter_by_period(normalized, "custom", start_date.isoformat(), end_date.isoformat())
     rep_row = next((r for r in calculate_rep_metrics(period_df) if r["sales_rep"] == rep_name), None)
-    sales = rep_row["outbound"] if rep_row else 0
+    sales = (rep_row["outbound"] or 0) if rep_row else 0
 
     context = hubspot_store.get_rep_call_context(rep_name)
     total = summary["total_calls"]
@@ -1563,7 +1605,11 @@ def all_sales_view():
             view_title = f"{view_title} — {state_label}"
         all_time = True
     elif view in BULK_ACCOUNT_VIEWS:
-        view_title, accounts = get_bulk_account_view(normalized, None, view, period, custom_start, custom_end)
+        # Team-wide registry views (e.g. Latest Accounts Sold's "View All
+        # Sales") leave Web out, like Live Sales Activity itself. The
+        # channel/date drill-downs above keep it, matching the channel
+        # chart and Sales Calendar counts they're clicked from.
+        view_title, accounts = get_bulk_account_view(exclude_web(normalized), None, view, period, custom_start, custom_end)
         all_time = BULK_ACCOUNT_VIEWS[view]["all_time"]
     else:
         abort(404)
@@ -2157,6 +2203,361 @@ def refresh():
             pass
 
     return redirect(request.referrer or url_for("overview"))
+
+
+# ================================================================
+# DOOR KNOCKERS (added 2026-10-22) -- internal dashboard over the
+# External Rep Sales data (appdb external_rep_sales, synced every 5 min
+# by external_sales_store.py). See knockers.py for status definitions.
+# ================================================================
+
+def _period_args():
+    return (
+        request.args.get("period", "this_month"),
+        request.args.get("start", ""),
+        request.args.get("end", ""),
+    )
+
+
+def _calendar_month_args():
+    today = datetime.now(EASTERN_TZ)
+    try:
+        cal_year = int(request.args.get("cal_year", today.year))
+        cal_month = int(request.args.get("cal_month", today.month))
+        if not 1 <= cal_month <= 12:
+            raise ValueError
+    except (TypeError, ValueError):
+        cal_year, cal_month = today.year, today.month
+    return cal_year, cal_month
+
+
+def _load_knockers_or_error():
+    try:
+        return knockers.load_knocker_sales(), None
+    except Exception as exc:
+        return None, db.sanitize_error(exc)
+
+
+def _knockers_sync_display():
+    status = external_sales_store.get_status()
+    last = status["state"].get("last_success_at") if status["available"] else None
+    return last.astimezone(EASTERN_TZ).strftime("%-m/%-d/%Y %-I:%M %p %Z") if last else None
+
+
+# Team / per-state views for the Door Knockers rate trend chart (only the
+# states knockers actually sell in).
+KNOCKER_RATE_VIEWS = [("team", "Team", None), ("nj", "NJ", "NJ"), ("ny", "NY", "NY"), ("va", "VA", "VA")]
+
+
+@app.route("/knockers")
+@auth.login_required
+def knockers_page():
+    ensure_data_loaded()
+    df, load_error = _load_knockers_or_error()
+    period, custom_start, custom_end = _period_args()
+    search = request.args.get("search", "").strip().lower()
+
+    period_df = filter_by_period(df, period, custom_start, custom_end)
+
+    rows = knockers.knocker_rows(period_df)
+    active_codes = len(rows)
+    if search:
+        rows = [r for r in rows if search in r["code"]]
+    sort = request.args.get("sort", "sales")
+    sort_dir = request.args.get("dir", "desc")
+    if sort not in knockers.KNOCKER_SORT_KEYS:
+        sort, sort_dir = "sales", "desc"
+    rows = knockers.sort_knocker_rows(rows, sort, sort_dir)
+    table_columns = [{
+        "key": key, "label": label, "active": key == sort,
+        "dir": sort_dir if key == sort else None,
+        "next_dir": ("asc" if sort_dir == "desc" else "desc") if key == sort else default_dir,
+    } for key, label, default_dir in knockers.KNOCKER_TABLE_COLUMNS]
+
+    state_rows, state_total = knockers.state_rows(period_df)
+
+    # Calendar + Monthly Sales trend: all-time, independent of the period
+    # filter -- same convention as the Team Leaderboard.
+    cal_year, cal_month = _calendar_month_args()
+    trend_view = request.args.get("trend_view", "team")
+    if trend_view not in DASHBOARD_STATE_VIEW_KEYS:
+        trend_view = "team"
+    trend_range = request.args.get("trend_range", "12m")
+    if trend_range not in ("12m", "mtd", "wtd"):
+        trend_range = "12m"
+    state_views = {key: _state_filtered(df, code) for key, _, code in DASHBOARD_STATE_VIEWS}
+
+    return render_template(
+        "knockers.html",
+        active_page="knockers",
+        load_error=load_error,
+        period=period, custom_start=custom_start, custom_end=custom_end, search=search,
+        today_sales=calculate_total_daily_sales(df),
+        daily_averages=calculate_daily_averages(df),
+        monthly_forecast=calculate_monthly_forecast(df),
+        status=knockers.status_summary(period_df),
+        rows=rows, active_codes=active_codes, table_columns=table_columns, sort=sort, sort_dir=sort_dir,
+        state_rows=state_rows, state_total=state_total,
+        town_rows=knockers.town_rows(period_df),
+        rep_monthly_activity=calculate_rep_monthly_activity(df, None, cal_year, cal_month),
+        cal_year=cal_year, cal_month=cal_month,
+        dashboard_view_options=[{"key": key, "label": label} for key, label, _ in DASHBOARD_STATE_VIEWS],
+        monthly_trend_views={key: calculate_monthly_sales_trend(v) for key, v in state_views.items()},
+        mtd_trend_views={key: calculate_month_to_date_comparison(v) for key, v in state_views.items()},
+        wtd_trend_views={key: calculate_week_to_date_comparison(v) for key, v in state_views.items()},
+        rate_views=[
+            {"key": key, "label": label, "rows": knockers.monthly_rates(_state_filtered(df, code))}
+            for key, label, code in KNOCKER_RATE_VIEWS
+        ],
+        trend_view=trend_view, trend_range=trend_range,
+        synced_at=_knockers_sync_display(),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/knockers/codes/<code>")
+@auth.login_required
+def knocker_profile(code):
+    ensure_data_loaded()
+    df, load_error = _load_knockers_or_error()
+    code = code.strip().lower()
+    if df is not None and code not in set(df["sales_rep"]):
+        abort(404)
+    period, custom_start, custom_end = _period_args()
+    code_df = df[df["sales_rep"] == code] if df is not None else None
+    period_df = filter_by_period(code_df, period, custom_start, custom_end)
+    cal_year, cal_month = _calendar_month_args()
+    state_rows, state_total = knockers.state_rows(period_df)
+    _title, accounts = knockers.account_view(code_df, status="all", period=period, start=custom_start, end=custom_end)
+    _with_knocker_links(accounts)
+
+    return render_template(
+        "knocker_profile.html",
+        active_page="knockers",
+        load_error=load_error,
+        code=code,
+        period=period, custom_start=custom_start, custom_end=custom_end,
+        status=knockers.status_summary(period_df),
+        all_time=knockers.status_summary(code_df),
+        first_sale=code_df["sale_date"].min() if code_df is not None and not code_df.empty else None,
+        state_rows=state_rows, state_total=state_total,
+        town_rows=knockers.town_rows(period_df, limit=15),
+        rep_monthly_activity=calculate_rep_monthly_activity(code_df, code, cal_year, cal_month),
+        accounts=accounts,
+        view="knockers",
+        synced_at=_knockers_sync_display(),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+def _blitz_accounts_url(slugs, **extra):
+    """Account list for one or more blitzes (the union of their sales)."""
+    return url_for("knocker_accounts", blitz=list(slugs), period="all_time", **extra)
+
+
+def _blitz_row(summary, slugs):
+    """A blitz (or group of blitzes) as an overview row: its summary plus
+    where its name and counts link to."""
+    detail = (url_for("knocker_blitz", slug=slugs[0]) if len(slugs) == 1
+              else url_for("knocker_blitz_group", b=list(slugs)))
+    return {**summary, "slugs": list(slugs), "detail_url": detail, "accounts_url": _blitz_accounts_url(slugs)}
+
+
+def _blitz_status_row(row):
+    """One row of the status stacked-bar chart; the chart appends &status=."""
+    return {"name": row["name"], **row["stats"], "url": row["accounts_url"]}
+
+
+@app.route("/knockers/blitzes")
+@auth.login_required
+def knocker_blitzes():
+    ensure_data_loaded()
+    df, load_error = _load_knockers_or_error()
+    states = list(dict.fromkeys(b["state"] for b in knockers.BLITZES))
+    state = request.args.get("state", "").upper()
+    if state not in states:
+        state = ""
+    # Group by "blitz" (one row each) or "state" (each state's blitzes
+    # combined into one row) -- added 2026-10-22, by request.
+    group_by = request.args.get("group_by", "blitz")
+    if group_by == "state":
+        rows = [_blitz_row(g, g["slugs"]) for g in knockers.state_group_summaries(df)
+                if not state or g["state"] == state]
+    else:
+        group_by = "blitz"
+        rows = [_blitz_row(b, [b["slug"]]) for b in knockers.all_blitz_summaries(df, state=state or None)]
+    return render_template(
+        "knocker_blitzes.html",
+        active_page="knockers",
+        load_error=load_error,
+        states=states,
+        state=state,
+        group_by=group_by,
+        blitzes=rows,
+        status_chart=[_blitz_status_row(r) for r in rows],
+        synced_at=_knockers_sync_display(),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+def _render_blitz_page(df, load_error, blitzes, summary):
+    slugs = [b["slug"] for b in blitzes]
+    sales = knockers.group_sales(df, blitzes)
+    _title, accounts = knockers.account_view(sales, status="all", period="all_time")
+    _with_knocker_links(accounts)
+    members = [_blitz_row(m, [m["slug"]]) for m in summary.get("members", [])]
+    combined = _blitz_row(summary, slugs)
+    return render_template(
+        "knocker_blitz.html",
+        active_page="knockers",
+        load_error=load_error,
+        blitz=combined,
+        members=members,
+        status_chart=[_blitz_status_row(r) for r in members] + [_blitz_status_row({**combined, "name": "Combined"} if members else combined)],
+        daily_drilldown=url_for("knocker_accounts", blitz=slugs, status="all"),
+        knocker_rows=knockers.knocker_rows(sales),
+        town_rows=knockers.town_rows(sales, limit=15),
+        accounts=accounts,
+        view="knockers",
+        acct_args={"blitz": slugs, "period": "all_time"},
+        synced_at=_knockers_sync_display(),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/knockers/blitzes/group")
+@auth.login_required
+def knocker_blitz_group():
+    """Any set of blitzes combined (?b=slug&b=slug...)."""
+    slugs = list(dict.fromkeys(s for s in request.args.getlist("b") if s in knockers.BLITZ_BY_SLUG))
+    if not slugs:
+        return redirect(url_for("knocker_blitzes"))
+    if len(slugs) == 1:
+        return redirect(url_for("knocker_blitz", slug=slugs[0]))
+    ensure_data_loaded()
+    df, load_error = _load_knockers_or_error()
+    blitzes = [knockers.BLITZ_BY_SLUG[s] for s in slugs]
+    states = {b["state"] for b in blitzes}
+    same_state_all = len(states) == 1 and len(blitzes) == sum(1 for b in knockers.BLITZES if b["state"] in states)
+    name = f"All {next(iter(states))} Blitzes" if same_state_all else None
+    return _render_blitz_page(df, load_error, blitzes, knockers.group_summary(df, blitzes, name=name))
+
+
+@app.route("/knockers/blitzes/<slug>")
+@auth.login_required
+def knocker_blitz(slug):
+    if slug not in knockers.BLITZ_BY_SLUG:
+        abort(404)
+    ensure_data_loaded()
+    df, load_error = _load_knockers_or_error()
+    blitz = knockers.BLITZ_BY_SLUG[slug]
+    return _render_blitz_page(df, load_error, [blitz], knockers.blitz_summary(df, blitz))
+
+
+def _with_knocker_links(accounts):
+    for account in accounts:
+        account["rep_label"] = "Knocker"
+        account["rep_url"] = url_for("knocker_profile", code=account["sales_rep"])
+    return accounts
+
+
+@app.route("/knockers/accounts")
+@auth.login_required
+def knocker_accounts():
+    ensure_data_loaded()
+    df, load_error = _load_knockers_or_error()
+    period, custom_start, custom_end = _period_args()
+    code = request.args.get("code", "").strip().lower() or None
+    status_key = request.args.get("status", "all")
+    if status_key not in knockers.ACCOUNT_FILTERS:
+        status_key = "all"
+    state = request.args.get("state", "").strip().upper() or None
+    municipality = request.args.get("municipality", "").strip() or None
+    day = None
+    if request.args.get("day"):
+        try:
+            day = date(int(request.args["year"]), int(request.args["month"]), int(request.args["day"]))
+        except (KeyError, TypeError, ValueError):
+            abort(404)
+    # ?blitz=slug (repeatable): only those blitzes' sales.
+    blitzes = [knockers.BLITZ_BY_SLUG[b] for b in dict.fromkeys(request.args.getlist("blitz")) if b in knockers.BLITZ_BY_SLUG]
+    if blitzes:
+        df = knockers.group_sales(df, blitzes)
+
+    title, accounts = knockers.account_view(
+        df, code=code, status=status_key, state=state, municipality=municipality,
+        period=period, start=custom_start, end=custom_end, day=day,
+    )
+    _with_knocker_links(accounts)
+    blitz_label = (blitzes[0]["name"] if len(blitzes) == 1 else f"{len(blitzes)} blitzes") if blitzes else None
+    scope = " · ".join(p for p in [blitz_label, code, municipality, state] if p)
+
+    return render_template(
+        "knocker_accounts.html",
+        active_page="knockers",
+        load_error=load_error,
+        view_title=title, scope=scope, accounts=accounts,
+        blitz_slugs=[b["slug"] for b in blitzes],
+        code=code, status_key=status_key, state=state or "", municipality=municipality or "",
+        day=day, all_time=day is not None,
+        status_options=[(key, label) for key, (label, _f) in knockers.ACCOUNT_FILTERS.items()],
+        period=period, custom_start=custom_start, custom_end=custom_end,
+        view="knockers",
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/dashboard/customers/<int:sale_id>")
+@auth.login_required
+def customer_profile_page(sale_id):
+    """Customer Profile (added 2026-10-22) -- everything known about one
+    order/customer, opened by clicking an account card in any Bulk
+    Account View. The account must be in the loaded sales dataset (same
+    rule as the attention routes' _lookup_account_owner()); the deeper
+    data is queried on demand by customer_profile.py. HubSpot call
+    records follow the same rule as a Rep Profile's call history
+    (permissions.can_view_call_history() for the owning rep)."""
+    ensure_data_loaded()
+    normalized = get_normalized_sales()
+    matches = normalized[normalized["sale_id"] == sale_id] if normalized is not None else None
+    is_knocker_order = False
+    if matches is None or matches.empty:
+        # Door-knocker orders placed on the website aren't in the main
+        # sales data (see WEB_SALES_QUERY) -- open them from the Door
+        # Knockers dataset instead.
+        knocker_df, _error = _load_knockers_or_error()
+        matches = knocker_df[knocker_df["sale_id"] == sale_id] if knocker_df is not None else None
+        is_knocker_order = True
+    if matches is None or matches.empty:
+        abort(404)
+
+    account = build_bulk_account_rows(matches.head(1))[0]
+    if is_knocker_order:
+        _with_knocker_links([account])
+    row = matches.iloc[0]
+    viewer = auth.current_user()
+    can_view_calls = permissions.can_view_call_history(viewer, account["sales_rep"])
+
+    profile = customer_profile.load_customer_profile(
+        sale_id,
+        state=row.get("state"),
+        subscriber_uuid=row.get("subscriber_uuid"),
+        phone=None,
+        include_calls=can_view_calls,
+    )
+    if profile["order"]:
+        known_ids = set(normalized["sale_id"]) if normalized is not None else set()
+        for related in profile["order"]["related_orders"]:
+            related["in_dashboard"] = related["id"] in known_ids
+
+    return render_template(
+        "customer_profile.html",
+        active_page="dashboard",
+        account=account,
+        profile=profile,
+        can_view_calls=can_view_calls,
+        last_refreshed=data_store["last_refreshed"],
+    )
 
 
 @app.route("/search")

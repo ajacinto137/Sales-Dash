@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Door Knockers — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Door Knockers dashboard (added 2026-10-22) -- internal view of the
+   External Rep Sales data, one row per referral code. Data and status
+   definitions: knockers.py. Section names: Knocker Overview, Account
+   Status, Sales Calendar & Monthly Sales Trend, Knocker Leaderboard,
+   Sales by State, Top Towns. #}
+
+<div class="td-page">
+
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Door Knockers</h1>
+            <p class="td-muted-inline">
+                Door-to-door sales by referral code
+                {% if synced_at %}&middot; synced from PlanetWeb {{ synced_at }}{% endif %}
+            </p>
+        </div>
+        <div class="td-kn-header-links">
+            <a class="td-btn td-btn-ghost" href="{{ url_for('knocker_blitzes') }}">Blitzes &rarr;</a>
+        </div>
+        <form class="td-period-form" method="get" action="{{ url_for('knockers_page') }}">
+            {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+            {% include "_period_select.html" %}
+        </form>
+    </header>
+
+    {% if load_error %}
+    <p class="td-cp-notice">Door-knocker data is unavailable right now ({{ load_error }}).</p>
+    {% endif %}
+
+    {# ---------- Knocker Overview (all-time / today-based, like Team Overview) ---------- #}
+    <section class="td-kpi-bar">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Monthly Sales</span>
+            <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(monthly_forecast.month_to_date) }}</span>
+            <span class="td-kpi-note">{{ monthly_forecast.month_label }} to date</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Daily Sales</span>
+            <span class="td-kpi-value td-purple">{{ "{:,}".format(today_sales) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">7 Day Average</span>
+            <span class="td-kpi-value td-yellow">{{ "%.1f"|format(daily_averages.avg_7_day) }}</span>
+            <span class="td-kpi-note">sales per day</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">30 Day Average</span>
+            <span class="td-kpi-value td-orange">{{ "%.1f"|format(daily_averages.avg_30_day) }}</span>
+            <span class="td-kpi-note">sales per day</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Monthly Projection</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(monthly_forecast.projected_total) }}</span>
+            <span class="td-kpi-note">{{ monthly_forecast.month_label }} pace</span>
+        </div>
+    </section>
+
+    {# ---------- Account Status (period-filtered) ---------- #}
+    {% set acct_args = {'period': period, 'start': custom_start, 'end': custom_end} %}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Account Status</h2>
+            <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }} &middot; click a number to see the accounts</span>
+        </div>
+        <div class="td-kn-status">
+            {% for key, label, value, color in [
+                ('all', 'Sales', status.sales, 'td-text-primary'),
+                ('installed', 'Installed', status.installed, 'td-green'),
+                ('pending', 'Pending', status.pending, 'td-yellow'),
+                ('needs_attention', 'Needs Attention', status.needs_attention, 'td-magenta'),
+                ('cancelled', 'Cancelled', status.cancelled, 'td-orange'),
+                ('service_cancelled', 'Service Cancels', status.service_cancelled, 'td-purple'),
+                ('card_on_file', 'Card on File', status.card_on_file, 'td-cyan')] %}
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">{{ label }}</span>
+                <a class="td-profile-metric-value td-profile-metric-link {{ color }}" href="{{ url_for('knocker_accounts', status=key, **acct_args) }}">{{ "{:,}".format(value) }}</a>
+                {% if key == 'installed' and status.install_rate is not none %}<span class="td-muted-inline">{{ "%.1f"|format(status.install_rate) }}% install rate</span>{% endif %}
+                {% if key == 'card_on_file' and status.card_on_file_rate is not none %}<span class="td-muted-inline">{{ "%.1f"|format(status.card_on_file_rate) }}% of sales &middot; card or ACH</span>{% endif %}
+                {% if key in ('pending', 'needs_attention', 'cancelled') and status.sales %}<span class="td-muted-inline">{{ "%.1f"|format(value / status.sales * 100) }}% of sales</span>{% endif %}
+                {% if key == 'service_cancelled' %}<span class="td-muted-inline">{% if status.installed %}{{ "%.1f"|format(value / status.installed * 100) }}% of installs &middot; {% endif %}left after install</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    {# ---------- Cancellation & Needs Attention Rates (team, by sale month) ---------- #}
+    <section class="td-section" id="knocker-rates">
+        <div class="td-section-heading">
+            <h2>Cancellation &amp; Needs Attention Rates</h2>
+            <span class="td-muted-inline">Whole team, by the month the sale was made &middot; independent of the period filter above</span>
+        </div>
+        <div class="td-chart-card">
+            <div class="td-chart-card-head">
+                <div>
+                    <h3>Rates by Sale Month</h3>
+                    <span class="td-muted-inline">Order cancel &amp; needs attention = % of that month's sales &middot; service cancel = % of its installs &middot; dashed = recent months still maturing</span>
+                </div>
+                <div class="td-chart-toggle" id="knocker-rates-toggle">
+                    {% for v in rate_views %}
+                    <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if loop.first else '' }}" data-chart-toggle="{{ v.key }}">{{ v.label }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% for v in rate_views %}
+            <div class="td-chart-canvas-wrap td-kn-rate-chart" data-chart-panel="{{ v.key }}"{% if not loop.first %} style="display: none;"{% endif %}>
+                {% if v.rows|sum(attribute='sales') == 0 %}
+                <p class="td-empty">No door-knocker sales{{ ' in ' ~ v.label if v.key != 'team' else '' }} yet.</p>
+                {% else %}
+                <canvas data-chart-type="rateTrend" data-rows='{{ v.rows|tojson }}' aria-label="{{ v.label }} order cancel, needs attention and service cancel rates by sale month; the team numbers are in the table below"></canvas>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <details class="td-kn-rate-table">
+                <summary>Show team numbers by month</summary>
+                <div class="td-table-scroll">
+                    <table data-sortable class="td-table">
+                        <thead><tr><th>Sale Month</th><th>Sales</th><th>Order Cancels</th><th>Order Cancel Rate</th><th>Needs Attention</th><th>Needs Attention Rate</th><th>Installed</th><th>Service Cancels</th><th>Service Cancel Rate</th></tr></thead>
+                        <tbody>
+                        {% for r in rate_views[0].rows %}
+                        <tr>
+                            <td class="td-rep-cell" data-sort-value="{{ '%02d'|format(loop.index) }}">{{ r.label }}{% if r.maturing %}<span class="td-cp-sub">still maturing</span>{% endif %}</td>
+                            <td>{{ r.sales }}</td>
+                            <td class="td-orange">{{ r.cancelled }}</td>
+                            <td class="td-orange">{{ "%.1f"|format(r.order_cancel_rate) ~ '%' if r.order_cancel_rate is not none else 'n/a' }}</td>
+                            <td class="td-magenta">{{ r.needs_attention }}</td>
+                            <td class="td-magenta">{{ "%.1f"|format(r.needs_attention_rate) ~ '%' if r.needs_attention_rate is not none else '—' }}</td>
+                            <td class="td-green">{{ r.installed }}</td>
+                            <td class="td-purple">{{ r.service_cancelled }}</td>
+                            <td class="td-purple">{{ "%.1f"|format(r.service_cancel_rate) ~ '%' if r.service_cancel_rate is not none else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="td-muted-inline">Order cancellations are only tracked reliably from Mar 24, 2026, so March shows n/a. Months with fewer than 10 sales (or 10 installs, for service cancels) aren't plotted.</p>
+            </details>
+        </div>
+    </section>
+
+    {# ---------- Sales Calendar & Monthly Sales Trend (all-time) ---------- #}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Sales Calendar &amp; Monthly Sales Trend</h2>
+            <span class="td-muted-inline">{{ rep_monthly_activity.total }} in {{ rep_monthly_activity.month_label }} &middot; independent of the period filter above</span>
+        </div>
+        <div class="td-activity-split">
+            {% set cal_prev_url = url_for('knockers_page', period=period, start=custom_start, end=custom_end, cal_year=rep_monthly_activity.prev_year, cal_month=rep_monthly_activity.prev_month) %}
+            {% set cal_next_url = url_for('knockers_page', period=period, start=custom_start, end=custom_end, cal_year=rep_monthly_activity.next_year, cal_month=rep_monthly_activity.next_month) %}
+            {% set cal_day_base = url_for('knocker_accounts', status='all') %}
+            {% include "_rep_sales_calendar.html" %}
+            {% include "_monthly_trend_card.html" %}
+        </div>
+    </section>
+
+    {# ---------- Knocker Leaderboard (period-filtered) ---------- #}
+    <section class="td-section" id="knocker-leaderboard">
+        <div class="td-section-heading">
+            <h2>Knocker Leaderboard</h2>
+            <span class="td-muted-inline">{{ active_codes }} referral code{{ '' if active_codes == 1 else 's' }} with sales &middot; click a code for its profile, a number for its accounts</span>
+            <form class="td-kn-search" method="get" action="{{ url_for('knockers_page') }}">
+                <input type="hidden" name="period" value="{{ period }}">
+                <input type="hidden" name="start" value="{{ custom_start }}">
+                <input type="hidden" name="end" value="{{ custom_end }}">
+                <input class="td-date-input" type="search" name="search" value="{{ search }}" placeholder="Find a code…" aria-label="Find a referral code">
+            </form>
+        </div>
+        <div class="td-table-card">
+            <div class="td-table-scroll">
+                <table class="td-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            {% for col in table_columns %}
+                            <th>
+                                <a class="td-sort-link{{ ' td-sort-active' if col.active else '' }}"
+                                   href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
+                                    {{ col.label }}{% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
+                                </a>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td class="td-rank">{{ row.rank }}</td>
+                            <td class="td-rep-cell"><a class="td-rep-link" href="{{ url_for('knocker_profile', code=row.code, period=period, start=custom_start, end=custom_end) }}">{{ row.code }}</a></td>
+                            {% for key, status_key, color in [('sales', 'all', 'td-text-primary'), ('installed', 'installed', 'td-green')] %}
+                            <td class="{{ color }}"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=status_key, **acct_args) }}">{{ row[key] }}</a></td>
+                            {% endfor %}
+                            <td class="td-green">{{ "%.1f"|format(row.install_rate) ~ '%' if row.install_rate is not none else '—' }}</td>
+                            <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status='card_on_file', **acct_args) }}" title="{{ row.card_on_file }} of {{ row.sales }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' if row.card_on_file_rate is not none else '—' }}</a></td>
+                            {% for key, color in [('pending', 'td-yellow'), ('needs_attention', 'td-magenta'), ('cancelled', 'td-orange'), ('service_cancelled', 'td-purple')] %}
+                            <td class="{{ color }}">{% if row[key] %}<a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=key, **acct_args) }}">{{ row[key] }}</a>{% else %}0{% endif %}</td>
+                            {% endfor %}
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="td-empty-row">No door-knocker sales for this period.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    {# ---------- Sales by State + Top Towns (period-filtered) ---------- #}
+    <div class="td-kn-areas">
+        <section class="td-section">
+            <div class="td-section-heading"><h2>Sales by State</h2></div>
+            {% if state_rows %}
+            <div class="td-table-card">
+                <div class="td-table-scroll">
+                    <table data-sortable class="td-table">
+                        <thead><tr><th>State</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Card on File</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th></tr></thead>
+                        <tbody>
+                            {% for r in state_rows + [state_total] %}
+                            {% set st = '' if r.state == 'Total' else r.state_key %}
+                            <tr class="{{ 'td-channel-state-total' if r.state == 'Total' else '' }}"{% if r.state == 'Total' %} data-sort-fixed{% endif %}>
+                                <td class="td-rep-cell">{{ r.state }}</td>
+                                <td class="td-text-primary"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='all', state=st, **acct_args) }}">{{ "{:,}".format(r.sales) }}</a></td>
+                                <td class="td-green"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='installed', state=st, **acct_args) }}">{{ "{:,}".format(r.installed) }}</a></td>
+                                <td class="td-green">{{ "%.1f"|format(r.install_rate) ~ '%' if r.install_rate is not none else '—' }}</td>
+                                <td class="td-cyan">{{ "%.1f"|format(r.card_on_file_rate) ~ '%' if r.card_on_file_rate is not none else '—' }}</td>
+                                <td class="td-yellow">{{ r.pending }}</td>
+                                <td class="td-magenta">{% if r.needs_attention %}<a class="td-metric-link" href="{{ url_for('knocker_accounts', status='needs_attention', state=st, **acct_args) }}">{{ r.needs_attention }}</a>{% else %}0{% endif %}</td>
+                                <td class="td-orange">{{ r.cancelled }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% else %}
+            <p class="td-empty">No door-knocker sales for this period.</p>
+            {% endif %}
+        </section>
+
+        <section class="td-section">
+            <div class="td-section-heading"><h2>Top Towns</h2><span class="td-muted-inline">by sales, top {{ town_rows|length }}</span></div>
+            {% if town_rows %}
+            <div class="td-table-card">
+                <div class="td-table-scroll">
+                    <table data-sortable class="td-table">
+                        <thead><tr><th>Town</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Card on File</th><th>Needs Attention</th><th>Cancelled</th></tr></thead>
+                        <tbody>
+                            {% for r in town_rows %}
+                            {% set targs = dict(acct_args, municipality=r.municipality, state=r.state) %}
+                            <tr>
+                                <td class="td-rep-cell">{{ r.municipality }}{% if r.state %}, {{ r.state }}{% endif %}</td>
+                                <td class="td-text-primary"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='all', **targs) }}">{{ r.sales }}</a></td>
+                                <td class="td-green"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='installed', **targs) }}">{{ r.installed }}</a></td>
+                                <td class="td-green">{{ "%.1f"|format(r.install_rate) ~ '%' if r.install_rate is not none else '—' }}</td>
+                                <td class="td-cyan">{{ "%.1f"|format(r.card_on_file_rate) ~ '%' if r.card_on_file_rate is not none else '—' }}</td>
+                                <td class="td-magenta">{% if r.needs_attention %}<a class="td-metric-link" href="{{ url_for('knocker_accounts', status='needs_attention', **targs) }}">{{ r.needs_attention }}</a>{% else %}0{% endif %}</td>
+                                <td class="td-orange">{{ r.cancelled }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% else %}
+            <p class="td-empty">No town data for this period.</p>
+            {% endif %}
+        </section>
+    </div>
+
+</div>
+</body>
+</html>

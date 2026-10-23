@@ -1,4 +1,7 @@
-MAIN_SALES_QUERY = """
+import re
+
+# Shared by MAIN_SALES_QUERY and WEB_SALES_QUERY -- everything but the WHERE.
+_SALES_SELECT = """
 SELECT
     fd.[ID],
     rates.SpeedUp AS Speed,
@@ -65,10 +68,31 @@ OUTER APPLY (
         jobs.ID DESC
 
 ) sched
+"""
 
+MAIN_SALES_QUERY = _SALES_SELECT + """
 WHERE
     fd.QuoteID IS NOT NULL
     AND fd.InsertByEmployeeID IS NOT NULL
+    AND fd.InsertDate >= '2026-01-01'
+
+ORDER BY fd.ID ASC
+"""
+
+# Website (GetPlanetFiber.com map-pin) orders -- the "Web" pseudo-rep
+# (added 2026-10-22, by request). MAIN_SALES_QUERY's InsertByEmployeeID
+# requirement excludes these entirely, so they're loaded separately;
+# InsertByEmployeeID IS NULL here keeps the two sets disjoint. Orders
+# carrying a door-knocker referral code (DOOR_KNOCKER_CODES below) are
+# dropped in build_sales_dataset(), not here -- those belong to External
+# Rep Sales, not Web.
+WEB_SALES_SOURCE_TOKEN = "ORDER_PLANET_AUGUST-2025-NewMapPin"
+
+WEB_SALES_QUERY = _SALES_SELECT + f"""
+WHERE
+    fd.QuoteID IS NOT NULL
+    AND fd.InsertByEmployeeID IS NULL
+    AND fd.SourceToken = '{WEB_SALES_SOURCE_TOKEN}'
     AND fd.InsertDate >= '2026-01-01'
 
 ORDER BY fd.ID ASC
@@ -426,3 +450,22 @@ WHERE NOT EXISTS (
 )
 GROUP BY c.FormDataID
 """
+
+
+def _door_knocker_codes():
+    """The door-knocker (External Rep Sales) referral codes, lowercased,
+    parsed out of EXTERNAL_REP_SALES_QUERY's `ReferralData IN (...)` list
+    -- that list is the source of truth, so this never hand-copies it.
+    Confirmed by the business 2026-10-22: these first-initial+lastname
+    codes identify door-to-door reps, unlike promo codes such as
+    'welcometoplanet'. Lowercased to match SQL Server's case-insensitive
+    collation."""
+    match = re.search(
+        r"ReferralData IN \((.*?)\)\s*\n\s*AND fd\.ID NOT IN",
+        EXTERNAL_REP_SALES_QUERY,
+        re.DOTALL,
+    )
+    return {code.lower() for code in re.findall(r"'([^']+)'", match.group(1))}
+
+
+DOOR_KNOCKER_CODES = _door_knocker_codes()

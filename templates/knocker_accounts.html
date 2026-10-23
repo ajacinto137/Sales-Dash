@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ view_title }} — Door Knockers — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Door Knockers account list (added 2026-10-22) -- same Bulk Account
+   View component as everywhere else; filters come from the link that
+   was clicked (code / status / state / town / period or calendar day). #}
+
+<div class="td-page">
+
+    <header class="td-profile-header">
+        {% if blitz_slugs %}
+        <a class="td-back-link" href="{{ url_for('knocker_blitz', slug=blitz_slugs[0]) if blitz_slugs|length == 1 else url_for('knocker_blitz_group', b=blitz_slugs) }}">&larr; Back to blitz</a>
+        {% elif code %}
+        <a class="td-back-link" href="{{ url_for('knocker_profile', code=code, period=period, start=custom_start, end=custom_end) }}">&larr; Back to {{ code }}</a>
+        {% else %}
+        <a class="td-back-link" href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end) }}">&larr; Back to Door Knockers</a>
+        {% endif %}
+
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">Door Knocker Accounts</p>
+                <h1 class="td-profile-name">{{ view_title }}</h1>
+            </div>
+            <span class="td-muted-inline">{{ accounts|length }} account{{ '' if accounts|length == 1 else 's' }}{% if scope %} &middot; {{ scope }}{% endif %}</span>
+        </div>
+
+        <form class="td-period-form" method="get" action="{{ url_for('knocker_accounts') }}">
+            {% if code %}<input type="hidden" name="code" value="{{ code }}">{% endif %}
+            {% for slug in blitz_slugs %}<input type="hidden" name="blitz" value="{{ slug }}">{% endfor %}
+            {% if state %}<input type="hidden" name="state" value="{{ state }}">{% endif %}
+            {% if municipality %}<input type="hidden" name="municipality" value="{{ municipality }}">{% endif %}
+            <select name="status" class="td-select" aria-label="Account status">
+                {% for key, label in status_options %}
+                <option value="{{ key }}" {{ 'selected' if key == status_key else '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            {% if not day %}
+            {% include "_period_select.html" %}
+            {% else %}
+            <input type="hidden" name="year" value="{{ day.year }}">
+            <input type="hidden" name="month" value="{{ day.month }}">
+            <input type="hidden" name="day" value="{{ day.day }}">
+            <button type="submit" class="td-btn td-btn-primary">Apply</button>
+            {% endif %}
+        </form>
+    </header>
+
+    {% if load_error %}
+    <p class="td-cp-notice">Door-knocker data is unavailable right now ({{ load_error }}).</p>
+    {% endif %}
+
+    <section class="td-tab-panel">
+        {% set empty_message = "No accounts match these filters." %}
+        {% include "_bulk_account_view.html" %}
+    </section>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ account.first_name }} {{ account.last_name }} — Customer Profile — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Customer Profile (added 2026-10-22). Opened from any Bulk Account View
+   card/row. Data comes from customer_profile.load_customer_profile() --
+   every info card is a list of label/value pairs with empty values
+   already dropped, so removing a field is a one-line change there, not
+   here. A source that failed shows a notice instead of its sections. #}
+
+{% macro field_card(title, fields, extra=None) -%}
+    {% if fields %}
+    <div class="td-record-card td-cp-card">
+        <h3>{{ title }}</h3>
+        <dl class="td-cp-fields">
+            {% for f in fields %}
+            <dt>{{ f.label }}</dt>
+            <dd>{{ f.value }}</dd>
+            {% endfor %}
+        </dl>
+        {% if extra %}{{ extra }}{% endif %}
+    </div>
+    {% endif %}
+{%- endmacro %}
+
+{% macro notice(message) -%}
+    <p class="td-cp-notice">{{ message }}</p>
+{%- endmacro %}
+
+{% set order = profile.order %}
+{% set vision = profile.vision %}
+{% set errors = profile.errors %}
+
+<div class="td-page">
+
+    <header class="td-profile-header">
+        {% set owner_url = account.rep_url or url_for('rep_profile', rep_name=account.sales_rep) %}
+        <a class="td-back-link" href="{{ owner_url }}"
+           onclick="if (history.length > 1 && document.referrer) { history.back(); return false; }">&larr; Back</a>
+
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">Customer Profile</p>
+                <h1 class="td-profile-name">
+                    {{ account.first_name }} {{ account.last_name }}
+                    <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }} td-cp-status">{{ account.status }}</span>
+                </h1>
+                <p class="td-cp-subline">
+                    {% if account.address %}{{ account.address }}{% endif %}{% if account.city_state_zip %}, {{ account.city_state_zip }}{% endif %}
+                    {% if order and order.map_url %}&middot; <a href="{{ order.map_url }}" target="_blank" rel="noopener noreferrer">Map &#8599;</a>{% endif %}
+                </p>
+            </div>
+            <div class="td-cp-actions">
+                {% if account.vision_url %}
+                <a class="td-btn td-btn-primary" href="{{ account.vision_url }}" target="_blank" rel="noopener noreferrer">Open in Vision &#8599;</a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    {# ---------- At a glance ---------- #}
+    <div class="td-cp-glance">
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">{{ 'Door Knocker' if account.rep_label == 'Knocker' else 'Sales Rep' }}</span>
+            <a class="td-profile-metric-value td-profile-metric-link td-cyan td-cp-glance-value" href="{{ owner_url }}">{{ account.sales_rep }}</a>
+            {% if account.sales_channel %}<span class="td-bulk-channel">{{ account.sales_channel }}</span>{% endif %}
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Order Placed</span>
+            <span class="td-profile-metric-value td-purple td-cp-glance-value">{{ account.created or '—' }}</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Install Appointment</span>
+            <span class="td-profile-metric-value td-yellow td-cp-glance-value">{{ account.scheduled_date or 'Not scheduled' }}</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Package</span>
+            {% set pkg = order.raw.ServiceName if order else None %}
+            <span class="td-profile-metric-value td-green td-cp-glance-value">{{ pkg or '—' }}</span>
+            {% if order and order.raw.MRC is not none %}<span class="td-muted-inline">${{ '%.2f'|format(order.raw.MRC) }}/mo</span>{% endif %}
+        </div>
+        {% if vision and vision.found %}
+        {% set balance = (vision.account|selectattr('label', 'equalto', 'Balance')|first) %}
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Vision Balance</span>
+            <span class="td-profile-metric-value td-orange td-cp-glance-value">{{ balance.value if balance else '—' }}</span>
+            {% set vstatus = (vision.account|selectattr('label', 'equalto', 'Vision Account Status')|first) %}
+            {% if vstatus %}<span class="td-muted-inline">Vision: {{ vstatus.value }}</span>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if errors.planetweb %}{{ notice("Order details are unavailable right now (PlanetWeb: " ~ errors.planetweb ~ ").") }}{% endif %}
+    {% if not order and not errors.planetweb %}{{ notice("This order wasn't found in PlanetWeb.") }}{% endif %}
+
+    {% if order %}
+    {# ---------- Info cards ---------- #}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Customer &amp; Order</h2></div>
+        <div class="td-cp-grid">
+            {{ field_card("Contact", order.contact) }}
+            {{ field_card("Order", order.order) }}
+            {{ field_card("Source & Referral", order.source) }}
+            {{ field_card("Location", order.location) }}
+            {{ field_card("Vision Order Sync", order.vision_order) }}
+        </div>
+    </section>
+
+    {% if order.line_items %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Order Items</h2><span class="td-muted-inline">{{ order.line_items|length }}</span></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Item</th><th>Qty</th><th>Monthly</th><th>One-time</th></tr></thead>
+                <tbody>
+                {% for i in order.line_items %}
+                <tr><td>{{ i.name }}</td><td>{{ i.quantity }}</td><td class="td-green">{{ i.mrc or '—' }}</td><td>{{ i.nrc or '—' }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+
+    {# ---------- Install & scheduling ---------- #}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Install Jobs</h2><span class="td-muted-inline">{{ order.jobs|length }} scheduled{% if order.canceled_jobs %} &middot; {{ order.canceled_jobs|length }} cancelled{% endif %}</span></div>
+        {% if order.jobs %}
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Job</th><th>Appointment</th><th>Status</th><th>Admin</th><th>Notes</th><th>Created</th></tr></thead>
+                <tbody>
+                {% for j in order.jobs %}
+                <tr>
+                    <td>{{ j.type or '—' }}<span class="td-cp-sub">#{{ j.id }}{% if j.flags %} &middot; {{ j.flags }}{% endif %}</span></td>
+                    <td class="td-yellow">{{ j.slot or 'No slot' }}</td>
+                    <td>{{ j.status or '—' }}{% if j.status_date %}<span class="td-cp-sub">{{ j.status_date }}</span>{% endif %}</td>
+                    <td>{{ j.admin_status or '—' }}</td>
+                    <td class="td-cp-wrap">{{ j.notes or '' }}{% if j.address_override %}<span class="td-cp-sub">Address override: {{ j.address_override }}</span>{% endif %}</td>
+                    <td>{{ j.created or '—' }}{% if j.created_by %}<span class="td-cp-sub">{{ j.created_by }}</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+        {% else %}
+        <p class="td-empty">No install jobs on this order.</p>
+        {% endif %}
+
+        {% if order.canceled_jobs %}
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Cancelled Job</th><th>Was Scheduled For</th><th>Cancelled</th><th>Reason</th></tr></thead>
+                <tbody>
+                {% for c in order.canceled_jobs %}
+                <tr>
+                    <td>{{ c.type or '—' }}<span class="td-cp-sub">#{{ c.id }}</span></td>
+                    <td>{{ c.slot or '—' }}</td>
+                    <td class="td-orange">{{ c.canceled or '—' }}{% if c.canceled_by %}<span class="td-cp-sub">{{ c.canceled_by }}</span>{% endif %}</td>
+                    <td class="td-cp-wrap">{{ c.reason or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+        {% endif %}
+    </section>
+
+    {# ---------- Notes ---------- #}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Schedule Notes</h2><span class="td-muted-inline">PlanetWeb &middot; {{ order.notes|length }}</span></div>
+        {% if order.notes %}
+        <ol class="td-cp-timeline">
+            {% for n in order.notes %}
+            <li>
+                <div class="td-cp-timeline-head">
+                    <span class="td-cp-tag">{{ n.type or 'Note' }}</span>
+                    <span>{{ n.created }}{% if n.author %} &middot; {{ n.author }}{% endif %}</span>
+                    {% if n.customer_visible %}<span class="td-cp-tag td-cp-tag-cyan">Customer visible</span>{% endif %}
+                </div>
+                <p class="td-cp-note">{{ n.text }}</p>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="td-empty">No schedule notes.</p>
+        {% endif %}
+    </section>
+
+    {% if order.follow_ups %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Follow-ups</h2><span class="td-muted-inline">{{ order.follow_ups|length }}</span></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Created</th><th>Reasons</th><th>Memo</th><th>Assigned To</th><th>Email Status</th><th>Closed</th></tr></thead>
+                <tbody>
+                {% for f in order.follow_ups %}
+                <tr><td>{{ f.created }}</td><td>{{ f.reasons or '—' }}</td><td class="td-cp-wrap">{{ f.memo or '—' }}</td><td>{{ f.assigned_to or '—' }}</td><td>{{ f.email_status or '—' }}</td><td>{{ f.closed or 'Open' }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+    {% endif %}
+
+    {# ---------- Needs Attention (dashboard workflow) ---------- #}
+    {% if errors.attention %}{{ notice(errors.attention) }}{% endif %}
+    {% if profile.attention and (profile.attention.status or profile.attention.notes or profile.attention.since) %}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Needs Attention</h2>
+            <span class="td-muted-inline">
+                {% if profile.attention.status %}Status: {{ profile.attention.status }}{% else %}Unclassified{% endif %}
+                {% if profile.attention.since %} &middot; in Needs Attention since {{ profile.attention.since }}{% endif %}
+            </span>
+        </div>
+        {% if profile.attention.notes %}
+        <ol class="td-cp-timeline">
+            {% for n in profile.attention.notes %}
+            <li>
+                <div class="td-cp-timeline-head">
+                    {% if n.attention_status %}<span class="td-cp-tag">{{ n.attention_status }}</span>{% endif %}
+                    <span>{{ n.created or '' }}{% if n.created_by %} &middot; {{ n.created_by }}{% endif %}</span>
+                </div>
+                <p class="td-cp-note">{{ n.note }}</p>
+            </li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {# ---------- Vision account ---------- #}
+    {% if errors.vision %}{{ notice("Vision account data is unavailable right now (KPI: " ~ errors.vision ~ ").") }}{% endif %}
+    {% if not account.vision_url and not vision and not errors.vision %}{{ notice("No Vision account is linked to this order yet.") }}{% endif %}
+    {% if vision %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Vision Account</h2></div>
+        {% if not vision.found %}{{ notice("This order's Vision subscriber wasn't found in the KPI database.") }}{% endif %}
+        <div class="td-cp-grid">
+            {{ field_card("Account", vision.account) }}
+            {% if vision.phones or vision.emails %}
+            <div class="td-record-card td-cp-card">
+                <h3>Contacts on File</h3>
+                <dl class="td-cp-fields">
+                    {% for p in vision.phones %}<dt>{{ p.label or 'Phone' }}{% if p.default %} (default){% endif %}</dt><dd>{{ p.value }}</dd>{% endfor %}
+                    {% for e in vision.emails %}<dt>{{ e.label or 'Email' }}{% if e.default %} (default){% endif %}</dt><dd>{{ e.value }}</dd>{% endfor %}
+                </dl>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if vision.packages %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Vision Packages</h2><span class="td-muted-inline">{{ vision.packages|length }}</span></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Package</th><th>Active</th><th>First Invoice</th><th>Last Invoice</th><th>Bill Day</th><th>Term</th><th>Cancellation</th></tr></thead>
+                <tbody>
+                {% for p in vision.packages %}
+                <tr>
+                    <td>{{ p.name }}{% if p.install_time %}<span class="td-cp-sub">Installed {{ p.install_time }}</span>{% endif %}</td>
+                    <td class="{{ 'td-green' if p.active else 'td-orange' }}">{{ 'Active' if p.active else 'Inactive' }}</td>
+                    <td>{{ p.first_invoice or '—' }}</td><td>{{ p.last_invoice or '—' }}</td>
+                    <td>{{ p.bill_day or '—' }}</td><td>{{ p.term or '—' }}</td>
+                    <td class="td-orange">{{ p.cancellation or '' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+
+    {% if vision.service_items %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Service Items</h2><span class="td-muted-inline">{{ vision.service_items|length }}</span></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Item</th><th>Price</th><th>Status</th><th>Since</th></tr></thead>
+                <tbody>
+                {% for i in vision.service_items %}
+                <tr>
+                    <td>{{ i.name }}{% if i.description and i.description != i.name %}<span class="td-cp-sub">{{ i.description }}</span>{% endif %}</td>
+                    <td class="td-green">{{ i.price or '—' }}</td>
+                    <td class="{{ 'td-green' if i.active else 'td-orange' }}">{{ 'Active' if i.active else 'Inactive' }}</td>
+                    <td>{{ i.since or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+
+    {% if vision.payments or vision.credits %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Payments &amp; Credits</h2><span class="td-muted-inline">most recent first</span></div>
+        <div class="td-cp-grid td-cp-grid-2">
+            {% for title, rows in [('Payments', vision.payments), ('Credits', vision.credits)] if rows %}
+            <div class="td-table-card"><div class="td-table-scroll">
+                <table class="td-table td-cp-table">
+                    <thead><tr><th>{{ title }}</th><th>Type</th><th>Amount</th></tr></thead>
+                    <tbody>
+                    {% for r in rows %}
+                    <tr><td>{{ r.date }}</td><td>{{ r.type or '—' }}</td><td class="{{ 'td-cp-voided' if r.voided else 'td-green' }}">{{ r.total }}{% if r.voided %} (voided){% endif %}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div></div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if vision.tickets %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Support Tickets</h2><span class="td-muted-inline">{{ vision.tickets|length }}</span></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Ticket</th><th>Category</th><th>Status</th><th>Priority</th><th>Assigned</th><th>Opened</th><th>Closed</th></tr></thead>
+                <tbody>
+                {% for t in vision.tickets %}
+                <tr>
+                    <td class="td-cp-wrap">#{{ t.id }}{% if t.description %}<span class="td-cp-sub">{{ t.description|truncate(160) }}</span>{% endif %}</td>
+                    <td>{{ t.category or '—' }}</td><td>{{ t.status or '—' }}</td><td>{{ t.priority or '—' }}</td>
+                    <td>{{ t.assigned_to or '—' }}</td><td>{{ t.created or '—' }}</td><td>{{ t.closed or '' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+
+    {% if vision.tasks %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Vision Tasks</h2><span class="td-muted-inline">{{ vision.tasks|length }}{% if vision.tasks|length == 60 %} most recent{% endif %}</span></div>
+        <ol class="td-cp-timeline">
+            {% for t in vision.tasks %}
+            <li>
+                <div class="td-cp-timeline-head">
+                    <span class="td-cp-tag {{ 'td-cp-tag-cyan' if t.state == 'Open' else '' }}">{{ t.state }}</span>
+                    <strong>{{ t.type }}</strong>
+                    <span>{% if t.completed %}Completed {{ t.completed }}{% elif t.due %}Due {{ t.due }}{% endif %}</span>
+                </div>
+                {% for n in t.notes %}
+                <p class="td-cp-note">{{ n.text }}<span class="td-cp-sub">{{ n.created }}{% if n.by %} &middot; {{ n.by }}{% endif %}</span></p>
+                {% endfor %}
+            </li>
+            {% endfor %}
+        </ol>
+    </section>
+    {% endif %}
+    {% endif %}
+
+    {# ---------- HubSpot calls ---------- #}
+    {% if can_view_calls %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Calls with this Customer</h2><span class="td-muted-inline">HubSpot &middot; matched by phone number</span></div>
+        {% if errors.calls %}{{ notice("Call history is unavailable right now (" ~ errors.calls ~ ").") }}
+        {% elif profile.calls %}
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>When</th><th>Rep</th><th>Direction</th><th>Outcome</th><th>Duration</th></tr></thead>
+                <tbody>
+                {% for c in profile.calls %}
+                <tr><td>{{ c.when or '—' }}</td><td>{{ c.rep or '—' }}</td><td>{{ c.direction or '—' }}</td><td>{{ c.outcome or '—' }}</td><td>{{ c.duration or '—' }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+        {% else %}
+        <p class="td-empty">No HubSpot calls to or from this customer's phone number.</p>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {# ---------- Other orders ---------- #}
+    {% if order and order.related_orders %}
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Other Orders from this Customer</h2><span class="td-muted-inline">same email or Vision account</span></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table class="td-table td-cp-table">
+                <thead><tr><th>Order</th><th>Placed</th><th>Package</th><th>Source</th><th>Completed?</th></tr></thead>
+                <tbody>
+                {% for r in order.related_orders %}
+                <tr>
+                    <td>{% if r.in_dashboard %}<a class="td-cp-link" href="{{ url_for('customer_profile_page', sale_id=r.id) }}">#{{ r.id }}</a>{% else %}#{{ r.id }}{% endif %}</td>
+                    <td>{{ r.placed or '—' }}</td><td>{{ r.package or '—' }}</td>
+                    <td class="td-cp-wrap">{{ r.source or '—' }}</td><td>{{ 'Yes' if r.completed else 'No (abandoned)' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+
+</div>
+</body>
+</html>
