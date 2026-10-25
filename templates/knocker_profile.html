@@ -27,7 +27,7 @@
                 <h1 class="td-profile-name">{{ code }}</h1>
                 <p class="td-cp-subline">
                     {{ "{:,}".format(all_time.sales) }} all-time sales &middot; {{ "{:,}".format(all_time.installed) }} installed
-                    {% if all_time.install_rate is not none %}({{ "%.1f"|format(all_time.install_rate) }}%){% endif %}
+                    {% if all_time.install_rate is not none %}<span data-formula="{{ formulas.all_time_install_rate }}">({{ "%.1f"|format(all_time.install_rate) }}% all-time install rate)</span>{% endif %}
                     {% if all_time.card_on_file_rate is not none %}&middot; {{ "%.1f"|format(all_time.card_on_file_rate) }}% card on file{% endif %}
                     {% if first_sale %}&middot; first sale {{ first_sale.strftime('%b %-d, %Y') }}{% endif %}
                     {% if synced_at %}&middot; synced {{ synced_at }}{% endif %}
@@ -58,7 +58,9 @@
                 ('cancelled', 'Cancelled', status.cancelled, 'td-orange'),
                 ('service_cancelled', 'Service Cancels', status.service_cancelled, 'td-purple'),
                 ('card_on_file', 'Card on File', status.card_on_file, 'td-cyan')] %}
-            <div class="td-profile-metric">
+            {% set rate_key = {'installed': 'install_rate', 'card_on_file': 'card_on_file_rate'}.get(key) %}
+            <div class="td-profile-metric" data-formula="{{ formulas['sales' if key == 'all' else key] }}{% if rate_key %}
+{{ formulas[rate_key] }}{% endif %}">
                 <span class="td-profile-metric-label">{{ label }}</span>
                 <a class="td-profile-metric-value td-profile-metric-link {{ color }}" href="{{ url_for('knocker_accounts', status=key, **acct_args) }}">{{ "{:,}".format(value) }}</a>
                 {% if key == 'installed' and status.install_rate is not none %}<span class="td-muted-inline">{{ "%.1f"|format(status.install_rate) }}% install rate</span>{% endif %}
@@ -95,7 +97,7 @@
         <div class="td-kn-areas">
             <div class="td-table-card"><div class="td-table-scroll">
                 <table data-sortable class="td-table">
-                    <thead><tr><th>State</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Card on File</th><th>Needs Attention</th></tr></thead>
+                    <thead><tr><th>State</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th></tr></thead>
                     <tbody>
                     {% for r in state_rows %}
                     <tr>
@@ -112,7 +114,7 @@
             </div></div>
             <div class="td-table-card"><div class="td-table-scroll">
                 <table data-sortable class="td-table">
-                    <thead><tr><th>Town</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Card on File</th><th>Needs Attention</th></tr></thead>
+                    <thead><tr><th>Town</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th></tr></thead>
                     <tbody>
                     {% for r in town_rows %}
                     <tr>

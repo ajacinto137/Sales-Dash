@@ -42,7 +42,8 @@
     <section class="td-section">
         <div class="td-section-heading"><h2>Results</h2><span class="td-muted-inline">click a number to see the accounts</span></div>
         <div class="td-kn-status">
-            <div class="td-profile-metric">
+            <div class="td-profile-metric" data-formula="{{ formulas.sales }}
+{{ formulas.per_day }}">
                 <span class="td-profile-metric-label">Sales</span>
                 <a class="td-profile-metric-value td-profile-metric-link td-text-primary td-gradient-text" href="{{ base }}&status=all">{{ "{:,}".format(s.sales) }}</a>
                 <span class="td-muted-inline">{{ "%.1f"|format(blitz.per_day) if blitz.per_day is not none else '—' }} per selling day{% if blitz.best_day and blitz.best_day.count %} &middot; best {{ blitz.best_day.label }} ({{ blitz.best_day.count }}){% endif %}</span>
@@ -54,7 +55,8 @@
                 ('cancelled', 'Cancelled', s.cancelled, 'td-orange'),
                 ('service_cancelled', 'Service Cancels', s.service_cancelled, 'td-purple'),
                 ('card_on_file', 'Card on File', s.card_on_file, 'td-cyan')] %}
-            <div class="td-profile-metric">
+            <div class="td-profile-metric" data-formula="{{ formulas[key] }}
+{{ formulas.pct_of_sales }}">
                 <span class="td-profile-metric-label">{{ label }}</span>
                 <a class="td-profile-metric-value td-profile-metric-link {{ color }}" href="{{ base }}&status={{ key }}">{{ "{:,}".format(value) }}</a>
                 {% if s.sales %}<span class="td-muted-inline">{{ "%.1f"|format(value / s.sales * 100) }}% of sales</span>{% endif %}
@@ -68,7 +70,7 @@
         <div class="td-section-heading"><h2>Blitzes in this Group</h2><span class="td-muted-inline">{{ members|length }}</span></div>
         <div class="td-table-card"><div class="td-table-scroll">
             <table data-sortable class="td-table">
-                <thead><tr><th>Blitz</th><th>Dates</th><th>Sales</th><th>Per Day</th><th>Installed</th><th>Install Rate</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th><th>Card on File</th></tr></thead>
+                <thead><tr><th>Blitz</th><th>Dates</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.per_day }}">Per Day</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.pending }}">Pending</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th><th data-formula="{{ formulas.cancelled }}">Cancelled</th><th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th></tr></thead>
                 <tbody>
                 {% for m in members + [blitz] %}
                 <tr class="{{ 'td-channel-state-total' if loop.last else '' }}"{% if loop.last %} data-sort-fixed{% endif %}>
@@ -104,8 +106,9 @@
                 <div class="td-chart-canvas-wrap" style="height: {{ 86 + 40 * status_chart|length }}px;"><canvas data-chart-type="statusStacked" data-rows='{{ status_chart|tojson }}' aria-label="Account status for {{ blitz.name }}"></canvas></div>
                 <table class="td-table td-kn-status-table">
                     <tbody>
-                        {% for key, label, color in [('installed', 'Installed', 'td-green'), ('pending', 'Pending', 'td-yellow'), ('needs_attention', 'Needs Attention', 'td-magenta'), ('cancelled', 'Cancelled', 'td-orange')] %}
-                        <tr><td>{{ label }}</td><td class="{{ color }}">{{ s[key] }}</td><td>{{ "%.1f"|format(s[key] / s.sales * 100) }}%</td></tr>
+                        {% for key, label, color in [('installed', 'Installed', 'td-green'), ('pending', 'Pending', 'td-yellow'), ('needs_attention', 'Needs Attention', 'td-magenta'), ('cancelled', 'Cancelled', 'td-orange'), ('service_cancelled', 'Service Cancelled', 'td-purple')] %}
+                        <tr data-formula="{{ formulas[key] }}
+{{ formulas.pct_of_sales }}"><td>{{ label }}</td><td class="{{ color }}">{{ s[key] }}</td><td>{{ "%.1f"|format(s[key] / s.sales * 100) }}%</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -120,7 +123,7 @@
                 <div class="td-section-heading"><h2>Knockers</h2><span class="td-muted-inline">{{ knocker_rows|length }}</span></div>
                 <div class="td-table-card"><div class="td-table-scroll">
                     <table data-sortable class="td-table">
-                        <thead><tr><th>Code</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th><th>Card on File</th></tr></thead>
+                        <thead><tr><th>Code</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.pending }}">Pending</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th><th data-formula="{{ formulas.cancelled }}">Cancelled</th><th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th></tr></thead>
                         <tbody>
                         {% for r in knocker_rows %}
                         <tr>
@@ -142,7 +145,7 @@
                 <div class="td-section-heading"><h2>Towns</h2></div>
                 <div class="td-table-card"><div class="td-table-scroll">
                     <table data-sortable class="td-table">
-                        <thead><tr><th>Town</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Needs Attention</th></tr></thead>
+                        <thead><tr><th>Town</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th></tr></thead>
                         <tbody>
                         {% for r in town_rows %}
                         <tr>

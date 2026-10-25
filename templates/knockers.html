@@ -62,13 +62,15 @@
                 ('cancelled', 'Cancelled', status.cancelled, 'td-orange'),
                 ('service_cancelled', 'Service Cancels', status.service_cancelled, 'td-purple'),
                 ('card_on_file', 'Card on File', status.card_on_file, 'td-cyan')] %}
-            <div class="td-profile-metric">
+            {% set rate_key = {'installed': 'install_rate', 'card_on_file': 'card_on_file_rate', 'service_cancelled': 'service_cancel_rate', 'pending': 'pct_of_sales', 'needs_attention': 'pct_of_sales', 'cancelled': 'pct_of_sales'}.get(key) %}
+            <div class="td-profile-metric" data-formula="{{ formulas['sales' if key == 'all' else key] }}{% if rate_key %}
+{{ formulas[rate_key] }}{% endif %}">
                 <span class="td-profile-metric-label">{{ label }}</span>
                 <a class="td-profile-metric-value td-profile-metric-link {{ color }}" href="{{ url_for('knocker_accounts', status=key, **acct_args) }}">{{ "{:,}".format(value) }}</a>
                 {% if key == 'installed' and status.install_rate is not none %}<span class="td-muted-inline">{{ "%.1f"|format(status.install_rate) }}% install rate</span>{% endif %}
                 {% if key == 'card_on_file' and status.card_on_file_rate is not none %}<span class="td-muted-inline">{{ "%.1f"|format(status.card_on_file_rate) }}% of sales &middot; card or ACH</span>{% endif %}
                 {% if key in ('pending', 'needs_attention', 'cancelled') and status.sales %}<span class="td-muted-inline">{{ "%.1f"|format(value / status.sales * 100) }}% of sales</span>{% endif %}
-                {% if key == 'service_cancelled' %}<span class="td-muted-inline">{% if status.installed %}{{ "%.1f"|format(value / status.installed * 100) }}% of installs &middot; {% endif %}left after install</span>{% endif %}
+                {% if key == 'service_cancelled' %}<span class="td-muted-inline">{% if status.ever_installed %}{{ "%.1f"|format(value / status.ever_installed * 100) }}% of installs &middot; {% endif %}left after install</span>{% endif %}
             </div>
             {% endfor %}
         </div>
@@ -105,7 +107,7 @@
                 <summary>Show team numbers by month</summary>
                 <div class="td-table-scroll">
                     <table data-sortable class="td-table">
-                        <thead><tr><th>Sale Month</th><th>Sales</th><th>Order Cancels</th><th>Order Cancel Rate</th><th>Needs Attention</th><th>Needs Attention Rate</th><th>Installed</th><th>Service Cancels</th><th>Service Cancel Rate</th></tr></thead>
+                        <thead><tr><th>Sale Month</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.cancelled }}">Order Cancels</th><th data-formula="{{ formulas.order_cancel_rate }}">Order Cancel Rate</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th><th data-formula="{{ formulas.needs_attention_rate }}">Needs Attention Rate</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.service_cancelled }}">Service Cancels</th><th data-formula="{{ formulas.service_cancel_rate }}">Service Cancel Rate</th></tr></thead>
                         <tbody>
                         {% for r in rate_views[0].rows %}
                         <tr>
@@ -162,7 +164,7 @@
                         <tr>
                             <th>#</th>
                             {% for col in table_columns %}
-                            <th>
+                            <th{% if formulas[col.key] %} data-formula="{{ formulas[col.key] }}"{% endif %}>
                                 <a class="td-sort-link{{ ' td-sort-active' if col.active else '' }}"
                                    href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
                                     {{ col.label }}{% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
@@ -176,17 +178,17 @@
                         <tr>
                             <td class="td-rank">{{ row.rank }}</td>
                             <td class="td-rep-cell"><a class="td-rep-link" href="{{ url_for('knocker_profile', code=row.code, period=period, start=custom_start, end=custom_end) }}">{{ row.code }}</a></td>
-                            {% for key, status_key, color in [('sales', 'all', 'td-text-primary'), ('installed', 'installed', 'td-green')] %}
+                            {% for key, status_key, color in [('sales', 'all', 'td-text-primary')] %}
                             <td class="{{ color }}"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=status_key, **acct_args) }}">{{ row[key] }}</a></td>
                             {% endfor %}
-                            <td class="td-green">{{ "%.1f"|format(row.install_rate) ~ '%' if row.install_rate is not none else '—' }}</td>
-                            <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status='card_on_file', **acct_args) }}" title="{{ row.card_on_file }} of {{ row.sales }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' if row.card_on_file_rate is not none else '—' }}</a></td>
+                            <td class="td-green">{{ "%.1f"|format(row.all_time_install_rate) ~ '%' if row.all_time_install_rate is not none else '—' }}</td>
+                            <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status='card_on_file', **acct_args) }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' if row.card_on_file_rate is not none else '—' }}</a></td>
                             {% for key, color in [('pending', 'td-yellow'), ('needs_attention', 'td-magenta'), ('cancelled', 'td-orange'), ('service_cancelled', 'td-purple')] %}
                             <td class="{{ color }}">{% if row[key] %}<a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=key, **acct_args) }}">{{ row[key] }}</a>{% else %}0{% endif %}</td>
                             {% endfor %}
                         </tr>
                         {% else %}
-                        <tr><td colspan="10" class="td-empty-row">No door-knocker sales for this period.</td></tr>
+                        <tr><td colspan="9" class="td-empty-row">No door-knocker sales for this period.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -202,7 +204,7 @@
             <div class="td-table-card">
                 <div class="td-table-scroll">
                     <table data-sortable class="td-table">
-                        <thead><tr><th>State</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Card on File</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th></tr></thead>
+                        <thead><tr><th>State</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th><th data-formula="{{ formulas.pending }}">Pending</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th><th data-formula="{{ formulas.cancelled }}">Cancelled</th></tr></thead>
                         <tbody>
                             {% for r in state_rows + [state_total] %}
                             {% set st = '' if r.state == 'Total' else r.state_key %}
@@ -232,7 +234,7 @@
             <div class="td-table-card">
                 <div class="td-table-scroll">
                     <table data-sortable class="td-table">
-                        <thead><tr><th>Town</th><th>Sales</th><th>Installed</th><th>Install Rate</th><th>Card on File</th><th>Needs Attention</th><th>Cancelled</th></tr></thead>
+                        <thead><tr><th>Town</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th><th data-formula="{{ formulas.cancelled }}">Cancelled</th></tr></thead>
                         <tbody>
                             {% for r in town_rows %}
                             {% set targs = dict(acct_args, municipality=r.municipality, state=r.state) %}

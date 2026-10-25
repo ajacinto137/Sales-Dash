@@ -31,7 +31,7 @@ RAW = raw([
     (3, "aaa", "2026-10-03", "2026-10-10", None, None, None, "NJ", "Sparta"),                  # past appt -> NA
     (4, "bbb", "2026-10-03", None, None, None, None, "NY", ""),                                # no appt -> NA
     (5, "bbb", "2026-10-04", "2026-10-20", None, "2026-10-08", None, "NY", "Warwick"),         # cancelled
-    (6, "bbb", "2026-09-04", "2026-09-10", "2026-09-10", "2026-09-08", "2026-10-01", "VA", "X"),  # installed wins; service cancel
+    (6, "bbb", "2026-09-04", "2026-09-10", "2026-09-10", "2026-09-08", "2026-10-01", "VA", "X"),  # service cancel wins
     (7, "ccc", "2026-10-22", "2026-10-22", None, None, None, "NJ", "Vernon"),                 # appt today -> pending
 ])
 
@@ -44,7 +44,7 @@ def norm():
 def test_status_definitions():
     df = norm().set_index("sale_id")
     assert df.loc[[1, 2, 3, 4, 5, 6, 7], "status"].tolist() == [
-        "Installed", "Pending", "Needs Attention", "Needs Attention", "Cancelled", "Installed", "Pending"]
+        "Installed", "Pending", "Needs Attention", "Needs Attention", "Cancelled", "Service Cancelled", "Pending"]
     assert df.loc[6, "service_cancelled"] and not df.loc[1, "service_cancelled"]
 
 
@@ -58,15 +58,30 @@ def test_knocker_rows():
     rows = {r["code"]: r for r in knockers.knocker_rows(norm())}
     a = rows["aaa"]
     assert (a["sales"], a["installed"], a["pending"], a["needs_attention"], a["cancelled"]) == (3, 1, 1, 1, 0)
-    assert round(a["install_rate"], 1) == 33.3
+    assert a["install_rate"] == 50.0  # 1 installed / (3 sales - 1 pending)
     b = rows["bbb"]
-    assert (b["sales"], b["installed"], b["cancelled"], b["service_cancelled"]) == (3, 1, 1, 1)
+    assert (b["sales"], b["installed"], b["cancelled"], b["service_cancelled"]) == (3, 0, 1, 1)
+    for r in knockers.knocker_rows(norm()):
+        assert r["sales"] == sum(r[k] for k in knockers.STATUS_KEYS)
     assert [r["code"] for r in knockers.knocker_rows(norm())] == ["aaa", "bbb", "ccc"]
 
 
 def test_sort_puts_missing_rates_last():
-    rows = [{"code": "x", "install_rate": None}, {"code": "y", "install_rate": 50.0}, {"code": "z", "install_rate": 10.0}]
-    assert [r["code"] for r in knockers.sort_knocker_rows(rows, "install_rate", "asc")] == ["z", "y", "x"]
+    rows = [{"code": "x", "all_time_install_rate": None}, {"code": "y", "all_time_install_rate": 50.0}, {"code": "z", "all_time_install_rate": 10.0}]
+    assert [r["code"] for r in knockers.sort_knocker_rows(rows, "all_time_install_rate", "asc")] == ["z", "y", "x"]
+
+
+def test_all_time_install_rate_ignores_the_period():
+    df = norm()
+    october_only = knockers.knocker_rows(df[df["sale_date"] >= "2026-10-01"])
+    rows = {r["code"]: r for r in knockers.add_all_time_install_rates(october_only, df)}
+    assert rows["aaa"]["all_time_install_rate"] == 50.0
+    # bbb's only install-era sale (Sept, service cancelled) is outside October
+    assert rows["bbb"]["all_time_install_rate"] == 0.0
+
+
+def test_every_leaderboard_column_has_a_formula():
+    assert all(key in knockers.FORMULAS for key, _, _ in knockers.KNOCKER_TABLE_COLUMNS if key != "code")
 
 
 def test_state_and_town_rows():
@@ -83,7 +98,7 @@ def test_account_view_filters_match_counts():
     with mock.patch.object(knockers, "build_bulk_account_rows", side_effect=lambda f: list(f["sale_id"])), \
          mock.patch("sales_metrics._today", return_value=TODAY):
         assert knockers.account_view(df, code="aaa", status="needs_attention", period="all_time") == ("Needs Attention", [3])
-        assert knockers.account_view(df, status="service_cancelled", period="all_time") == ("Service Cancellations", [6])
+        assert knockers.account_view(df, status="service_cancelled", period="all_time") == ("Service Cancelled", [6])
         title, ids = knockers.account_view(df, municipality="Vernon", status="all", period="this_month")
         assert sorted(ids) == [1, 2, 7]
         title, ids = knockers.account_view(df, status="all", day=date(2026, 10, 3))

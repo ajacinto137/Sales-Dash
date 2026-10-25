@@ -689,22 +689,21 @@
     <section class="td-table-card">
         <div class="td-table-scroll">
             <table class="td-table">
-                <!-- 10 equal-width columns (#, Sales Rep, Sales, Outbound,
-                     Outbound Installs, Inbound, Installs, Pending, Needs
-                     Attention, Install Rate) -- matches table-layout:
-                     fixed in team_dashboard.css, which is what keeps
-                     "Outbound Installs"/"Needs Attention" (the longest
-                     header labels) from stretching wider than the rest
-                     under auto layout. -->
+                <!-- 8 equal-width columns (#, Sales Rep, Sales, Outbound,
+                     Inbound, Pending, Needs Attention, All Time Install
+                     Rate; Installs + Outbound Installs removed 2026-10-23,
+                     by request) -- matches table-layout: fixed in
+                     team_dashboard.css, which keeps the longest header
+                     labels from stretching wider than the rest. -->
                 <colgroup>
                     {% for _ in rep_table_columns %}
-                    <col style="width: 10%">
+                    <col style="width: 12.5%">
                     {% endfor %}
                 </colgroup>
                 <thead>
                     <tr>
                         {% for col in rep_table_columns %}
-                        <th>
+                        <th{% if col.key == 'all_time_install_rate' %} data-formula="{{ formulas.rep_all_time_install_rate }}"{% endif %}>
                             <a class="td-sort-link {{ 'td-sort-active' if col.active else '' }}"
                                href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, sort=col.key, dir=col.next_dir, _anchor='rep-leaderboard') }}">
                                 {{ col.label }}
@@ -723,7 +722,7 @@
                             <a class="td-rep-link"
                                href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ row.sales_rep }}</a>
                         </td>
-                        {% for metric_key, metric_class in [('sales', 'td-text-primary'), ('outbound', 'td-cyan'), ('outbound_installs', 'td-orange'), ('inbound', 'td-purple'), ('installs', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta')] %}
+                        {% for metric_key, metric_class in [('sales', 'td-text-primary'), ('outbound', 'td-cyan'), ('inbound', 'td-purple'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta')] %}
                         <td class="{{ metric_class }}">
                             {% if row[metric_key] is none %}
                             {# Web's outbound columns (see calculate_rep_metrics()) #}
@@ -737,10 +736,10 @@
                             {% endif %}
                         </td>
                         {% endfor %}
-                        <td class="td-green">{% if row.install_rate is not none %}{{ "%.1f"|format(row.install_rate) }}%{% else %}—{% endif %}</td>
+                        <td class="td-green">{% if row.all_time_install_rate is not none %}{{ "%.1f"|format(row.all_time_install_rate) }}%{% else %}—{% endif %}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="10" class="td-empty-row">No reps match the current filters.</td></tr>
+                    <tr><td colspan="8" class="td-empty-row">No reps match the current filters.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

@@ -40,6 +40,7 @@ function getChartTokens() {
             pending: read("--td-chart-status-pending"),
             needs_attention: read("--td-chart-status-needs-attention"),
             cancelled: read("--td-chart-status-cancelled"),
+            service_cancelled: read("--td-chart-service-cancel"),
         },
         serviceCancel: read("--td-chart-service-cancel"),
         channelPalette: [
@@ -227,6 +228,7 @@ const BLITZ_STATUSES = [
     ["pending", "Pending"],
     ["needs_attention", "Needs Attention"],
     ["cancelled", "Cancelled"],
+    ["service_cancelled", "Service Cancelled"],
 ];
 
 // Sales per calendar day across one blitz. Click a bar -> that day's accounts.
@@ -340,7 +342,7 @@ function createRateTrendChart(canvasEl, tokens) {
     const series = [
         ["order_cancel_rate", "Order cancel rate", tokens.statusColors.cancelled, "cancelled", "sales"],
         ["needs_attention_rate", "Needs attention rate", tokens.statusColors.needs_attention, "needs_attention", "sales"],
-        ["service_cancel_rate", "Service cancel rate", tokens.serviceCancel, "service_cancelled", "installed"],
+        ["service_cancel_rate", "Service cancel rate", tokens.serviceCancel, "service_cancelled", "ever_installed"],
     ];
     const dashedIfMaturing = (ctx) => (rows[ctx.p1DataIndex] && rows[ctx.p1DataIndex].maturing ? [5, 4] : undefined);
     return new Chart(canvasEl, {

@@ -393,14 +393,22 @@ REP_TABLE_COLUMNS = [
     ("sales_rep", "Sales Rep", "asc"),
     ("sales", "Sales", "desc"),
     ("outbound", "Outbound", "desc"),
-    ("outbound_installs", "Outbound Installs", "desc"),
     ("inbound", "Inbound", "desc"),
-    ("installs", "Installs", "desc"),
     ("pending", "Pending", "desc"),
     ("needs_attention", "Needs Attention", "desc"),
-    ("install_rate", "Install Rate", "desc"),
+    ("all_time_install_rate", "All Time Install Rate", "desc"),
 ]
 REP_SORT_KEYS = {key for key, _label, _default_dir in REP_TABLE_COLUMNS}
+
+
+def add_all_time_install_rates(rows, all_time_df):
+    """Sets each Rep Leaderboard row's all_time_install_rate -- the same
+    Install Rate formula over the rep's whole history, whatever period
+    the rows cover (2026-10-23, by request)."""
+    all_time = {r["sales_rep"]: r["install_rate"] for r in calculate_rep_metrics(all_time_df)}
+    for row in rows:
+        row["all_time_install_rate"] = all_time.get(row["sales_rep"])
+    return rows
 
 
 def sort_rep_rows(rows, sort_key, direction):

@@ -926,7 +926,7 @@ described them accurately.
 | **Planet Networks Records** | "Records Section" | Historical all-time individual sales achievements: Best Days Ever, Best Weeks Ever, Best Months Ever. **Collapsed by default** (added 2026-08-16, by request) — a native `<details>`/`<summary>` disclosure, no JS involved; click the heading to expand/collapse | `<section class="td-section">` containing `<details class="td-collapsible"><summary class="td-section-heading td-collapsible-summary"><h2>Planet Networks Records</h2>` |
 | **Current Sales Leaders** | | Current-period individual sales leaderboards — who's leading right now: Weekly Sales, Monthly Sales, Yearly Sales (each card is its own live top-3, independent of the page's period filter). Daily Sales moved to Live Sales Activity 2026-08-16 (by request, for an even 3+3 card split with that section) | `<section class="td-section">` containing `<h2>Current Sales Leaders</h2>` |
 | **Live Sales Activity** | | Today's leaderboard plus recent sales and account activity: Daily Sales (moved here from Current Sales Leaders 2026-08-16 — same `records.daily_leaders` data, unchanged), Latest Sales (the reps behind the most recent sales), and Latest Accounts Sold (the accounts behind those same sales, renamed from "Last 3 Sales"/"Last 3 Accounts Sold" 2026-08-16 since the displayed count is a display detail, not part of the card's identity), which also carries the "View All Sales" button in its top-right corner. Now a 3-column grid (`.td-activity-grid`, widened 2026-08-16 to fit the third card) | `<section class="td-section">` containing `<h2>Live Sales Activity</h2>` |
-| **Individual Rep Leaderboard** | "Rep Leaderboard", "Leaderboard Table", "Rep Performance Section" | The rep search field plus the ranked table (Rank, Sales Rep, Sales, Outbound, **Outbound Installs** (added 2026-08-18, by request — Outbound-channel sales that also installed, i.e. outbound ∩ installed), Inbound, Installs, Pending, **Needs Attention** (replaced the Cancels count column 2026-08-17, by request), Install Rate) — every column header is clickable to sort the table by that column. **Cancel Rate column removed 2026-08-17, by request** | `<h2>Individual Rep Leaderboard</h2>` + `<form class="td-search-form">` + `<section class="td-table-card">` |
+| **Individual Rep Leaderboard** | "Rep Leaderboard", "Leaderboard Table", "Rep Performance Section" | The rep search field plus the ranked table (Rank, Sales Rep, Sales, Outbound, Inbound, Pending, **Needs Attention** (replaced the Cancels count column 2026-08-17, by request), **All Time Install Rate** (renamed 2026-10-23, by request — same `1 − Needs Attention / Sales` formula, but over the rep's whole history, ignoring the period filter; hover the header for the equation)) — every column header is clickable to sort the table by that column. **Installs and Outbound Installs columns removed 2026-10-23, by request** (also Installed from the Knocker Leaderboard). **Cancel Rate column removed 2026-08-17, by request** | `<h2>Individual Rep Leaderboard</h2>` + `<form class="td-search-form">` + `<section class="td-table-card">` |
 
 **Every rep name on this page links to that rep's Individual Sales
 Profile** (added 2026-08-16, by request — "Everytime a reps name appears
@@ -1042,8 +1042,19 @@ only** (by request). Data/status logic: `knockers.py`; routes
 - **Statuses:** Installed (Vision install date) · Cancelled (order
   cancelled, never installed) · Pending (install appointment today or
   later) · Needs Attention (no appointment / past appointment). Service
-  Cancels (left after install) are counted separately and stay Installed.
-  Install Rate = Installed / Sales (same as Admin → External Rep Sales).
+  Cancelled (left after install) — its own status, taking precedence over
+  the others, so the five statuses add up to Sales (changed 2026-10-23;
+  these used to also count as Installed). Service Cancel Rate =
+  Service Cancelled / (Installed + Service Cancelled).
+  Install Rate = Installed / (Sales − Pending) — pending orders are left
+  out (changed 2026-10-23; Admin → External Rep Sales still uses Installed / Sales).
+  The Knocker Leaderboard shows **All Time Install Rate** (each code's
+  whole history, ignoring the period filter).
+- **Formula hover box:** hovering any Door Knocker metric (status tiles,
+  table columns, the shared KPI bar) shows its equation. The text lives
+  in `knockers.FORMULAS` (a Jinja global, `formulas`); add
+  `data-formula="{{ formulas.<key> }}"` to a `<th>` and every cell in
+  that column gets it (`team_dashboard.js`).
 - **Card on File:** payment method at time of order (`payment_method` =
   FTTPFormData.Cc_PayBy) is `card` or `ach` (ACH counts, by request);
   `check` and `skip` are not on file. Shown as a count/% tile, a sortable

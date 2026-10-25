@@ -73,9 +73,9 @@
                     <thead>
                         <tr>
                             <th class="td-kn-check-col" data-no-sort><span class="td-sr-only">Select</span></th>
-                            <th>{{ 'State' if group_by == 'state' else 'Blitz' }}</th><th>Dates</th><th>Sales</th><th>Per Day</th><th>Knockers</th>
-                            <th>Installed</th><th>Install Rate</th><th>Pending</th><th>Needs Attention</th><th>Cancelled</th>
-                            <th>Service Cancels</th><th>Card on File</th>
+                            <th>{{ 'State' if group_by == 'state' else 'Blitz' }}</th><th>Dates</th><th data-formula="{{ formulas.sales }}">Sales</th><th data-formula="{{ formulas.per_day }}">Per Day</th><th data-formula="{{ formulas.knockers }}">Knockers</th>
+                            <th data-formula="{{ formulas.installed }}">Installed</th><th data-formula="{{ formulas.install_rate }}">Install Rate</th><th data-formula="{{ formulas.pending }}">Pending</th><th data-formula="{{ formulas.needs_attention }}">Needs Attention</th><th data-formula="{{ formulas.cancelled }}">Cancelled</th>
+                            <th data-formula="{{ formulas.service_cancelled }}">Service Cancels</th><th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th>
                         </tr>
                     </thead>
                     <tbody>

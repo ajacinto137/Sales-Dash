@@ -289,4 +289,47 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         });
     });
+
+    // Formula hover box (added 2026-10-23): hovering anything with a
+    // data-formula shows its equation. A table cell uses its column
+    // header's formula, so headers carry it once per column.
+    var formulaTip = null;
+    function formulaFor(el) {
+        var own = el.closest("[data-formula]");
+        if (own) return own;
+        var cell = el.closest("td");
+        var table = cell && cell.closest("table");
+        if (!table || !table.tHead) return null;
+        var headerRow = table.tHead.rows[table.tHead.rows.length - 1];
+        var th = headerRow && headerRow.cells[cell.cellIndex];
+        return th && th.hasAttribute("data-formula") ? th : null;
+    }
+    function hideFormula() {
+        if (formulaTip) formulaTip.hidden = true;
+    }
+    document.addEventListener("mouseover", function (e) {
+        var source = formulaFor(e.target);
+        var text = source && source.getAttribute("data-formula").trim();
+        if (!text) {
+            hideFormula();
+            return;
+        }
+        if (!formulaTip) {
+            formulaTip = document.createElement("div");
+            formulaTip.className = "td-formula-tip";
+            formulaTip.setAttribute("role", "tooltip");
+            document.body.appendChild(formulaTip);
+        }
+        formulaTip.textContent = text;
+        formulaTip.hidden = false;
+        var anchor = e.target.closest("td, th, [data-formula]") || source;
+        var box = anchor.getBoundingClientRect();
+        var tip = formulaTip.getBoundingClientRect();
+        var left = Math.min(Math.max(8, box.left + box.width / 2 - tip.width / 2), window.innerWidth - tip.width - 8);
+        var top = box.top - tip.height - 8;
+        if (top < 8) top = box.bottom + 8;
+        formulaTip.style.left = left + "px";
+        formulaTip.style.top = top + "px";
+    });
+    window.addEventListener("scroll", hideFormula, true);
 });

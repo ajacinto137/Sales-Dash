@@ -6,26 +6,26 @@
    calculate_daily_averages(), daily = calculate_total_daily_sales(). #}
 {% macro kpi_bar(forecast, daily, averages) -%}
 <section class="td-kpi-bar">
-    <div class="td-kpi">
+    <div class="td-kpi" data-formula="{{ formulas.monthly_sales }}">
         <span class="td-kpi-label">Monthly Sales</span>
         <span class="td-kpi-value td-text-primary td-gradient-text">{{ "{:,}".format(forecast.month_to_date) }}</span>
         <span class="td-kpi-note">{{ forecast.month_label }} to date</span>
     </div>
-    <div class="td-kpi">
+    <div class="td-kpi" data-formula="{{ formulas.daily_sales }}">
         <span class="td-kpi-label">Daily Sales</span>
         <span class="td-kpi-value td-purple">{{ "{:,}".format(daily) }}</span>
     </div>
-    <div class="td-kpi">
+    <div class="td-kpi" data-formula="{{ formulas.avg_7_day }}">
         <span class="td-kpi-label">7 Day Average</span>
         <span class="td-kpi-value td-yellow">{{ "%.1f"|format(averages.avg_7_day) }}</span>
         <span class="td-kpi-note">sales per day</span>
     </div>
-    <div class="td-kpi">
+    <div class="td-kpi" data-formula="{{ formulas.avg_30_day }}">
         <span class="td-kpi-label">30 Day Average</span>
         <span class="td-kpi-value td-orange">{{ "%.1f"|format(averages.avg_30_day) }}</span>
         <span class="td-kpi-note">sales per day</span>
     </div>
-    <div class="td-kpi">
+    <div class="td-kpi" data-formula="{{ formulas.monthly_projection }}">
         <span class="td-kpi-label">Monthly Projection</span>
         <span class="td-kpi-value td-cyan">{{ "{:,}".format(forecast.projected_total) }}</span>
         <span class="td-kpi-note">{{ forecast.month_label }} pace</span>

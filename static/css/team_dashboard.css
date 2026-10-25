@@ -3494,3 +3494,24 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-kpi-row-hint { font-size: 12px; color: var(--td-text-muted); }
 .td-kpi-row-hint a { color: var(--td-text-secondary); text-decoration: none; }
 .td-kpi-row-hint a:hover { color: var(--td-accent-blue); }
+
+/* Formula hover box (added 2026-10-23) -- see team_dashboard.js. */
+[data-formula] {
+    cursor: help;
+}
+
+.td-formula-tip {
+    position: fixed;
+    z-index: 1000;
+    max-width: min(340px, calc(100vw - 16px));
+    padding: 8px 11px;
+    background: var(--td-chart-tooltip-bg);
+    border: 1px solid var(--td-chart-tooltip-border);
+    border-radius: 8px;
+    box-shadow: var(--td-chart-tooltip-shadow);
+    color: var(--td-text-primary, #fff);
+    font-size: 12.5px;
+    line-height: 1.45;
+    white-space: pre-line;
+    pointer-events: none;
+}

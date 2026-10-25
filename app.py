@@ -58,6 +58,7 @@ from sales_metrics import (
     calculate_needs_attention,
     calculate_records,
     calculate_rep_metrics,
+    add_all_time_install_rates,
     calculate_rep_monthly_activity,
     calculate_rep_monthly_installs,
     calculate_sales_volume_trend,
@@ -108,6 +109,11 @@ def inject_auth_context():
     _topnav.html to show/hide Admin-only nav items and by any page that
     needs to know who's logged in."""
     return {"current_user": auth.current_user(), "permissions": permissions}
+
+
+# A Jinja global rather than context so imported macros (_kpi_bar.html)
+# see it too: the equation behind each metric, for the hover box.
+app.jinja_env.globals["formulas"] = knockers.FORMULAS
 
 # The container clock runs in UTC, but every sale/scheduled date in the
 # data is Eastern local time (SQL Server InsertDate). The "Last refreshed"
@@ -870,7 +876,7 @@ def dashboard_page():
     # this page uses reps_only, since Web isn't a sales rep.
     reps_only = exclude_web(normalized)
 
-    rep_rows = calculate_rep_metrics(period_df)
+    rep_rows = add_all_time_install_rates(calculate_rep_metrics(period_df), normalized)
     total_rep_count = sum(1 for r in rep_rows if r["sales_rep"] != WEB_REP)
 
     if search:
@@ -2343,7 +2349,7 @@ def knockers_page():
 
     period_df = filter_by_period(df, period, custom_start, custom_end)
 
-    rows = knockers.knocker_rows(period_df)
+    rows = knockers.add_all_time_install_rates(knockers.knocker_rows(period_df), df)
     active_codes = len(rows)
     if search:
         rows = [r for r in rows if search in r["code"]]

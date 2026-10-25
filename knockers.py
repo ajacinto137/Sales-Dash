@@ -16,9 +16,10 @@ unchanged. Account status mirrors the main dashboard's definitions:
 - Cancelled: order cancelled (order_cancellation_date) and never installed.
 - Pending: not installed/cancelled, install appointment today or later.
 - Needs Attention: everything else -- no appointment, or a past one.
-
-Service cancellations (customer left after install) are counted
-separately; those accounts stay "Installed".
+- Service Cancelled: has a service cancellation date (customer left
+  after install). Takes precedence over every other status, so the five
+  statuses never overlap and always add up to Sales (changed 2026-10-23,
+  by request -- these used to also count as Installed).
 
 Card on File (added 2026-10-22): the order's payment method at the time
 it was placed (FTTPFormData.Cc_PayBy, synced as payment_method) is "card"
@@ -47,13 +48,12 @@ STATUS_KEYS = {
     "pending": "Pending",
     "needs_attention": "Needs Attention",
     "cancelled": "Cancelled",
+    "service_cancelled": "Service Cancelled",
 }
-# Account-list filters: the four statuses plus service cancellations
-# (a subset of Installed) and everything.
+# Account-list filters: the five statuses plus everything and card on file.
 ACCOUNT_FILTERS = {
     "all": ("All Sales", lambda df: df),
     **{key: (label, (lambda label: lambda df: df[df["status"] == label])(label)) for key, label in STATUS_KEYS.items()},
-    "service_cancelled": ("Service Cancellations", lambda df: df[df["service_cancelled"]]),
     "card_on_file": ("Card on File", lambda df: df[df["card_on_file"]]),
     "no_card_on_file": ("No Card on File", lambda df: df[~df["card_on_file"]]),
 }
@@ -61,8 +61,7 @@ ACCOUNT_FILTERS = {
 KNOCKER_TABLE_COLUMNS = [
     ("code", "Referral Code", "asc"),
     ("sales", "Sales", "desc"),
-    ("installed", "Installed", "desc"),
-    ("install_rate", "Install Rate", "desc"),
+    ("all_time_install_rate", "All Time Install Rate", "desc"),
     ("card_on_file_rate", "Card on File", "desc"),
     ("pending", "Pending", "desc"),
     ("needs_attention", "Needs Attention", "desc"),
@@ -70,6 +69,34 @@ KNOCKER_TABLE_COLUMNS = [
     ("service_cancelled", "Service Cancels", "desc"),
 ]
 KNOCKER_SORT_KEYS = {key for key, _, _ in KNOCKER_TABLE_COLUMNS}
+
+# The equation behind every Door Knocker metric, shown in a hover box
+# (added 2026-10-23, by request). Templates use it as the `formulas`
+# global: data-formula="{{ formulas.install_rate }}".
+FORMULAS = {
+    "sales": "Sales = every door-knocker order, by sale date\n= Installed + Pending + Needs Attention + Cancelled + Service Cancelled",
+    "installed": "Installed = sales with a Vision install date and no service cancellation",
+    "install_rate": "Install Rate = Installed ÷ (Sales − Pending)",
+    "all_time_install_rate": "All Time Install Rate = Installed ÷ (Sales − Pending), counting every sale this knocker has ever made (ignores the period filter)",
+    "rep_all_time_install_rate": "All Time Install Rate = 1 − (Needs Attention ÷ Sales), counting every sale this rep has ever made (ignores the period filter)",
+    "pending": "Pending = not installed or cancelled, install appointment today or later",
+    "needs_attention": "Needs Attention = not installed or cancelled, no install appointment or a past one",
+    "cancelled": "Cancelled = order cancelled before it was installed",
+    "service_cancelled": "Service Cancelled = installed, then the customer cancelled service",
+    "service_cancel_rate": "Service Cancel Rate = Service Cancelled ÷ (Installed + Service Cancelled)",
+    "card_on_file": "Card on File = sales paid by card or ACH (not check or skip)",
+    "card_on_file_rate": "Card on File % = Card on File ÷ Sales",
+    "order_cancel_rate": "Order Cancel Rate = Cancelled ÷ Sales",
+    "needs_attention_rate": "Needs Attention Rate = Needs Attention ÷ Sales",
+    "pct_of_sales": "% of Sales = this status ÷ Sales",
+    "per_day": "Per Day = Sales ÷ selling days (days with at least one sale)",
+    "knockers": "Knockers = distinct referral codes with at least one sale",
+    "monthly_sales": "Monthly Sales = sales made this calendar month, through today",
+    "daily_sales": "Daily Sales = sales made today (Eastern time)",
+    "avg_7_day": "7 Day Average = sales in the last 7 days (incl. today) ÷ 7",
+    "avg_30_day": "30 Day Average = sales in the last 30 days (incl. today) ÷ 30",
+    "monthly_projection": "Monthly Projection = Monthly Sales ÷ days elapsed × days in the month",
+}
 
 _QUERY = """
 SELECT order_id, referral_code, sale_date, first_name, last_name, address, apartment_suite,
@@ -94,6 +121,8 @@ def normalize(raw):
     status[pending] = "Pending"
     status[cancelled] = "Cancelled"
     status[installed] = "Installed"
+    service_cancelled = df["service_cancellation_date"].notna()
+    status[service_cancelled] = "Service Cancelled"
     payment_method = df["payment_method"].fillna("").astype(str).str.strip().str.lower()
 
     return pd.DataFrame({
@@ -108,7 +137,7 @@ def normalize(raw):
         "install_date": pd.to_datetime(df["install_date"], errors="coerce"),
         "installed": installed.values,
         "cancelled": cancelled.values,
-        "service_cancelled": df["service_cancellation_date"].notna().values,
+        "service_cancelled": service_cancelled.values,
         "payment_method": payment_method.values,
         "card_on_file": payment_method.isin(CARD_ON_FILE_METHODS).values,
         "status": status.values,
@@ -160,17 +189,23 @@ def _rate(n, d):
 
 def _summarize(group):
     sales = len(group)
-    installed = int(group["installed"].sum())
+    installed = int((group["status"] == "Installed").sum())
+    service_cancelled = int((group["status"] == "Service Cancelled").sum())
     card_on_file = int(group["card_on_file"].sum())
+    pending = int((group["status"] == "Pending").sum())
     return {
         "sales": sales,
         "installed": installed,
-        # Installed / Sales, same as Admin -> External Rep Sales.
-        "install_rate": _rate(installed, sales),
-        "pending": int((group["status"] == "Pending").sum()),
+        # Installed / (Sales - Pending): orders still waiting on their
+        # install date don't count against the rate (user request 2026-10-23).
+        "install_rate": _rate(installed, sales - pending),
+        "pending": pending,
         "needs_attention": int((group["status"] == "Needs Attention").sum()),
         "cancelled": int((group["status"] == "Cancelled").sum()),
-        "service_cancelled": int(group["service_cancelled"].sum()),
+        "service_cancelled": service_cancelled,
+        # Everyone who got installed, including those who later left --
+        # the base for the service cancel rate.
+        "ever_installed": installed + service_cancelled,
         "card_on_file": card_on_file,
         "card_on_file_rate": _rate(card_on_file, sales),
     }
@@ -190,6 +225,15 @@ def knocker_rows(df):
     rows.sort(key=lambda r: (-r["sales"], -r["installed"], r["code"]))
     for i, row in enumerate(rows, start=1):
         row["rank"] = i
+    return rows
+
+
+def add_all_time_install_rates(rows, all_time_df):
+    """Sets each row's all_time_install_rate from that code's whole
+    history, whatever period the rows themselves cover."""
+    all_time = {r["code"]: r["install_rate"] for r in knocker_rows(all_time_df)}
+    for row in rows:
+        row["all_time_install_rate"] = all_time.get(row["code"])
     return rows
 
 
@@ -260,7 +304,7 @@ def account_view(df, code=None, status="all", state=None, municipality=None,
 # team-level, not per knocker), by the month the sale was MADE:
 #   Order Cancel Rate    = Cancelled (cancelled before install) / Sales
 #   Needs Attention Rate = Needs Attention (as of today)        / Sales
-#   Service Cancel Rate  = Service cancellations                / Installed
+#   Service Cancel Rate  = Service cancellations / (Installed + Service cancellations)
 # Order cancellations are only tracked reliably from 2026-03-24 (see
 # external_sales_store / EXTERNAL_ORDER_CANCELLATIONS_QUERY), so months
 # before April 2026 get no order-cancel rate. Recent months are flagged
@@ -301,7 +345,7 @@ def monthly_rates(df, today=None):
             **stats,
             "order_cancel_rate": _rate_if_enough(stats["cancelled"], stats["sales"]) if first >= ORDER_CANCEL_RELIABLE_FROM else None,
             "needs_attention_rate": _rate_if_enough(stats["needs_attention"], stats["sales"]),
-            "service_cancel_rate": _rate_if_enough(stats["service_cancelled"], stats["installed"]),
+            "service_cancel_rate": _rate_if_enough(stats["service_cancelled"], stats["ever_installed"]),
             "maturing": (today - next_first).days < MATURING_DAYS,
         })
     return rows
