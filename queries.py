@@ -1,7 +1,17 @@
 import re
 
+# The only PlanetWeb job types the dashboard counts (by request,
+# 2026-10-26): FTTPScheduleJobTypes 1 and 10 (both named "Fiber Install")
+# and 15 ("Phone Port and Fiber Install"). Every other type -- Service
+# Call, Router Set Up, a separate Phone Port, Site Survey, ... -- is
+# ignored for install dates, scheduled/not scheduled, order
+# cancellations and Install Escalation, so a later service call can't
+# stand in for an order's install date.
+FIBER_INSTALL_JOB_TYPE_IDS = (1, 10, 15)
+FIBER_INSTALL_JOB_TYPES_SQL = "(" + ", ".join(str(i) for i in FIBER_INSTALL_JOB_TYPE_IDS) + ")"
+
 # Shared by MAIN_SALES_QUERY and WEB_SALES_QUERY -- everything but the WHERE.
-_SALES_SELECT = """
+_SALES_SELECT = f"""
 SELECT
     fd.[ID],
     rates.SpeedUp AS Speed,
@@ -62,6 +72,7 @@ OUTER APPLY (
         ON slots.ID = jobs.SlotID
 
     WHERE jobs.FormDataID = fd.ID
+      AND jobs.TypeID IN {FIBER_INSTALL_JOB_TYPES_SQL}
 
     ORDER BY
         slots.StartDate DESC,
@@ -260,6 +271,7 @@ OUTER APPLY (
     LEFT JOIN FTTPScheduleSlots slots
         ON slots.ID = jobs.SlotID
     WHERE jobs.FormDataID = fd.ID
+      AND jobs.TypeID IN """ + FIBER_INSTALL_JOB_TYPES_SQL + """
     ORDER BY
         slots.StartDate DESC,
         jobs.ID DESC
@@ -421,7 +433,8 @@ ORDER BY fd.ID ASC
 
 # Order cancellations (External Rep Sales' "Order Cancellation Date").
 # PlanetWeb has no order-level cancel field; an order counts as cancelled
-# when one of its install jobs was set to status Canceled (StatusID 16,
+# when one of its fiber install jobs (FIBER_INSTALL_JOB_TYPE_IDS) was set
+# to status Canceled (StatusID 16,
 # which exists since 2026-03-24 -- earlier cancellations can't be told
 # apart from reschedules, StatusID 15) and it has no live, non-cancelled
 # job since (i.e. it wasn't rebooked). Cancelled jobs are moved to
@@ -435,18 +448,21 @@ FROM (
     SELECT FormDataID, CanceledDate AS CancelDate
     FROM FTTPScheduleJobsCanceled
     WHERE StatusID = 16
+      AND TypeID IN """ + FIBER_INSTALL_JOB_TYPES_SQL + """
 
     UNION ALL
 
     SELECT FormDataID, StatusDate
     FROM FTTPScheduleJobs
     WHERE StatusID = 16
+      AND TypeID IN """ + FIBER_INSTALL_JOB_TYPES_SQL + """
 ) c
 WHERE NOT EXISTS (
     SELECT 1
     FROM FTTPScheduleJobs live
     WHERE live.FormDataID = c.FormDataID
       AND live.StatusID <> 16
+      AND live.TypeID IN """ + FIBER_INSTALL_JOB_TYPES_SQL + """
 )
 GROUP BY c.FormDataID
 """

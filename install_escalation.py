@@ -23,6 +23,7 @@ import pandas as pd
 import db
 import db_migrations
 import permissions
+from queries import FIBER_INSTALL_JOB_TYPES_SQL
 from sales_metrics import _today
 
 READY_STATUS_ID = 8
@@ -38,7 +39,8 @@ OUTCOMES = (
 )
 OUTCOME_LABELS = dict(OUTCOMES)
 
-# One row per Ready job booked after `?` (tomorrow, naive Eastern like
+# One row per Ready fiber install job (queries.FIBER_INSTALL_JOB_TYPE_IDS)
+# booked after `?` (tomorrow, naive Eastern like
 # every PlanetWeb datetime). An order with more than one such job keeps
 # its earliest in load_accounts().
 READY_JOBS_QUERY = f"""
@@ -71,6 +73,7 @@ LEFT JOIN FTTPScheduleJobTypes t
 LEFT JOIN FTTPScheduleAreas a
     ON a.ID = s.AreaID
 WHERE j.StatusID = {READY_STATUS_ID}
+  AND j.TypeID IN {FIBER_INSTALL_JOB_TYPES_SQL}
   AND s.StartDate >= ?
 ORDER BY s.StartDate ASC, j.ID ASC
 """
