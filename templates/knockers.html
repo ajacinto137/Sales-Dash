@@ -178,7 +178,7 @@
                         <tr>
                             <td class="td-rank">{{ row.rank }}</td>
                             <td class="td-rep-cell"><a class="td-rep-link" href="{{ url_for('knocker_profile', code=row.code, period=period, start=custom_start, end=custom_end) }}">{{ row.code }}</a></td>
-                            {% for key, status_key, color in [('sales', 'all', 'td-text-primary')] %}
+                            {% for key, status_key, color in [('sales', 'all', 'td-text-primary'), ('installed', 'installed', 'td-green')] %}
                             <td class="{{ color }}"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=status_key, **acct_args) }}">{{ row[key] }}</a></td>
                             {% endfor %}
                             <td class="td-green">{{ "%.1f"|format(row.all_time_install_rate) ~ '%' if row.all_time_install_rate is not none else '—' }}</td>
@@ -188,7 +188,7 @@
                             {% endfor %}
                         </tr>
                         {% else %}
-                        <tr><td colspan="9" class="td-empty-row">No door-knocker sales for this period.</td></tr>
+                        <tr><td colspan="10" class="td-empty-row">No door-knocker sales for this period.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

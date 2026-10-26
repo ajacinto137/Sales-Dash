@@ -61,6 +61,7 @@ ACCOUNT_FILTERS = {
 KNOCKER_TABLE_COLUMNS = [
     ("code", "Referral Code", "asc"),
     ("sales", "Sales", "desc"),
+    ("installed", "Installs", "desc"),
     ("all_time_install_rate", "All Time Install Rate", "desc"),
     ("card_on_file_rate", "Card on File", "desc"),
     ("pending", "Pending", "desc"),
