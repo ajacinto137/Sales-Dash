@@ -113,6 +113,13 @@ document.addEventListener("DOMContentLoaded", function () {
             setStatus("waiting…");
             return;
         }
+        // Stop the clock before reloading. This page keeps running until
+        // the new one arrives, so a still-ticking timer would call
+        // reload() again every second while the server is slow -- each
+        // call abandons the previous request (nginx 499) but the server
+        // still renders it, which is how one tab took the site down on
+        // 2026-10-26.
+        stop();
         setStatus("updating…");
         window.location.reload();
     }
