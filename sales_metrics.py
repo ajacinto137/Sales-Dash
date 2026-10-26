@@ -1421,6 +1421,104 @@ def get_install_month_account_view(df, rep, year, month):
     return title, build_bulk_account_rows(filtered)
 
 
+# Monthly Status tab columns: key -> (status value, drill-down title).
+# "all" is every account in the month, whatever its status.
+MONTHLY_STATUS_COLUMNS = {
+    "all": (None, "Accounts"),
+    "installed": ("Installed", "Installed"),
+    "pending": ("Pending", "Pending"),
+    "needs_attention": ("Needs Attention", "Needs Attention"),
+}
+
+
+def _rep_sales_with_month(df, rep):
+    """`rep`'s sales with a `_status_month` column (a pd.Period, NaT when
+    the sale has no usable date at all) -- the ONE definition of "an
+    account in this month" shared by calculate_rep_monthly_status() (the
+    Rep Profile's Monthly Status tab) and get_status_month_account_view()
+    (its drill-downs). Bucketed by scheduled install month, so an order
+    scheduled for November is Pending in November (by request,
+    2026-10-26); a sale with no install date (only ever Needs Attention)
+    falls back to its sale month so it still shows up somewhere. Every
+    channel counts, same scope as the Rep Leaderboard. Returns an empty
+    DataFrame for missing/empty input."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    sales = df[df["sales_rep"] == rep]
+    install_month = pd.to_datetime(sales["scheduled_date"], errors="coerce").dt.to_period("M")
+    sale_month = pd.to_datetime(sales["sale_date"], errors="coerce").dt.to_period("M")
+    return sales.assign(_status_month=install_month.fillna(sale_month))
+
+
+def calculate_rep_monthly_status(df, rep):
+    """Rep Profile's Monthly Status tab (added 2026-10-26): {"months":
+    [{year, month, label, sales, installed, pending, needs_attention,
+    install_rate}, ...] newest first, by scheduled install month (see
+    _rep_sales_with_month()), every month from the rep's first through
+    their last scheduled month or the current month, whichever is later
+    (zero months included), "totals" (same keys, all months)}. `sales` is
+    every account in the month, whatever its status. install_rate is 1 - needs_attention / sales, the
+    same formula as calculate_rep_metrics(). Always all-time, independent
+    of the page's period filter."""
+    sales = _rep_sales_with_month(df, rep)
+    result = {"months": [], "totals": None}
+    if sales.empty:
+        return result
+
+    def summarize(group):
+        row = {"sales": int(len(group))}
+        for key, (status, _) in MONTHLY_STATUS_COLUMNS.items():
+            if status:
+                row[key] = int((group["status"] == status).sum())
+        row["install_rate"] = (1 - row["needs_attention"] / row["sales"]) * 100 if row["sales"] else None
+        return row
+
+    result["totals"] = summarize(sales)
+    dated = sales.dropna(subset=["_status_month"])
+    if dated.empty:
+        return result
+    groups = dict(list(dated.groupby("_status_month")))
+    current = pd.Period(_today(), freq="M")
+    month = dated["_status_month"].min()
+    # Capped a year out, same as calculate_rep_monthly_installs(), so one
+    # bad far-future install date can't add years of empty rows.
+    last = max(min(dated["_status_month"].max(), current + 12), current)
+    empty = dated.iloc[0:0]
+    while month <= last:
+        row = summarize(groups.get(month, empty))
+        row.update(year=month.year, month=month.month, label=month.strftime("%B %Y"))
+        result["months"].append(row)
+        month += 1
+    result["months"].reverse()
+    return result
+
+
+def get_status_month_account_view(df, rep, year, month, column):
+    """Bulk Account View of `rep`'s accounts in one Monthly Status month
+    (see _rep_sales_with_month()), optionally
+    narrowed to one status (`column` is a MONTHLY_STATUS_COLUMNS key) --
+    the Monthly Status tab's per-cell drill-down. Returns (title, []) for
+    an invalid month/column or empty scope, never raises."""
+    if column not in MONTHLY_STATUS_COLUMNS:
+        return "Invalid View", []
+    try:
+        target = pd.Period(date(year, month, 1), freq="M")
+    except (TypeError, ValueError):
+        return "Invalid Month", []
+    status, label = MONTHLY_STATUS_COLUMNS[column]
+    title = f"{target.strftime('%B %Y')} {label}"
+    sales = _rep_sales_with_month(df, rep)
+    if sales.empty:
+        return title, []
+    filtered = sales[sales["_status_month"] == target]
+    if status:
+        filtered = filtered[filtered["status"] == status]
+    filtered = filtered.assign(
+        _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
+    ).sort_values("_scheduled_sort", na_position="last")
+    return title, build_bulk_account_rows(filtered)
+
+
 def calculate_needs_attention(df, rep):
     """Thin wrapper kept for the Rep Profile's inline Needs Attention tab
     -- routes through the same get_bulk_account_view() used by every other

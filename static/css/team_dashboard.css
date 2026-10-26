@@ -3411,6 +3411,14 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
 .td-installs-bar { display: block; height: 8px; min-width: 0; border-radius: 4px; background: var(--td-green); opacity: 0.75; }
 .td-installs-note { display: block; margin-top: 10px; }
 
+/* Rep Profile Monthly Status tab -- reuses .td-installs-table's rows. */
+.td-monthly-status-card { max-width: 820px; border-top: 2px solid var(--td-accent-blue); overflow-x: auto; }
+.td-monthly-status-table .td-num { width: auto; white-space: nowrap; padding-left: 16px; }
+.td-monthly-status-table .td-metric-link.td-cyan { color: var(--td-cyan); }
+.td-monthly-status-table .td-metric-link.td-yellow { color: var(--td-yellow); }
+.td-monthly-status-table .td-metric-link.td-orange { color: var(--td-orange); }
+.td-monthly-status-table tfoot td { border-top: 2px solid var(--td-border-soft); font-weight: 700; }
+
 /* "Open in HubSpot" on Passing cards with an email (2026-10-23) -- a link styled as a quick action. */
 .td-quick-action-btn--hubspot { text-decoration: none; color: var(--td-cyan); }
 .td-quick-action-btn--hubspot:hover { color: var(--td-text-primary); border-color: var(--td-cyan); }

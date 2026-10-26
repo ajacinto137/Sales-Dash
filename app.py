@@ -62,6 +62,7 @@ from sales_metrics import (
     add_all_time_install_rates,
     calculate_rep_monthly_activity,
     calculate_rep_monthly_installs,
+    calculate_rep_monthly_status,
     calculate_sales_volume_trend,
     calculate_total_daily_sales,
     calculate_week_to_date_comparison,
@@ -70,6 +71,7 @@ from sales_metrics import (
     get_bulk_account_view,
     get_calendar_day_account_view,
     get_install_month_account_view,
+    get_status_month_account_view,
     get_channel_account_view,
     get_leaderboard_metric_account_view,
     get_rep_achievements,
@@ -1207,6 +1209,11 @@ def rep_profile(rep_name):
     # all-time, each count drilling into ?view=installs_month.
     monthly_installs = calculate_rep_monthly_installs(normalized, rep_name)
 
+    # Monthly Status tab (added 2026-10-26) -- installed / pending / needs
+    # attention per scheduled install month, all-time, each count drilling into
+    # ?view=status_month.
+    monthly_status = calculate_rep_monthly_status(normalized, rep_name)
+
     # Cosmetic achievement badges (icons next to the rep's name) -- see
     # get_rep_achievements()'s docstring. Always all-time, purely display.
     achievements = get_rep_achievements(normalized, rep_name)
@@ -1245,6 +1252,7 @@ def rep_profile(rep_name):
         needs_attention=needs_attention,
         needs_attention_count=len(needs_attention),
         monthly_installs=monthly_installs,
+        monthly_status=monthly_status,
         attention_available=attention_available,
         attention_progress=attention_progress,
         attention_statuses=attention_store.ATTENTION_STATUSES,
@@ -1476,6 +1484,17 @@ def bulk_account_view(rep_name):
         try:
             view_title, accounts = get_install_month_account_view(
                 normalized, rep_name, int(request.args.get("year", 0)), int(request.args.get("month", 0)),
+            )
+        except (TypeError, ValueError):
+            abort(404)
+        all_time = True
+    elif view == "status_month":
+        # Rep Profile Monthly Status tab's per-cell drill-down -- by install
+        # month, all-time like the tab itself.
+        try:
+            view_title, accounts = get_status_month_account_view(
+                normalized, rep_name, int(request.args.get("year", 0)), int(request.args.get("month", 0)),
+                request.args.get("status", "all"),
             )
         except (TypeError, ValueError):
             abort(404)

@@ -59,6 +59,7 @@
             <button type="button" class="td-tab" data-tab="installs">
                 Installs <span class="td-tab-count">{{ "{:,}".format(monthly_installs.total) }}</span>
             </button>
+            <button type="button" class="td-tab" data-tab="monthly-status">Monthly Status</button>
         </nav>
     </header>
 
@@ -217,6 +218,64 @@
         {% endif %}
         {% else %}
         <p class="td-empty">No installed sales yet.</p>
+        {% endif %}
+    </section>
+
+    <!-- ================= Monthly Status =================
+         Canonical name: "Monthly Status" tab (added 2026-10-26). The rep's
+         accounts per scheduled INSTALL month (sale month when there's no
+         install date) split into Installed / Pending / Needs Attention,
+         all time, newest first. Install Rate uses the same
+         1 - needs_attention / sales formula as the Rep Leaderboard. Each
+         count opens a Bulk Account View (?view=status_month). See
+         calculate_rep_monthly_status() in sales_metrics.py. -->
+    <section class="td-tab-panel" data-tab-panel="monthly-status" style="display: none;">
+        <div class="td-section-heading">
+            <h2>Install Status by Month</h2>
+            <span class="td-muted-inline">By scheduled install month (sale month if no install date) &middot; all time &middot; click a count to see the accounts</span>
+        </div>
+
+        {% set ms = monthly_status %}
+        {% if ms.months %}
+        {% set status_cols = [("all", "sales", "Accounts", "td-cyan"), ("installed", "installed", "Installed", "td-green"), ("pending", "pending", "Pending", "td-yellow"), ("needs_attention", "needs_attention", "Needs Attention", "td-orange")] %}
+        <div class="td-record-card td-monthly-status-card">
+            <table class="td-installs-table td-monthly-status-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        {% for _, _, label, _ in status_cols %}<th class="td-num">{{ label }}</th>{% endfor %}
+                        <th class="td-num">Install Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in ms.months %}
+                    <tr>
+                        <td>{{ m.label }}</td>
+                        {% for key, field, _, color in status_cols %}
+                        <td class="td-num">
+                            {% if m[field] %}
+                            <a class="td-metric-link {{ color }}" href="{{ url_for('bulk_account_view', rep_name=rep_name, view='status_month', year=m.year, month=m.month, status=key) }}">{{ "{:,}".format(m[field]) }}</a>
+                            {% else %}
+                            <span class="td-installs-zero">0</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="td-num">{{ "%.0f%%"|format(m.install_rate) if m.install_rate is not none else "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% set t = ms.totals %}
+                <tfoot>
+                    <tr>
+                        <td>All Time</td>
+                        {% for _, field, _, color in status_cols %}<td class="td-num {{ color }}">{{ "{:,}".format(t[field]) }}</td>{% endfor %}
+                        <td class="td-num">{{ "%.0f%%"|format(t.install_rate) if t.install_rate is not none else "—" }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="td-empty">No sales yet.</p>
         {% endif %}
     </section>
 
