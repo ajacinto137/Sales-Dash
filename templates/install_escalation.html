@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Install Escalation — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/install_escalation.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Install Escalation (Tools menu, added 2026-10-26) -- accounts whose
+   PlanetWeb install job is Ready but booked for a later day. Reps call
+   them to offer an earlier slot and mark the call, so nobody calls the
+   same customer twice in a day. Data and rules: install_escalation.py;
+   marking: static/js/install_escalation.js. #}
+
+<div class="td-page">
+
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Install Escalation</h1>
+            <p class="td-muted-inline">
+                Accounts with a PlanetWeb job status of <strong>Ready</strong> booked after today &middot;
+                call to offer an earlier install and fill open slots &middot; marks reset each day
+            </p>
+        </div>
+        <a class="td-btn td-btn-ghost" href="{{ url_for('install_escalation_page', reload=1) }}">Reload from PlanetWeb</a>
+    </header>
+
+    {% if load_error %}
+    <p class="td-cp-notice">PlanetWeb couldn't be reached{{ ', showing the last list loaded' if accounts else '' }} ({{ load_error }}).</p>
+    {% endif %}
+    {% if not marks_ok %}
+    <p class="td-cp-notice">Call marks are unavailable right now (the app database couldn't be reached), so nothing can be marked.</p>
+    {% endif %}
+
+    <section class="td-kn-status">
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Ready Accounts</span>
+            <span class="td-profile-metric-value td-cyan">{{ "{:,}".format(summary.ready) }}</span>
+            <span class="td-muted-inline">booked after {{ today.strftime('%b %-d') }}</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Still to Call</span>
+            <span class="td-profile-metric-value td-yellow" data-esc-count="to_call">{{ "{:,}".format(summary.to_call) }}</span>
+            <span class="td-muted-inline">not called today</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Called Today</span>
+            <span class="td-profile-metric-value td-purple" data-esc-count="called">{{ "{:,}".format(summary.called) }}</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Moved Up Today</span>
+            <span class="td-profile-metric-value td-green" data-esc-count="moved_up">{{ "{:,}".format(summary.moved_up) }}</span>
+        </div>
+    </section>
+
+    <section class="td-section">
+        <div class="td-section-heading td-esc-toolbar">
+            <h2>Accounts to Call</h2>
+            <span class="td-muted-inline">Not called today first, then soonest install &middot; click a header to sort</span>
+            <div class="td-esc-filters">
+                <select class="td-select" data-esc-state aria-label="State">
+                    <option value="">All states</option>
+                    {% for s in states %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                </select>
+                <label class="td-esc-check"><input type="checkbox" data-esc-hide-called> Hide called today</label>
+                <input type="search" class="td-search-input" data-esc-search placeholder="Search name, phone, town…" aria-label="Search accounts">
+            </div>
+        </div>
+
+        {% if not accounts %}
+        <p class="td-empty">{{ 'No accounts to show.' if load_error else 'No Ready accounts are booked after today.' }}</p>
+        {% else %}
+        <div class="td-table-card">
+            <div class="td-table-scroll td-table-scroll--tall">
+                <table data-sortable class="td-table td-esc-table">
+                    <thead>
+                        <tr>
+                            <th>Call Status</th>
+                            <th>Install Date</th>
+                            <th>Customer</th>
+                            <th>Phone</th>
+                            <th>Location</th>
+                            <th>Job</th>
+                            <th>Sales Rep</th>
+                            <th>Last Called</th>
+                            <th data-no-sort>Mark Call</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% set ordered = (accounts|rejectattr('today_mark')|list) + (accounts|selectattr('today_mark')|list) %}
+                    {% for a in ordered %}
+                    {% set m = a.today_mark %}
+                    <tr data-esc-row data-order-id="{{ a.order_id }}" data-state="{{ a.state or '' }}"
+                        data-search="{{ [a.customer_name, a.phone, a.email, a.address, a.city, a.zip, a.order_id|string, a.sales_rep]|select|join(' ')|lower }}"
+                        class="{{ 'td-esc-called' if m else '' }}"{% if m %} data-called data-outcome="{{ m.outcome }}"{% endif %}>
+                        <td data-sort-value="{{ '1' if m else '0' }}" data-esc-status>
+                            <span class="td-pill td-pill-pending" data-esc-pill-open{{ ' hidden' if m }}>Not Called</span>
+                            <span class="td-pill td-pill-active" data-esc-pill-done{{ ' hidden' if not m }}>Called &middot; <span data-esc-outcome>{{ m.outcome_label if m else '' }}</span></span>
+                            <span class="td-cp-sub" data-esc-by>{% if m %}{{ m.called_by_name }} &middot; {{ m.called_time_display }}{% endif %}</span>
+                            <span class="td-cp-sub td-esc-note" data-esc-note>{{ m.note if m and m.note else '' }}</span>
+                        </td>
+                        <td data-sort-value="{{ a.install_date.isoformat() }}">
+                            {{ a.install_date.strftime('%a %b %-d') }}
+                            {% if a.window %}<span class="td-cp-sub">{{ a.window }}</span>{% endif %}
+                        </td>
+                        <td class="td-rep-cell">
+                            {% if a.in_dashboard %}
+                            <a class="td-cp-link" href="{{ url_for('customer_profile_page', sale_id=a.order_id) }}">{{ a.customer_name }}</a>
+                            {% else %}{{ a.customer_name }}{% endif %}
+                            <span class="td-cp-sub">Order #{{ a.order_id }}{% if a.ordered %} &middot; ordered {{ a.ordered.strftime('%b %-d') }}{% endif %}</span>
+                        </td>
+                        <td>
+                            {% if a.phone %}<a class="td-cp-link td-esc-phone" href="tel:{{ a.phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}">{{ a.phone }}</a>{% else %}—{% endif %}
+                            {% if a.email %}<span class="td-cp-sub">{{ a.email }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {{ a.address or '—' }}
+                            <span class="td-cp-sub">{{ [a.city, a.state]|select|join(', ') }} {{ a.zip or '' }}</span>
+                        </td>
+                        <td>
+                            <span class="td-esc-ready">{{ a.job_type or '—' }} &middot; Ready</span>
+                            <span class="td-cp-sub">{{ a.area or '' }}{% if a.ready_since %} &middot; Ready since {{ a.ready_since.strftime('%b %-d') }}{% endif %}</span>
+                            {% if a.scheduling_notes %}<span class="td-cp-sub" title="Scheduling notes">{{ a.scheduling_notes }}</span>{% endif %}
+                        </td>
+                        <td>{{ a.sales_rep or '—' }}</td>
+                        <td data-sort-value="{{ a.last_mark.call_date_iso if a.last_mark else '' }}">
+                            {% if a.last_mark %}
+                            {{ a.last_mark.call_date_display }}
+                            <span class="td-cp-sub">{{ a.last_mark.outcome_label }} &middot; {{ a.last_mark.called_by_name }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="td-esc-action">
+                            <div class="td-esc-form" data-esc-form{{ ' hidden' if m }}>
+                                <select class="td-select" data-esc-outcome-select aria-label="Call outcome"{{ ' disabled' if not marks_ok }}>
+                                    <option value="">How did it go?</option>
+                                    {% for key, label in outcomes %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                                </select>
+                                <input type="text" class="td-search-input" data-esc-note-input maxlength="500" placeholder="Note (optional)" aria-label="Call note"{{ ' disabled' if not marks_ok }}>
+                                <button type="button" class="td-btn td-btn-primary" data-esc-mark{{ ' disabled' if not marks_ok }}>Mark Called</button>
+                            </div>
+                            <button type="button" class="td-btn td-btn-ghost" data-esc-undo{{ ' hidden' if not (m and m.can_undo) }}>Undo</button>
+                            <span class="td-esc-error" data-esc-error hidden></span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <p class="td-empty" data-esc-none hidden>No accounts match these filters.</p>
+        {% endif %}
+    </section>
+</div>
+</body>
+</html>

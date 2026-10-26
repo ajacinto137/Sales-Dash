@@ -654,6 +654,29 @@ MIGRATIONS = [
             ON door_knock_shifts (sales_rep_id, shift_date, kind);
         """,
     ),
+    (
+        16,
+        "install_escalation_calls (Tools > Install Escalation, 2026-10-26)",
+        """
+        -- A rep's "I called this Ready account today" mark, so nobody
+        -- calls the same customer twice in one day. One row per order
+        -- per Eastern day (re-marking updates it; Undo deletes it);
+        -- earlier days stay as call history. form_data_id is PlanetWeb's
+        -- FTTPFormData.ID (the dashboard's sale_id). See
+        -- install_escalation.py.
+        CREATE TABLE IF NOT EXISTS install_escalation_calls (
+            id SERIAL PRIMARY KEY,
+            form_data_id BIGINT NOT NULL,
+            call_date DATE NOT NULL,
+            outcome TEXT NOT NULL,
+            note TEXT,
+            called_by_user_id INTEGER REFERENCES users(id),
+            called_by_name TEXT,
+            called_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (form_data_id, call_date)
+        );
+        """,
+    ),
 ]
 
 _schema_ready = False

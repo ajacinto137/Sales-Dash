@@ -133,6 +133,73 @@ html, body.td-body {
     text-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
 }
 
+/* Tools dropdown (_topnav.html, added 2026-10-26) -- hover or focus-within. */
+.td-topnav-menu {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.td-topnav-menu-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: var(--td-text-secondary);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.td-topnav-menu-btn:hover { color: var(--td-text-primary); }
+
+.td-topnav-menu-btn.td-topnav-active {
+    color: var(--td-cyan);
+    text-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+}
+
+.td-topnav-menu-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: -12px;
+    z-index: 50;
+    min-width: 180px;
+    padding: 6px;
+    margin-top: 8px;
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Invisible bridge over the gap so the menu stays open on the way down. */
+.td-topnav-menu-list::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -10px;
+    height: 10px;
+}
+
+.td-topnav-menu:hover .td-topnav-menu-list,
+.td-topnav-menu:focus-within .td-topnav-menu-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.td-topnav-links .td-topnav-menu-list a {
+    padding: 8px 10px;
+    border-radius: var(--td-radius-sm);
+    white-space: nowrap;
+}
+
+.td-topnav-links .td-topnav-menu-list a:hover {
+    background: var(--td-panel);
+}
+
 .td-topnav-right {
     display: flex;
     align-items: center;
@@ -3514,4 +3581,27 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
     line-height: 1.45;
     white-space: pre-line;
     pointer-events: none;
+}
+
+/* Install Escalation (Tools menu, added 2026-10-26) */
+.td-esc-toolbar { flex-wrap: wrap; }
+.td-esc-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+.td-esc-filters .td-search-input { min-width: 220px; }
+.td-esc-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--td-text-secondary); cursor: pointer; }
+.td-esc-table td { vertical-align: top; }
+.td-esc-table tr.td-esc-called td { opacity: 0.55; }
+.td-esc-table tr.td-esc-called td:first-child,
+.td-esc-table tr.td-esc-called td.td-esc-action { opacity: 1; }
+.td-esc-phone { white-space: nowrap; font-weight: 600; }
+.td-esc-ready { color: var(--td-green); font-weight: 600; text-shadow: 0 0 10px rgba(52, 211, 153, 0.35); }
+.td-esc-note { font-style: italic; max-width: 220px; }
+.td-esc-action { min-width: 260px; }
+.td-esc-form { display: flex; flex-wrap: wrap; gap: 6px; }
+.td-esc-form .td-select { flex: 1 1 130px; }
+.td-esc-form .td-search-input { flex: 1 1 130px; min-width: 0; }
+.td-esc-error { display: block; margin-top: 4px; font-size: 11.5px; color: var(--td-accent-magenta); }
+
+@media (max-width: 640px) {
+    .td-esc-filters { margin-left: 0; width: 100%; }
+    .td-esc-filters .td-search-input { width: 100%; min-width: 0; }
 }

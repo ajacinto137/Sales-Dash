@@ -21,6 +21,7 @@ import hubspot_client
 import hubspot_logic
 import hubspot_store
 import import_service
+import install_escalation
 import knockers
 import marketing_cleaning
 import marketing_data
@@ -2222,6 +2223,88 @@ def staffing_add_shift():
 def staffing_delete_shift(shift_id):
     ok, error = staffing_store.delete_shift(shift_id, auth.current_user(), _today())
     return _staffing_result(ok, error, "Shift removed.")
+
+
+# ================================================================
+# Tools > Install Escalation -- call Ready accounts to move them up
+# ================================================================
+
+def _serialize_escalation_mark(mark, user):
+    if not mark:
+        return None
+    return {
+        "outcome": mark["outcome"],
+        "outcome_label": mark["outcome_label"],
+        "note": mark["note"],
+        "called_by_name": mark["called_by_name"],
+        "called_time_display": mark["called_at"].astimezone(EASTERN_TZ).strftime("%-I:%M %p"),
+        "call_date_iso": mark["call_date"].isoformat(),
+        "call_date_display": mark["call_date"].strftime("%b %-d"),
+        "can_undo": permissions.is_admin(user) or (user and mark["called_by_user_id"] == user.get("id")),
+    }
+
+
+@app.route("/tools/install-escalation")
+@auth.login_required
+def install_escalation_page():
+    """Install Escalation (added 2026-10-26) -- every account whose
+    PlanetWeb install job is "Ready" but booked for a later day, for reps
+    to call and offer an earlier slot. Calls are marked per Eastern day
+    so the same customer isn't called twice in one day. Data and rules:
+    install_escalation.py."""
+    user = auth.current_user()
+    accounts, load_error = install_escalation.load_accounts(force=request.args.get("reload") == "1")
+    accounts = [dict(a) for a in accounts]  # don't decorate the cached rows
+    marks_ok, today_marks, prior_marks = install_escalation.get_calls([a["order_id"] for a in accounts])
+
+    ensure_data_loaded()
+    normalized = get_normalized_sales()
+    rep_by_sale = {}
+    if normalized is not None:
+        rep_by_sale = dict(zip(normalized["sale_id"], normalized["sales_rep"]))
+
+    for account in accounts:
+        account["sales_rep"] = rep_by_sale.get(account["order_id"])
+        account["in_dashboard"] = account["order_id"] in rep_by_sale
+        account["today_mark"] = _serialize_escalation_mark(today_marks.get(account["order_id"]), user)
+        account["last_mark"] = _serialize_escalation_mark(prior_marks.get(account["order_id"]), user)
+
+    called = [a for a in accounts if a["today_mark"]]
+    return render_template(
+        "install_escalation.html",
+        active_page="tools",
+        accounts=accounts,
+        load_error=load_error,
+        marks_ok=marks_ok,
+        summary={
+            "ready": len(accounts),
+            "to_call": len(accounts) - len(called),
+            "called": len(called),
+            "moved_up": sum(1 for a in called if a["today_mark"]["outcome"] == "moved_up"),
+        },
+        states=sorted({a["state"] for a in accounts if a["state"]}),
+        outcomes=install_escalation.OUTCOMES,
+        today=_today(),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/tools/install-escalation/<int:order_id>/call", methods=["POST"])
+@auth.login_required
+def install_escalation_mark(order_id):
+    """Mark (or re-mark) an account as called today -- small fetch() POST,
+    the row updates in place. {"undo": true} removes today's mark."""
+    payload = request.get_json(silent=True) or {}
+    user = auth.current_user()
+    if payload.get("undo"):
+        ok, error = install_escalation.unmark_called(order_id, user)
+        if not ok:
+            return jsonify({"ok": False, "error": error}), 400
+        return jsonify({"ok": True, "mark": None})
+    ok, error, mark = install_escalation.mark_called(order_id, payload.get("outcome"), payload.get("note"), user)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True, "mark": _serialize_escalation_mark(mark, user)})
 
 
 @app.route("/cancellations")
