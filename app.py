@@ -53,6 +53,8 @@ from sales_metrics import (
     calculate_calendar_sales,
     calculate_channel_breakdown,
     calculate_channel_state_breakdown,
+    calculate_town_breakdown,
+    get_town_account_view,
     calculate_daily_averages,
     calculate_hourly_breakdown,
     calculate_monthly_forecast,
@@ -976,6 +978,11 @@ def dashboard_page():
     hourly_breakdown = calculate_hourly_breakdown(period_df)
     # Channel Breakdown by State (added 2026-10-12) -- same period_df.
     channel_state_breakdown = calculate_channel_state_breakdown(period_df)
+    # Sales by Town (added 2026-10-27) -- same period_df. "All" plus one
+    # breakdown per state, so each state's view has its own totals/shares.
+    town_breakdown = {"All": calculate_town_breakdown(period_df)}
+    for state_code in town_breakdown["All"]["states"]:
+        town_breakdown[state_code] = calculate_town_breakdown(_state_filtered(period_df, state_code))
 
     # Sales Volume tab (default tab of Channel & Time-of-Day Performance,
     # added 2026-08-18, team selector reworked 2026-08-19) -- one
@@ -1135,6 +1142,7 @@ def dashboard_page():
         channel_breakdown=channel_breakdown,
         hourly_breakdown=hourly_breakdown,
         channel_state_breakdown=channel_state_breakdown,
+        town_breakdown=town_breakdown,
         sales_volume_views=sales_volume_views,
         volume_view=volume_view,
         team_view_options=team_view_options,
@@ -1742,6 +1750,14 @@ def all_sales_view():
             state_label = next(label for key, label, _ in DASHBOARD_STATE_VIEWS if key == cal_view)
             view_title = f"{view_title} — {state_label}"
         all_time = True
+    elif view == "town":
+        # Sales by Town count click-through (added 2026-10-27) -- same
+        # period-filtered dataset as the section's own counts.
+        view_title, accounts = get_town_account_view(
+            normalized, request.args.get("town", ""), request.args.get("state", ""),
+            request.args.get("metric", "sales"), period, custom_start, custom_end,
+        )
+        all_time = False
     elif view in BULK_ACCOUNT_VIEWS:
         # Team-wide registry views (e.g. Latest Accounts Sold's "View All
         # Sales") leave Web out, like Live Sales Activity itself. The

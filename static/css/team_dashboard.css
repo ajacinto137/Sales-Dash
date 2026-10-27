@@ -3758,3 +3758,9 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-checkout-bucket-form { display: flex; gap: 8px; max-width: 420px; }
 .td-checkout-bucket-form .td-search-input { flex: 1; }
 .td-cp-calls-glance { margin-bottom: 14px; }
+
+/* Sales by Town on the Team Leaderboard (2026-10-27). */
+.td-town-scroll { max-height: 520px; overflow-y: auto; }
+.td-town-table thead th { position: sticky; top: 0; background: var(--td-panel); z-index: 1; }
+.td-town-table .td-num { text-align: right; white-space: nowrap; }
+.td-town-table tfoot td { border-top: 2px solid var(--td-border-soft); font-weight: 700; }

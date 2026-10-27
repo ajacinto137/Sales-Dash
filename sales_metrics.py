@@ -1276,6 +1276,69 @@ LEADERBOARD_METRIC_FILTERS = {
     "needs_attention": _bulk_status_filter("Needs Attention"),
 }
 
+# ---------------- Sales by Town (added 2026-10-27, by request) ----------------
+# One row per town (the order's City + State, as entered on the order),
+# for the Team Leaderboard's "Sales by Town" section. Counts use the same
+# LEADERBOARD_METRIC_FILTERS as the Individual Rep Leaderboard, so a
+# town's numbers add up the same way a rep's do.
+
+TOWN_METRICS = ["sales", "installs", "pending", "needs_attention", "outbound", "inbound"]
+UNKNOWN_TOWN = "Unknown"
+
+
+def _town_keys(df):
+    city = df["city"].fillna("").astype(str).str.strip()
+    state = df["state"].fillna("").astype(str).str.strip().str.upper()
+    return city.where(city != "", UNKNOWN_TOWN), state
+
+
+def calculate_town_breakdown(df):
+    """{"rows": [{town, state, sales, installs, pending, needs_attention,
+    outbound, inbound, install_rate, share}, ...] most sales first,
+    "total": same keys for everything, "states": sorted states present}.
+    install_rate = 1 - needs_attention / sales (the leaderboard's
+    definition); share = the town's % of all sales. Empty-safe."""
+    empty_total = {m: 0 for m in TOWN_METRICS}
+    if df is None or df.empty:
+        return {"rows": [], "total": {**empty_total, "install_rate": None, "share": None}, "states": []}
+    town, state = _town_keys(df)
+    keyed = df.assign(_town=town, _state=state)
+    grand = len(keyed)
+
+    def summarize(slice_df):
+        counts = {m: int(len(LEADERBOARD_METRIC_FILTERS[m](slice_df))) for m in TOWN_METRICS}
+        counts["install_rate"] = round((1 - counts["needs_attention"] / counts["sales"]) * 100, 1) if counts["sales"] else None
+        counts["share"] = round(counts["sales"] / grand * 100, 1) if grand else None
+        return counts
+
+    rows = [{"town": t, "state": st, **summarize(g)} for (t, st), g in keyed.groupby(["_town", "_state"], sort=False)]
+    rows.sort(key=lambda r: (-r["sales"], r["town"].casefold()))
+    return {"rows": rows, "total": summarize(keyed), "states": sorted({r["state"] for r in rows if r["state"]})}
+
+
+def get_town_account_view(df, town, state, metric, period, start, end):
+    """Team-wide Bulk Account View for one Sales by Town count: the
+    town's accounts in the period, narrowed by the clicked column's
+    LEADERBOARD_METRIC_FILTERS entry. Returns (title, []) when nothing
+    matches, never raises."""
+    row_filter = LEADERBOARD_METRIC_FILTERS.get(metric)
+    if row_filter is None or metric not in TOWN_METRICS:
+        return town, []
+    place = ", ".join(p for p in (town, state) if p)
+    title = f"{LEADERBOARD_METRIC_TITLES[metric]} Accounts — {place}"
+    scoped = filter_by_period(df, period, start, end) if df is not None and not df.empty else None
+    if scoped is None or scoped.empty:
+        return title, []
+    towns, states = _town_keys(scoped)
+    filtered = row_filter(scoped[(towns == town) & (states == (state or "").upper())])
+    if filtered.empty:
+        return title, []
+    filtered = filtered.assign(
+        _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
+    ).sort_values("_scheduled_sort", na_position="last")
+    return title, build_bulk_account_rows(filtered)
+
+
 LEADERBOARD_METRIC_TITLES = {
     "sales": "Sales",
     "outbound": "Outbound",
