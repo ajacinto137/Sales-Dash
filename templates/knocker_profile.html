@@ -44,7 +44,8 @@
     {% endif %}
 
     {# Headline rates (added 2026-10-26, by request): the current (or
-       latest) blitz's and all-time Card on File % and Install Rate. #}
+       latest) blitz's Card on File %, plus all-time Card on File % and
+       Install Rate. #}
     {% set top_blitz = rep_blitzes[0] if rep_blitzes else none %}
     <section class="td-section">
         <div class="td-kn-status">
@@ -53,9 +54,6 @@
                  ((top_blitz.town ~ ', ' if top_blitz.town) ~ top_blitz.state ~ ' · ' ~ top_blitz.date_label) if top_blitz else 'No blitzes yet',
                  top_blitz.card_on_file_rate if top_blitz else none, 'td-cyan', formulas.card_on_file_rate,
                  url_for('knocker_accounts', status='card_on_file', code=code, state=top_blitz.state_key, period='custom', start=top_blitz.start.isoformat(), end=top_blitz.end.isoformat()) if top_blitz else none),
-                (('Current' if top_blitz and top_blitz.ongoing else 'Latest') ~ ' Blitz Install Rate',
-                 ((top_blitz.installed|string) ~ ' of ' ~ ((top_blitz.sales - top_blitz.pending)|string) ~ ' sales not pending') if top_blitz else 'No blitzes yet',
-                 top_blitz.install_rate if top_blitz else none, 'td-green', formulas.install_rate, none),
                 ('All Time Card on File', (all_time.card_on_file|string) ~ ' of ' ~ "{:,}".format(all_time.sales) ~ ' sales',
                  all_time.card_on_file_rate, 'td-cyan', formulas.card_on_file_rate,
                  url_for('knocker_accounts', status='card_on_file', code=code, period='all_time')),
