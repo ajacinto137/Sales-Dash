@@ -3617,3 +3617,5 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 /* Passings & Leads: HubSpot call count / last call on lead cards (2026-10-26). */
 .td-passing-hubspot-count { color: var(--td-accent-magenta); font-weight: 700; }
 .td-passing-hubspot-none { color: var(--td-text-muted); }
+.td-passing-place-link { color: var(--td-accent-blue); text-decoration: none; }
+.td-passing-place-link:hover { text-decoration: underline; }

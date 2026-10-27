@@ -162,3 +162,8 @@ def test_hubspot_call_filters_cover_leads_only():
     # Email matching ignores case and surrounding spaces.
     upper = {"A@X.COM".lower(): {"calls": 1, "last_call_at": None, "last_call_date": date(2026, 10, 1)}}
     assert ids(pc.get_page({"hubspot_called": True, "hubspot_call_stats": upper}, "", "place_id", "asc", 1)) == [1]
+
+
+def test_planetweb_place_url():
+    import passings_data
+    assert passings_data.planetweb_place_url(204428) == "https://pas.planet.net/Places/Detail?place_id=204428#Summary"
