@@ -79,6 +79,7 @@
             <h2>Blitzes</h2>
             <span class="td-muted-inline">{{ rep_blitzes|length }} blitz{{ 'es' if rep_blitzes|length != 1 }} &middot; all time, independent of the period filter above</span>
         </div>
+        <div class="td-kn-blitz-split">
         <div class="td-table-card"><div class="td-table-scroll">
             <table data-sortable class="td-table">
                 <thead><tr>
@@ -87,9 +88,7 @@
                     <th data-formula="Selling Days = days with at least one sale">Selling Days</th>
                     <th data-formula="{{ formulas.sales }}">Sales</th>
                     <th data-formula="{{ formulas.installed }}">Installs</th>
-                    <th data-formula="{{ formulas.install_rate }}">Install Rate</th>
                     <th data-formula="{{ formulas.pending }}">Pending</th>
-                    <th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th>
                     <th data-formula="{{ formulas.cancelled }}">Cancels</th>
                     <th data-formula="{{ formulas.service_cancelled }}">Service Cancels</th>
                     <th data-formula="{{ formulas.needs_attention }}">Needs Attention</th>
@@ -103,9 +102,7 @@
                     <td>{{ b.selling_days }}</td>
                     <td class="td-text-primary"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='all', **b_args) }}">{{ b.sales }}</a></td>
                     <td class="td-green"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='installed', **b_args) }}">{{ b.installed }}</a></td>
-                    <td class="td-green">{{ "%.1f"|format(b.install_rate) ~ '%' if b.install_rate is not none else '—' }}</td>
                     <td class="td-yellow"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='pending', **b_args) }}">{{ b.pending }}</a></td>
-                    <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='card_on_file', **b_args) }}">{{ "%.1f"|format(b.card_on_file_rate) ~ '%' if b.card_on_file_rate is not none else '—' }}</a></td>
                     <td class="td-orange"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='cancelled', **b_args) }}">{{ b.cancelled }}</a></td>
                     <td class="td-purple"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='service_cancelled', **b_args) }}">{{ b.service_cancelled }}</a></td>
                     <td class="td-magenta"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='needs_attention', **b_args) }}">{{ b.needs_attention }}</a></td>
@@ -117,9 +114,7 @@
                     <td></td><td></td>
                     <td class="td-text-primary">{{ r.sales }}</td>
                     <td class="td-green">{{ r.installed }}</td>
-                    <td class="td-green">{{ "%.1f"|format(r.install_rate) ~ '%' if r.install_rate is not none else '—' }}</td>
                     <td class="td-yellow">{{ r.pending }}</td>
-                    <td class="td-cyan">{{ "%.1f"|format(r.card_on_file_rate) ~ '%' if r.card_on_file_rate is not none else '—' }}</td>
                     <td class="td-orange">{{ r.cancelled }}</td>
                     <td class="td-purple">{{ r.service_cancelled }}</td>
                     <td class="td-magenta">{{ r.needs_attention }}</td>
@@ -128,6 +123,33 @@
                 </tbody>
             </table>
         </div></div>
+        {# Rates sit beside the table (moved out of it 2026-10-26, by
+           request): the newest blitz ("Current" while it's still going)
+           next to this knocker's all-time rates. #}
+        {% set cur = rep_blitzes[0] %}
+        <div class="td-kn-blitz-rates">
+            {% for heading, sub, r, card_url in [
+                ('Current Blitz' if cur.ongoing else 'Latest Blitz', (cur.town ~ ', ' if cur.town) ~ cur.state ~ ' · ' ~ cur.date_label, cur,
+                 url_for('knocker_accounts', status='card_on_file', code=code, state=cur.state_key, period='custom', start=cur.start.isoformat(), end=cur.end.isoformat())),
+                ('All Time', "{:,}".format(rep_blitz_total.sales) ~ ' sales', rep_blitz_total,
+                 url_for('knocker_accounts', status='card_on_file', code=code, period='all_time'))] %}
+            <div class="td-kn-blitz-rate-group">
+                <p class="td-profile-metric-label">{{ heading }}</p>
+                <p class="td-muted-inline">{{ sub }}</p>
+                <div class="td-profile-metric" data-formula="{{ formulas.card_on_file_rate }}">
+                    <span class="td-profile-metric-label">Card on File</span>
+                    <a class="td-profile-metric-value td-profile-metric-link td-cyan" href="{{ card_url }}">{{ "%.1f"|format(r.card_on_file_rate) ~ '%' if r.card_on_file_rate is not none else '—' }}</a>
+                    <span class="td-muted-inline">{{ r.card_on_file }} of {{ r.sales }} sales</span>
+                </div>
+                <div class="td-profile-metric" data-formula="{{ formulas.install_rate }}">
+                    <span class="td-profile-metric-label">Install Rate</span>
+                    <span class="td-profile-metric-value td-green">{{ "%.1f"|format(r.install_rate) ~ '%' if r.install_rate is not none else '—' }}</span>
+                    <span class="td-muted-inline">{{ r.installed }} of {{ r.sales - r.pending }} sales not pending</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        </div>
     </section>
     {% endif %}
 

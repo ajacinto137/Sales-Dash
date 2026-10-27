@@ -3630,3 +3630,23 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-order-status-not-scheduled { color: var(--td-yellow); background: var(--td-yellow-bg); }
 .td-order-status-order-cancelled { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
 .td-order-status-no-order { color: var(--td-text-muted); }
+
+/* Knocker Profile Blitzes (2026-10-26): table on the left, the current
+   blitz's and all-time Card on File / Install Rate tiles on the right;
+   stacks under the table on narrow screens. */
+.td-kn-blitz-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 16px;
+    align-items: start;
+}
+.td-kn-blitz-rates { display: flex; flex-direction: column; gap: 18px; }
+.td-kn-blitz-rate-group { display: flex; flex-direction: column; gap: 8px; }
+.td-kn-blitz-rate-group > p { margin: 0; }
+.td-kn-blitz-rate-group .td-profile-metric { padding: 14px 16px; gap: 6px; }
+.td-kn-blitz-rate-group .td-profile-metric-value { font-size: 24px; }
+@media (max-width: 900px) {
+    .td-kn-blitz-split { grid-template-columns: minmax(0, 1fr); }
+    .td-kn-blitz-rates { flex-direction: row; flex-wrap: wrap; }
+    .td-kn-blitz-rate-group { flex: 1 1 200px; }
+}
