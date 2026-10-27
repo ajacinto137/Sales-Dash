@@ -111,7 +111,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (reps.length) {
             addGroupLabel("Reps");
             reps.forEach(function (rep) {
-                resultsPanel.appendChild(buildItem("rep", rep.name, "Individual Sales Profile", rep.url, false));
+                resultsPanel.appendChild(buildItem("rep", rep.name, rep.subtitle || "Individual Sales Profile", rep.url, false));
             });
         }
 
@@ -122,6 +122,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 var subParts = [];
                 if (account.address) subParts.push(account.address);
                 subParts.push("Sold by " + account.sales_rep);
+                // Every order is searchable (2026-10-26): show when it was
+                // placed and, if the dashboards track it, its status.
+                if (account.order_date) subParts.push(account.order_date);
+                if (account.status) subParts.push(account.status);
                 var item = buildItem("account", title, subParts.join(" · "), account.url, account.external);
                 resultsPanel.appendChild(item);
             });

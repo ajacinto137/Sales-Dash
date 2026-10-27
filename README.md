@@ -1163,6 +1163,18 @@ profile route returns 404, same as for any unknown rep name.
 > A search box in the top nav (added 2026-08-17) that looks up reps and
 > customer accounts at once, as you type.
 
+> **Update 2026-10-26:** the box now sits in its own centered row under
+> the top nav, and account results cover **every order ever placed**
+> (any year, any source, door-knocker orders included), not just the
+> dashboards' 2026 sales data. They come from `order_search.py`, an
+> in-memory index of all FTTPFormData orders (`QuoteID IS NOT NULL`)
+> that's refreshed from PlanetWeb in the background every 10 minutes.
+> Every account result opens its Customer Profile; orders outside the
+> sales and knocker datasets get a basic profile built from the index.
+> Door-knocker codes also show up as rep results (→ Door Knocker
+> Profile). Parts of the description below about where account
+> results come from and where they link are out of date.
+
 Present on every `team_dashboard.css` page (Team Leaderboard, Rep
 Profile, every Bulk Account View) via a new shared partial,
 `templates/_topnav.html` — factored out of the 3 templates that used to

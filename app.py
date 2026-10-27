@@ -27,6 +27,7 @@ import marketing_cleaning
 import marketing_data
 import marketing_metrics
 import needs_attention_service
+import order_search
 import passings_activity_store
 import passings_cache
 import passings_classification
@@ -77,6 +78,7 @@ from sales_metrics import (
     get_channel_account_view,
     get_leaderboard_metric_account_view,
     get_rep_achievements,
+    SEARCH_RESULT_LIMIT,
     search_dataset,
     sort_rep_rows,
 )
@@ -2822,8 +2824,9 @@ def knocker_accounts():
 def customer_profile_page(sale_id):
     """Customer Profile (added 2026-10-22) -- everything known about one
     order/customer, opened by clicking an account card in any Bulk
-    Account View. The account must be in the loaded sales dataset (same
-    rule as the attention routes' _lookup_account_owner()); the deeper
+    Account View or a global search result. The account comes from the
+    sales dataset, else the knocker dataset, else (any other order) the
+    global search's order index; the deeper
     data is queried on demand by customer_profile.py. HubSpot call
     records follow the same rule as a Rep Profile's call history
     (permissions.can_view_call_history() for the owning rep)."""
@@ -2838,13 +2841,21 @@ def customer_profile_page(sale_id):
         knocker_df, _error = _load_knockers_or_error()
         matches = knocker_df[knocker_df["sale_id"] == sale_id] if knocker_df is not None else None
         is_knocker_order = True
-    if matches is None or matches.empty:
-        abort(404)
-
-    account = build_bulk_account_rows(matches.head(1))[0]
-    if is_knocker_order:
-        _with_knocker_links([account])
-    row = matches.iloc[0]
+    if matches is not None and not matches.empty:
+        account = build_bulk_account_rows(matches.head(1))[0]
+        if is_knocker_order:
+            _with_knocker_links([account])
+        row = matches.iloc[0]
+    else:
+        # Any other order (e.g. before 2026) -- opened from the global
+        # search, which covers every order (added 2026-10-26).
+        order = order_search.find(order_search.get_index(), sale_id)
+        if order is None:
+            abort(404)
+        known = (set(normalized["sales_rep"]) if normalized is not None else set(),
+                 set(knocker_df["sales_rep"]) if knocker_df is not None else set())
+        account = _order_account(order, known)
+        row = {"state": order["state"], "subscriber_uuid": None}
     viewer = auth.current_user()
     can_view_calls = permissions.can_view_call_history(viewer, account["sales_rep"])
 
@@ -2870,40 +2881,80 @@ def customer_profile_page(sale_id):
     )
 
 
+def _order_account(order, known):
+    """A Customer Profile `account` for an order that isn't in the sales
+    or knocker datasets (e.g. pre-2026), built from its order_search row.
+    `known` = (rep names in the sales data, knocker codes)."""
+    reps, codes = known
+    sold_by, kind = order.get("sold_by"), order.get("sold_by_kind")
+    rep_url = None
+    if kind == "knocker" and sold_by in codes:
+        rep_url = url_for("knocker_profile", code=sold_by)
+    elif sold_by in reps:
+        rep_url = url_for("rep_profile", rep_name=sold_by)
+    order_date = order.get("order_date")
+    return {
+        "sale_id": int(order["sale_id"]),
+        "sales_rep": sold_by or "Unknown",
+        "rep_label": "Knocker" if kind == "knocker" else None,
+        "rep_url": rep_url or url_for("dashboard_page"),
+        "first_name": order["first_name"],
+        "last_name": order["last_name"],
+        "address": order["address"] or None,
+        "city_state_zip": order["city_state_zip"] or None,
+        "created": order_date.strftime("%m/%d/%Y") if pd.notna(order_date) else None,
+        "scheduled_date": None,
+        "status": "Order",
+        "sales_channel": None,
+        "vision_url": None,
+        "pas_url": None,
+    }
+
+
 @app.route("/search")
 @auth.login_required
 def search():
-    """Global search bar (top nav, templates/_topnav.html +
-    static/js/search.js) -- reps and customer accounts by substring
-    match, JSON response. Reads the same background-refreshed snapshot
-    every page does (see ensure_data_loaded()), so it never touches the
-    source databases and is at most one refresh interval stale."""
+    """Global search bar (templates/_topnav.html + static/js/search.js),
+    JSON response. Reps: sales reps (by name) and door knockers (by
+    code). Accounts: EVERY order ever placed (2026-10-26, by request --
+    the sales data only goes back to 2026 and leaves out knocker orders),
+    from order_search's in-memory index; each opens its Customer Profile.
+    Status comes from the sales or knocker data when the order is there."""
     query = request.args.get("q", "")
+    q = query.strip().casefold()
     normalized = get_normalized_sales()
-    rep_matches, account_matches = search_dataset(normalized, query)
+    knocker_df, _error = _load_knockers_or_error()
+    rep_matches, _accounts = search_dataset(normalized, query)
 
-    reps = [
-        {"name": rep, "url": url_for("rep_profile", rep_name=rep)}
-        for rep in rep_matches
-    ]
+    reps = [{"name": rep, "url": url_for("rep_profile", rep_name=rep), "subtitle": "Individual Sales Profile"}
+            for rep in rep_matches]
+    if q and knocker_df is not None and not knocker_df.empty:
+        codes = sorted(c for c in knocker_df["sales_rep"].unique() if c and q in c)
+        codes.sort(key=lambda c: not c.startswith(q))
+        reps += [{"name": c, "url": url_for("knocker_profile", code=c), "subtitle": "Door Knocker Profile"}
+                 for c in codes[:SEARCH_RESULT_LIMIT]]
+
     accounts = []
-    for account in account_matches:
-        vision_url = account.get("vision_url")
-        accounts.append({
-            "first_name": account["first_name"],
-            "last_name": account["last_name"],
-            "address": account["address"],
-            "city_state_zip": account["city_state_zip"],
-            "sales_rep": account["sales_rep"],
-            "status": account["status"],
-            # Vision is the closest thing this app has to a per-account
-            # detail page (no account has its own route here) -- fall
-            # back to that account's rep profile when there's no
-            # subscriber_uuid to build a Vision link from, so a result
-            # is never a dead end.
-            "url": vision_url or url_for("rep_profile", rep_name=account["sales_rep"]),
-            "external": bool(vision_url),
-        })
+    hits = order_search.search(order_search.get_index(), query, SEARCH_RESULT_LIMIT)
+    if hits is not None and not hits.empty:
+        status = {}
+        for df in (knocker_df, normalized):  # sales data wins on overlap
+            if df is not None and not df.empty:
+                rows = df[df["sale_id"].isin(hits["sale_id"])]
+                status.update(zip(rows["sale_id"], zip(rows["status"], rows["sales_rep"])))
+        for order in hits.to_dict("records"):
+            known_status, rep = status.get(order["sale_id"], (None, None))
+            order_date = order["order_date"]
+            accounts.append({
+                "first_name": order["first_name"],
+                "last_name": order["last_name"],
+                "address": ", ".join(p for p in (order["address"], order["city_state_zip"]) if p),
+                "sales_rep": rep or order["sold_by"] or "Unknown",
+                "status": known_status,
+                "order_date": order_date.strftime("%b %-d, %Y") if pd.notna(order_date) else None,
+                "url": url_for("customer_profile_page", sale_id=order["sale_id"]),
+                "external": False,
+            })
 
     return jsonify({"reps": reps, "accounts": accounts})
 
