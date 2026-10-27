@@ -116,7 +116,8 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         if (accounts.length) {
-            addGroupLabel("Accounts");
+            // No exact match: the server sent the closest ones (2026-10-27).
+            addGroupLabel(data.closest_accounts ? "Closest matches" : "Accounts");
             accounts.forEach(function (account) {
                 var title = (account.first_name + " " + account.last_name).trim() || "Unnamed account";
                 var subParts = [];

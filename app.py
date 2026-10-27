@@ -3058,7 +3058,7 @@ def search():
                  for c in codes[:SEARCH_RESULT_LIMIT]]
 
     accounts = []
-    hits = order_search.search(order_search.get_index(), query, SEARCH_RESULT_LIMIT)
+    hits, closest = order_search.search(order_search.get_index(), query, SEARCH_RESULT_LIMIT)
     if hits is not None and not hits.empty:
         status = {}
         for df in (knocker_df, normalized):  # sales data wins on overlap
@@ -3079,7 +3079,8 @@ def search():
                 "external": False,
             })
 
-    return jsonify({"reps": reps, "accounts": accounts})
+    # closest: no exact account match, these are the nearest (2026-10-27).
+    return jsonify({"reps": reps, "accounts": accounts, "closest_accounts": bool(accounts) and closest})
 
 
 # ================================================================
