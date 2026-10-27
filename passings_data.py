@@ -58,6 +58,7 @@ how that becomes a chunked, parameterized `PlaceID IN (...)` clause (SQL
 Server caps a query at ~2100 parameters, so large ID sets are chunked and
 OR'd/AND'd together rather than sent as one clause)."""
 
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -176,11 +177,14 @@ WITH latest_email AS (
     -- semantics (most recent InsertDate among rows with a real,
     -- non-blank email, per PlaceID), computed ONCE as a single windowed
     -- pass over FTTPFormData instead of once per View_Places row.
-    SELECT NJPR_PlaceID, EmailAddress, InsertDate
+    -- PhoneNumber comes from the same (latest emailed) form row, so the
+    -- lead's phone and email always belong together (2026-10-26).
+    SELECT NJPR_PlaceID, EmailAddress, PhoneNumber, InsertDate
     FROM (
         SELECT
             fd.NJPR_PlaceID,
             fd.EmailAddress,
+            fd.PhoneNumber,
             fd.InsertDate,
             ROW_NUMBER() OVER (PARTITION BY fd.NJPR_PlaceID ORDER BY fd.InsertDate DESC) AS rn
         FROM [PlanetWeb].[dbo].[FTTPFormData] fd
@@ -205,6 +209,7 @@ passings_base AS (
         -- Lets passings_cache.py decide whether a newer FTTPFormData row
         -- replaces this email without re-running this whole query.
         le.InsertDate AS EmailInsertDate,
+        le.PhoneNumber AS PhoneNumber,
         ISNULL(p.USPSPropertyAddress, p.PropertyLocation) AS FullAddress,
         ISNULL(p.USPSPropertyStreetName + ' ' + p.USPSPropertyStreetSuffix, p.PropertyLocation) AS Street,
         ISNULL(p.USPSPropertyCity, p.PropertyCity) AS City,
@@ -404,7 +409,10 @@ def _sort_sql(sort_key, sort_dir):
     direction = "ASC" if sort_dir == "asc" else "DESC"
     # PlaceID as a tiebreaker keeps pagination stable across pages when
     # many rows share the same sort value (e.g. many rows with the same
-    # BecameAvailable date).
+    # BecameAvailable date). Not when sorting by PlaceID itself: SQL Server
+    # rejects a column listed twice in ORDER BY.
+    if column == "PlaceID":
+        return f"ORDER BY PlaceID {direction}"
     return f"ORDER BY {column} {direction}, PlaceID ASC"
 
 
@@ -441,11 +449,31 @@ def _connect_and_run(build_query, empty_result):
 _ROW_COLUMNS = [
     "PlaceID", "EmailAddress", "FullAddress", "Street", "City", "State", "ZipCode",
     "AvailabilityID", "BecameAvailable", "AddressUnits", "PrequalAsBusiness", "ClassName",
+    "PhoneNumber",
 ]
+
+
+def format_phone(raw):
+    """(display, tel) for a lead's FTTPFormData.PhoneNumber, or (None,
+    None) when there's no usable number (blank, 'none', fewer than 7
+    digits -- e.g. an email typed into the field -- or a placeholder like
+    000-000-0000) -- the card shows NA then. 10-digit US numbers (or 11
+    with a leading 1) are shown as (973) 555-1234; anything else (two
+    numbers, an extension) is shown as entered."""
+    text = str(raw).strip() if raw is not None else ""
+    digits = re.sub(r"\D", "", text)
+    if len(digits) < 7 or len(set(digits)) == 1 or text.lower() in ("none", "null", "n/a", "na"):
+        return None, None
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}", f"+1{digits}"
+    return text, digits
 
 
 def _row_to_dict(row):
     record = dict(zip(_ROW_COLUMNS, row))
+    record["phone_display"], record["phone_tel"] = format_phone(record.get("PhoneNumber"))
     classification = passings_classification.classify({
         "email": record["EmailAddress"],
         "prequal_as_business": record["PrequalAsBusiness"],

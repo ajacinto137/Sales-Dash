@@ -50,6 +50,7 @@ MAX_BACKOFF_SECONDS = 1800
 _SNAPSHOT_COLUMNS = [
     "PlaceID", "EmailAddress", "EmailInsertDate", "FullAddress", "Street", "City", "State", "ZipCode",
     "AvailabilityID", "BecameAvailable", "AddressUnits", "PrequalAsBusiness", "ClassName", "PropertyTypeLabel",
+    "PhoneNumber",
 ]
 _SEARCH_COLUMNS = ["FullAddress", "Street", "City", "ZipCode", "EmailAddress", "PlaceID"]
 
@@ -247,15 +248,17 @@ def _load_full():
 
 def apply_form_rows(df, form_rows):
     """Folds new FTTPFormData rows [(ID, PlaceID, EmailAddress,
-    InsertDate, IsBusiness), ...] into a snapshot, same rules as the base
-    CTE: the most recent non-blank email per place wins, and any
+    InsertDate, IsBusiness, PhoneNumber), ...] into a snapshot, same rules
+    as the base CTE: the most recent non-blank email per place wins (with
+    that row's phone number), and any
     IsBusiness = 1 row flags the place. Places not in the snapshot (not a
     qualifying passing) are ignored. Returns a NEW prepared frame, or the
     same one when nothing applies."""
     if not form_rows or df is None or df.empty:
         return df
     updates = pd.DataFrame.from_records(
-        [tuple(r) for r in form_rows], columns=["ID", "PlaceID", "EmailAddress", "InsertDate", "IsBusiness"]
+        [tuple(r) for r in form_rows],
+        columns=["ID", "PlaceID", "EmailAddress", "InsertDate", "IsBusiness", "PhoneNumber"],
     )
     updates = updates[updates["PlaceID"].isin(df["PlaceID"])]
     if updates.empty:
@@ -266,13 +269,15 @@ def apply_form_rows(df, form_rows):
     emails = updates[updates["EmailAddress"].fillna("").astype(str).str.strip(" ") != ""]
     if not emails.empty:
         newest = emails.sort_values(["InsertDate", "ID"]).groupby("PlaceID").tail(1)
-        for place_id, email, inserted in zip(newest["PlaceID"], newest["EmailAddress"], newest["InsertDate"]):
+        for place_id, email, phone, inserted in zip(newest["PlaceID"], newest["EmailAddress"],
+                                                    newest["PhoneNumber"], newest["InsertDate"]):
             rows = base.index[base["PlaceID"] == place_id]
             for i in rows:
                 current = base.at[i, "EmailInsertDate"]
                 if pd.isna(current) or pd.isna(inserted) or inserted >= current:
                     base.at[i, "EmailAddress"] = email
                     base.at[i, "EmailInsertDate"] = inserted
+                    base.at[i, "PhoneNumber"] = phone
 
     business_places = updates.loc[updates["IsBusiness"].fillna(0).astype(int) == 1, "PlaceID"]
     if not business_places.empty:
@@ -286,7 +291,7 @@ def _load_incremental():
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT ID, NJPR_PlaceID, EmailAddress, InsertDate, IsBusiness "
+            "SELECT ID, NJPR_PlaceID, EmailAddress, InsertDate, IsBusiness, PhoneNumber "
             "FROM [PlanetWeb].[dbo].[FTTPFormData] WHERE ID > ? AND NJPR_PlaceID IS NOT NULL ORDER BY ID",
             [watermark],
         )

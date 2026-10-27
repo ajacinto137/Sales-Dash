@@ -15,12 +15,12 @@ import pytest
 import passings_cache as pc
 
 ROWS = [
-    # PlaceID, Email, EmailInsertDate, FullAddress, Street, City, State, Zip, Avail, BecameAvailable, Units, Biz, ClassName, TypeLabel
-    (1, "a@x.com", datetime(2026, 1, 5), "1 Main St", "Main St", "NEWARK", "NJ", "07101", 1, datetime(2026, 10, 4), 1, 0, "Residential", None),
-    (2, None, None, "2 Main St", "Main St", "NEWARK", "NJ", "07101", 3, datetime(2026, 10, 5), 2.0, 0, "Residential", None),
-    (3, "none", datetime(2026, 1, 5), "3 Oak Ave", "Oak Ave", "TRENTON", "NJ", "08601", 1, datetime(2026, 10, 10), None, 0, "Office", "Commercial"),
-    (4, "b@y.com", datetime(2026, 2, 1), "4 Elm Rd", "Elm Rd", "Trenton", "NJ", "08601", 1, None, 4, 1, "Retail", "Commercial"),
-    (5, "  ", None, "5 Pine Ln", "Pine Ln", "ALBANY", "NY", "12201", 3, datetime(2026, 9, 1), 1, 0, None, None),
+    # PlaceID, Email, EmailInsertDate, FullAddress, Street, City, State, Zip, Avail, BecameAvailable, Units, Biz, ClassName, TypeLabel, Phone
+    (1, "a@x.com", datetime(2026, 1, 5), "1 Main St", "Main St", "NEWARK", "NJ", "07101", 1, datetime(2026, 10, 4), 1, 0, "Residential", None, "973-555-0101"),
+    (2, None, None, "2 Main St", "Main St", "NEWARK", "NJ", "07101", 3, datetime(2026, 10, 5), 2.0, 0, "Residential", None, None),
+    (3, "none", datetime(2026, 1, 5), "3 Oak Ave", "Oak Ave", "TRENTON", "NJ", "08601", 1, datetime(2026, 10, 10), None, 0, "Office", "Commercial", None),
+    (4, "b@y.com", datetime(2026, 2, 1), "4 Elm Rd", "Elm Rd", "Trenton", "NJ", "08601", 1, None, 4, 1, "Retail", "Commercial", ""),
+    (5, "  ", None, "5 Pine Ln", "Pine Ln", "ALBANY", "NY", "12201", 3, datetime(2026, 9, 1), 1, 0, None, None, None),
 ]
 
 
@@ -113,17 +113,19 @@ def test_month_buckets_and_market_breakdown():
 def test_incremental_form_rows_add_newer_emails_and_business_flags():
     df = pc._state["df"]
     updated = pc.apply_form_rows(df, [
-        (10, 2, "new@lead.com", datetime(2026, 10, 20), 0),   # first email for place 2
-        (11, 1, "old@x.com", datetime(2025, 1, 1), 0),        # older than place 1's email -> ignored
-        (12, 5, None, datetime(2026, 10, 20), 1),             # business flag only
-        (13, 999, "x@x.com", datetime(2026, 10, 20), 1),      # not a passing -> ignored
+        (10, 2, "new@lead.com", datetime(2026, 10, 20), 0, "(201) 555-0102"),   # first email for place 2
+        (11, 1, "old@x.com", datetime(2025, 1, 1), 0, "000"),        # older than place 1's email -> ignored
+        (12, 5, None, datetime(2026, 10, 20), 1, None),             # business flag only
+        (13, 999, "x@x.com", datetime(2026, 10, 20), 1, None),      # not a passing -> ignored
     ])
     assert updated is not df
     by_id = updated.set_index("PlaceID")
     assert by_id.loc[2, "EmailAddress"] == "new@lead.com" and by_id.loc[2, "_residential"]
     assert by_id.loc[1, "EmailAddress"] == "a@x.com"
     assert by_id.loc[5, "PrequalAsBusiness"] == 1
-    assert pc.apply_form_rows(df, [(14, 999, "x@x.com", datetime(2026, 10, 20), 0)]) is df
+    assert by_id.loc[2, "PhoneNumber"] == "(201) 555-0102"  # comes with the newer email
+    assert by_id.loc[1, "PhoneNumber"] == "973-555-0101"
+    assert pc.apply_form_rows(df, [(14, 999, "x@x.com", datetime(2026, 10, 20), 0, None)]) is df
 
 
 def test_filter_options_are_distinct_and_sorted():
@@ -192,3 +194,15 @@ def test_order_status_best_order_per_place_wins():
     assert page(pc.ORDER_NEEDS_ATTENTION) == [3]
     assert page(pc.NO_ORDER) == [2]  # passing 2 has no order at all
     assert page(pc.ORDER_COMPLETED) == [1]
+
+
+def test_lead_phone_number_is_formatted_or_na():
+    rows = {r["PlaceID"]: r for r in pc.get_page({}, "", "place_id", "asc", 1)["rows"]}
+    assert (rows[1]["phone_display"], rows[1]["phone_tel"]) == ("(973) 555-0101", "+19735550101")
+    assert rows[4]["phone_display"] is None  # blank -> the card shows NA
+    import passings_data
+    assert passings_data.format_phone("1 (973) 555-0101") == ("(973) 555-0101", "+19735550101")
+    assert passings_data.format_phone("none") == (None, None)
+    assert passings_data.format_phone("ripray232@aol.com") == (None, None)
+    assert passings_data.format_phone("000-000-0000") == (None, None)
+    assert passings_data.format_phone("9735790325ext.1203") == ("9735790325ext.1203", "97357903251203")

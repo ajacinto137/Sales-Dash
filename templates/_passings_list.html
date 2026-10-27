@@ -66,6 +66,7 @@
 
             <div class="td-passing-meta-row">
                 {% if row.EmailAddress %}<span><span class="td-passing-meta-label">Email:</span>{{ row.EmailAddress }}</span>{% endif %}
+                {% if row.is_lead %}<span><span class="td-passing-meta-label">Phone:</span>{% if row.phone_display %}<a class="td-passing-place-link" href="tel:{{ row.phone_tel }}">{{ row.phone_display }}</a>{% else %}NA{% endif %}</span>{% endif %}
                 <span><span class="td-passing-meta-label">Passing ID:</span><a class="td-passing-place-link" href="{{ row.pas_url }}" target="_blank" rel="noopener" title="Open this place in PAS">{{ row.PlaceID }}</a></span>
                 {% if row.property_type_label %}<span><span class="td-passing-meta-label">Property:</span>{{ row.property_type_label }}</span>{% endif %}
                 {% if row.AddressUnits %}<span><span class="td-passing-meta-label">Units:</span>{{ row.AddressUnits }}</span>{% endif %}
@@ -145,6 +146,7 @@
                         {{ sort_th('state', 'State') }}
                         {{ sort_th('zip', 'ZIP') }}
                         {{ sort_th('email', 'Email') }}
+                        <th>Phone</th>
                         <th>Order Status</th>
                         <th>Category</th>
                         <th>Property Type</th>
@@ -168,6 +170,7 @@
                         <td>{{ row.State or '—' }}</td>
                         <td>{{ row.ZipCode or '—' }}</td>
                         <td>{{ row.EmailAddress or '—' }}</td>
+                        <td>{{ (row.phone_display or 'NA') if row.is_lead else '—' }}</td>
                         <td>{{ row.order_status or '—' }}</td>
                         <td>{{ row.category_label or '—' }}</td>
                         <td>{{ row.property_type_label or '—' }}</td>
