@@ -124,13 +124,37 @@
             <div class="td-activity-split">
                 {% include "_rep_sales_calendar.html" %}
 
-                {% set chart_id = "monthly-sales-chart" %}
-                {% set chart_title = "Monthly Sales" %}
-                {% set chart_subtitle = rep_monthly_activity.month_label %}
-                {% set chart_empty = rep_monthly_activity.total == 0 %}
-                {% set chart_empty_message = "No sales recorded for this period." %}
-                {% set chart_canvas_attrs %}data-days='{{ rep_monthly_activity.days|tojson }}' data-year="{{ rep_monthly_activity.year }}" data-month="{{ rep_monthly_activity.month }}" data-drilldown-base="{{ url_for('bulk_account_view', rep_name=rep_name, view='date') }}"{% endset %}
-                {% include "_chart_card.html" %}
+                {# Monthly Sales: the calendar month by day, or sales over
+                   time with one point per month ("By Month", added
+                   2026-10-26, by request -- from the rep's first sale).
+                   The last choice is remembered in localStorage. #}
+                <div class="td-chart-card" id="rep-sales-chart-card">
+                    <div class="td-chart-card-head">
+                        <div>
+                            <h3>Monthly Sales</h3>
+                            <span class="td-muted-inline" data-chart-panel="by_month">Sales per month since {{ rep_sales_by_month[0].month_label }}</span>
+                            <span class="td-muted-inline" data-chart-panel="days" style="display:none;">{{ rep_monthly_activity.month_label }} by day</span>
+                        </div>
+                        <div class="td-chart-toggle" id="rep-sales-chart-toggle">
+                            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-chart-toggle="by_month">By Month</button>
+                            <button type="button" class="td-chart-toggle-btn" data-chart-toggle="days">{{ rep_monthly_activity.month_label }}</button>
+                        </div>
+                    </div>
+                    <div class="td-chart-canvas-wrap" data-chart-panel="by_month">
+                        {% if rep_sales_by_month|sum(attribute='count') == 0 %}
+                        <p class="td-empty">No sales recorded yet.</p>
+                        {% else %}
+                        <canvas id="rep-sales-by-month-chart" data-chart-type="monthlyTrend" data-months='{{ rep_sales_by_month|tojson }}'></canvas>
+                        {% endif %}
+                    </div>
+                    <div class="td-chart-canvas-wrap" data-chart-panel="days" style="display:none;">
+                        {% if rep_monthly_activity.total == 0 %}
+                        <p class="td-empty">No sales recorded for this period.</p>
+                        {% else %}
+                        <canvas id="monthly-sales-chart" data-days='{{ rep_monthly_activity.days|tojson }}' data-year="{{ rep_monthly_activity.year }}" data-month="{{ rep_monthly_activity.month }}" data-drilldown-base="{{ url_for('bulk_account_view', rep_name=rep_name, view='date') }}"></canvas>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
 

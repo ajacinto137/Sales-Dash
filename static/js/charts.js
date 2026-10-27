@@ -1192,8 +1192,35 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof Chart === "undefined") return;
     const tokens = getChartTokens();
 
+    // Rep Profile Monthly Sales card (By Month / one month by day, added
+    // 2026-10-26): the day chart lives in a hidden panel there, so it's
+    // created when first shown instead of here. Remembers the last tab.
+    const repSalesToggle = document.getElementById("rep-sales-chart-toggle");
     const monthlyEl = document.getElementById("monthly-sales-chart");
-    if (monthlyEl) createMonthlySalesChart(monthlyEl, tokens);
+    if (monthlyEl && !repSalesToggle) createMonthlySalesChart(monthlyEl, tokens);
+    if (repSalesToggle) {
+        let saved = null;
+        try { saved = localStorage.getItem("td-rep-sales-chart"); } catch (e) { /* storage unavailable */ }
+        const savedBtn = saved && repSalesToggle.querySelector(`[data-chart-toggle="${saved}"]`);
+        if (savedBtn) {
+            repSalesToggle.querySelectorAll(".td-chart-toggle-btn").forEach((b) => b.classList.toggle("td-chart-toggle-active", b === savedBtn));
+        }
+        const card = repSalesToggle.closest(".td-chart-card");
+        let dayChart = false;
+        wireToggleButtons(repSalesToggle, (key) => {
+            card.querySelectorAll("[data-chart-panel]").forEach((el) => {
+                el.style.display = el.dataset.chartPanel === key ? "" : "none";
+            });
+            if (key === "by_month") {
+                const el = document.getElementById("rep-sales-by-month-chart");
+                if (el && !el.dataset.created) { el.dataset.created = "1"; createMonthlySalesTrendChart(el, tokens); }
+            } else if (monthlyEl && !dayChart) {
+                dayChart = true;
+                createMonthlySalesChart(monthlyEl, tokens);
+            }
+            try { localStorage.setItem("td-rep-sales-chart", key); } catch (e) { /* storage unavailable */ }
+        });
+    }
 
     document.querySelectorAll('canvas[data-chart-type="blitzDaily"]').forEach((el) => createBlitzDailyChart(el, tokens));
     document.querySelectorAll('canvas[data-chart-type="statusStacked"]').forEach((el) => createStatusStackedChart(el, tokens));

@@ -621,6 +621,20 @@ def calculate_monthly_sales_trend(df, months=12):
     ]
 
 
+
+def calculate_rep_sales_by_month(df, rep_name, min_months=6):
+    """One rep's sales per calendar month, from the month of their first
+    sale through the current month (at least min_months), for the Rep
+    Profile's Monthly Sales "By Month" view (added 2026-10-26, by
+    request). Same row shape as calculate_monthly_sales_trend()."""
+    rep_df = df[df["sales_rep"] == rep_name] if df is not None and not df.empty else None
+    first = rep_df["sale_date"].min() if rep_df is not None and not rep_df.empty else pd.NaT
+    today = _today()
+    months = min_months
+    if pd.notna(first):
+        months = max(min_months, (today.year - first.year) * 12 + today.month - first.month + 1)
+    return calculate_monthly_sales_trend(rep_df, months=months)
+
 def calculate_month_to_date_comparison(df):
     """Cumulative sales by day of month for the Monthly Sales Trend's
     "Month to Date" mode -- three lines on one day-of-month x-axis:

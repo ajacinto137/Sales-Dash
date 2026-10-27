@@ -59,3 +59,19 @@ def test_drill_down_matches_cell_counts():
             "November 2026 Pending", ["Pending"])
     assert sm.get_status_month_account_view(DF, "A", 2026, 13, "all") == ("Invalid Month", [])
     assert sm.get_status_month_account_view(DF, "A", 2026, 7, "bogus") == ("Invalid View", [])
+
+
+def test_rep_sales_by_month_runs_from_first_sale():
+    from unittest import mock
+    from datetime import date
+    import pandas as pd
+    import sales_metrics
+    df = pd.DataFrame({
+        "sales_rep": ["Ann", "Ann", "Ann", "Bob"],
+        "sale_date": pd.to_datetime(["2025-11-03", "2026-01-10", "2026-01-12", "2026-01-05"]),
+    })
+    with mock.patch.object(sales_metrics, "_today", return_value=date(2026, 10, 26)):
+        rows = sales_metrics.calculate_rep_sales_by_month(df, "Ann")
+        assert rows[0]["month_label"] == "Nov 2025" and rows[-1]["month_label"] == "Oct 2026"
+        assert [r["count"] for r in rows][:3] == [1, 0, 2] and sum(r["count"] for r in rows) == 3
+        assert len(sales_metrics.calculate_rep_sales_by_month(df, "Nobody")) == 6

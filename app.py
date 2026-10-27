@@ -62,6 +62,7 @@ from sales_metrics import (
     calculate_rep_metrics,
     add_all_time_install_rates,
     calculate_rep_monthly_activity,
+    calculate_rep_sales_by_month,
     calculate_rep_monthly_installs,
     calculate_rep_monthly_status,
     calculate_sales_volume_trend,
@@ -1201,6 +1202,7 @@ def rep_profile(rep_name):
         cal_year, cal_month = today.year, today.month
 
     rep_monthly_activity = calculate_rep_monthly_activity(normalized, rep_name, cal_year, cal_month)
+    rep_sales_by_month = calculate_rep_sales_by_month(normalized, rep_name)
 
     # Always all-time, independent of the period filter -- see
     # calculate_needs_attention()'s docstring.
@@ -1250,6 +1252,7 @@ def rep_profile(rep_name):
         channel_breakdown=channel_breakdown,
         hourly_breakdown=hourly_breakdown,
         rep_monthly_activity=rep_monthly_activity,
+        rep_sales_by_month=rep_sales_by_month,
         needs_attention=needs_attention,
         needs_attention_count=len(needs_attention),
         monthly_installs=monthly_installs,
