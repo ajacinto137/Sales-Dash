@@ -686,6 +686,18 @@ MIGRATIONS = [
         ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS place_id BIGINT;
         """,
     ),
+    (
+        18,
+        "hubspot_sync_state.synced_from (HubSpot call backfill to 2023, 2026-10-26)",
+        """
+        -- The HUBSPOT_SYNC_START_DATE the last successful sync covered.
+        -- Everything synced so far started at the old 2026-01-01 default,
+        -- so the new, earlier default triggers one backfilling full sync.
+        ALTER TABLE hubspot_sync_state ADD COLUMN IF NOT EXISTS synced_from DATE;
+        UPDATE hubspot_sync_state SET synced_from = DATE '2026-01-01'
+        WHERE id = 1 AND synced_from IS NULL AND initial_sync_completed_at IS NOT NULL;
+        """,
+    ),
 ]
 
 _schema_ready = False

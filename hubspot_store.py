@@ -48,9 +48,12 @@ OWNER_REFRESH_SECONDS = 15 * 60
 MAX_BACKOFF_SECONDS = 15 * 60
 # hubspot_sync_runs keeps this much history (a 60s cadence adds ~1,440 rows/day).
 RUN_HISTORY_DAYS = 3
-# Only calls on/after this business-timezone date are synced or kept
-# (by request, 2026-10-16: "only need to sync calls from 2026 onward").
-SYNC_START_DATE = date.fromisoformat(os.environ.get("HUBSPOT_SYNC_START_DATE", "2026-01-01"))
+# Only calls on/after this business-timezone date are synced or kept.
+# 2026-01-01 at first (2026-10-16); moved back to 2023-01-01, HubSpot's
+# first calls, on 2026-10-26 so Passings & Leads' HubSpot call count
+# matches the contact's total. Moving it earlier backfills on the next
+# sync (hubspot_sync_state.synced_from, see _run_sync_locked()).
+SYNC_START_DATE = date.fromisoformat(os.environ.get("HUBSPOT_SYNC_START_DATE", "2023-01-01"))
 SYNC_START = datetime.combine(SYNC_START_DATE, dt_time.min, tzinfo=BUSINESS_TZ)
 SYNC_LOCK_KEY = 0x48554253  # "HUBS"
 # Incremental sync re-reads this much before the watermark so a call
@@ -493,9 +496,14 @@ def _run_sync_locked(trigger, client):
         with conn:
             with conn.cursor() as cur:
                 cur.execute("UPDATE hubspot_sync_state SET last_attempt_at = now() WHERE id = 1")
-                cur.execute("SELECT calls_modified_watermark, initial_sync_completed_at FROM hubspot_sync_state WHERE id = 1")
-                watermark, initial_done = cur.fetchone()
-                kind = "incremental" if initial_done and watermark else "initial"
+                cur.execute("SELECT calls_modified_watermark, initial_sync_completed_at, synced_from "
+                            "FROM hubspot_sync_state WHERE id = 1")
+                watermark, initial_done, synced_from = cur.fetchone()
+                # A start date moved earlier than what's been synced needs
+                # one full pass to backfill the older calls -- an
+                # incremental one only sees recently modified calls.
+                backfill = synced_from is not None and SYNC_START_DATE < synced_from
+                kind = "incremental" if initial_done and watermark and not backfill else "initial"
                 cur.execute(
                     "INSERT INTO hubspot_sync_runs (trigger, kind, status) VALUES (%s, %s, 'running') RETURNING id",
                     (trigger, kind),
@@ -561,10 +569,11 @@ def _run_sync_locked(trigger, client):
                     """
                     UPDATE hubspot_sync_state SET calls_modified_watermark = %s,
                         initial_sync_completed_at = coalesce(initial_sync_completed_at, now()),
+                        synced_from = %s,
                         last_success_at = now(), last_error = NULL, connection_ok = true
                     WHERE id = 1
                     """,
-                    (new_watermark,),
+                    (new_watermark, SYNC_START_DATE),
                 )
         _update_run(conn, run_id, status="success", finished_at=datetime.now(timezone.utc))
         if not quiet or summary["new_calls"] or summary["updated_calls"]:

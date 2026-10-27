@@ -246,12 +246,28 @@ def test_calls_before_sync_start_are_removed(test_db):
     conn = db.get_appdb_connection()
     with conn, conn.cursor() as cur:
         cur.execute("INSERT INTO hubspot_calls (hubspot_call_id, hubspot_owner_id, call_timestamp, direction) "
-                    "VALUES ('old-1', '101', '2025-12-31 23:30:00-05', 'OUTBOUND')")
+                    "VALUES ('old-1', '101', '2022-12-31 23:30:00-05', 'OUTBOUND')")
     conn.close()
     before = q("SELECT count(*) FROM hubspot_calls")[0][0]
     hubspot_store.run_sync("auto", client=FakeClient(OWNERS, [], incremental_pages=[]))
     assert q("SELECT count(*) FROM hubspot_calls WHERE hubspot_call_id = 'old-1'")[0][0] == 0
     assert q("SELECT count(*) FROM hubspot_calls")[0][0] == before - 1
+
+
+def test_earlier_sync_start_triggers_one_backfilling_full_sync(test_db):
+    # Synced so far from a later start date -> the next sync is a full pass.
+    later = date(hubspot_store.SYNC_START_DATE.year + 1, 1, 1)
+    conn = db.get_appdb_connection()
+    with conn, conn.cursor() as cur:
+        cur.execute("UPDATE hubspot_sync_state SET synced_from = %s WHERE id = 1", (later,))
+    conn.close()
+    backfill = FakeClient(OWNERS, [[call("backfill-1", "101", "2023-03-01T15:00:00Z")]])
+    ran, summary = hubspot_store.run_sync("auto", client=backfill)
+    assert ran and summary["kind"] == "initial" and summary["new_calls"] == 1
+    assert q("SELECT synced_from FROM hubspot_sync_state")[0][0] == hubspot_store.SYNC_START_DATE
+    # Caught up -> back to incremental.
+    ran, summary = hubspot_store.run_sync("auto", client=FakeClient(OWNERS, [], incremental_pages=[]))
+    assert summary["kind"] == "incremental"
 
 
 def test_manual_mapping_rejects_unknown_rep(test_db):

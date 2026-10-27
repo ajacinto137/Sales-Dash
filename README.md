@@ -2210,9 +2210,11 @@ sales rep", or return it to automatic. Manual choices are never
 overwritten by later matching.
 
 **Sync window.** Only calls on or after `HUBSPOT_SYNC_START_DATE`
-(default `2026-01-01`, Eastern time) are fetched or kept. Older rows are
+(default `2023-01-01`, Eastern time -- HubSpot's first calls; it was
+`2026-01-01` until 2026-10-26) are fetched or kept. Older rows are
 deleted at the start of each sync, and profile date ranges are clamped
-to this date.
+to this date. Moving the date earlier than `hubspot_sync_state.synced_from`
+makes the next sync a full pass that backfills the older calls.
 
 **Sync.** `hubspot_store.start_scheduler()` (started from
 `ensure_data_loaded()`) runs 10 s after boot and then every 60 s, timed from the end of the
