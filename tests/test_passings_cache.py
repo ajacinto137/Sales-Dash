@@ -169,3 +169,26 @@ def test_pas_place_url():
     assert pas_place_url(204428) == "https://pas.planet.net/Places/Detail?place_id=204428#Summary"
     assert pas_place_url(204428.0) == "https://pas.planet.net/Places/Detail?place_id=204428#Summary"
     assert pas_place_url(None) is None and pas_place_url(float("nan")) is None
+
+
+def test_order_status_best_order_per_place_wins():
+    orders = pd.DataFrame.from_records([
+        # ID, PlaceID, SubscriberUUID, StartDate, StatusID
+        (10, 1, "UUID-A", datetime(2026, 9, 1), 8),      # billed in Vision -> completed despite Ready job
+        (11, 1, None, datetime(2026, 12, 1), 8),
+        (20, 3, None, datetime(2026, 10, 26), 8),        # install date today -> Needs Attention
+        (30, 4, None, datetime(2026, 11, 2), 4),         # future -> Install Scheduled
+        (31, 4, None, datetime(2026, 9, 2), 8),
+        (40, 5, None, None, None),                       # no fiber job -> Not Scheduled
+        (50, 6, None, datetime(2026, 8, 1), 16),         # only a cancelled job
+        (60, 7, None, datetime(2025, 3, 1), 6),          # job Complete, not billed -> completed
+    ], columns=["ID", "PlaceID", "SubscriberUUID", "StartDate", "StatusID"])
+    statuses = pc.compute_order_statuses(orders, {"uuid-a"}, date(2026, 10, 26))
+    assert statuses.to_dict() == {
+        1: pc.ORDER_COMPLETED, 3: pc.ORDER_NEEDS_ATTENTION, 4: pc.ORDER_SCHEDULED,
+        5: pc.ORDER_NOT_SCHEDULED, 6: pc.ORDER_CANCELLED, 7: pc.ORDER_COMPLETED,
+    }
+    page = lambda status: ids(pc.get_page({"order_status": status, "order_statuses": statuses}, "", "place_id", "asc", 1))
+    assert page(pc.ORDER_NEEDS_ATTENTION) == [3]
+    assert page(pc.NO_ORDER) == [2]  # passing 2 has no order at all
+    assert page(pc.ORDER_COMPLETED) == [1]

@@ -331,6 +331,17 @@
             <input type="date" id="passings-last-activity-to" name="last_activity_to" class="td-date-input" value="{{ selected.last_activity_to }}">
         </div>
 
+        {# Order Status (2026-10-26): the best order at the passing --
+           passings_cache.compute_order_statuses(). #}
+        <div class="td-marketing-filter-field">
+            <label for="passings-order-status">Order Status</label>
+            <select id="passings-order-status" name="order_status" class="td-admin-inline-select">
+                <option value="">Any</option>
+                {% for val in order_status_options %}
+                <option value="{{ val }}" {{ 'selected' if val == selected.order_status else '' }}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
         {# HubSpot call filters (2026-10-26): leads only, by outbound HubSpot
            calls to the lead's email -- passings_cache._hubspot_call_mask(). #}
         <div class="td-marketing-filter-field">
@@ -360,8 +371,8 @@
         </div>
     </form>
 
-    {% if hubspot_filters_ignored %}
-    <p class="td-muted-inline">The HubSpot call filters aren't applied yet -- Passings & Leads is still loading after a restart. Reload in a few seconds.</p>
+    {% if snapshot_filters_ignored %}
+    <p class="td-muted-inline">The HubSpot call and Order Status filters aren't applied yet -- Passings & Leads is still loading after a restart. Reload in a few seconds.</p>
     {% elif not hubspot_calls_available %}
     <p class="td-muted-inline">HubSpot call counts are temporarily unavailable.</p>
     {% endif %}

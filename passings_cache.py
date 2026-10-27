@@ -40,6 +40,8 @@ import pandas as pd
 import db
 import passings_classification
 import passings_data
+import queries
+from sales_metrics import _today
 
 INCREMENTAL_SECONDS = int(os.environ.get("PASSINGS_INCREMENTAL_SECONDS", "120"))
 FULL_REFRESH_SECONDS = int(os.environ.get("PASSINGS_FULL_REFRESH_SECONDS", "1800"))
@@ -57,8 +59,91 @@ _state = {
     "loaded_at": None,         # time.time() of the last full rebuild
     "updated_at": None,        # time.time() of the last full OR incremental refresh
     "error": None,
+    "orders": None,            # every order at a passing, see _load_orders()
 }
 _refresh_lock = threading.Lock()
+
+
+# ================================================================
+# Order status per passing (added 2026-10-26)
+# ================================================================
+
+ORDER_COMPLETED = "Completed Order"
+ORDER_SCHEDULED = "Install Scheduled"
+ORDER_NEEDS_ATTENTION = "Needs Attention"
+ORDER_NOT_SCHEDULED = "Not Scheduled"
+ORDER_CANCELLED = "Order Cancelled"
+NO_ORDER = "No Order"
+ORDER_STATUSES = [ORDER_COMPLETED, ORDER_SCHEDULED, ORDER_NEEDS_ATTENTION,
+                  ORDER_NOT_SCHEDULED, ORDER_CANCELLED, NO_ORDER]
+_COMPLETE_JOB_STATUS_IDS = (6, 12)   # FTTPScheduleJobStatuses Complete, Complete (temp drop)
+_CANCELED_JOB_STATUS_ID = 16
+
+# Every order (any year) at a place, with its latest fiber install job
+# (queries.FIBER_INSTALL_JOB_TYPE_IDS) -- ~38k rows, ~1s.
+_ORDERS_QUERY = f"""
+SELECT fd.ID, fd.NJPR_PlaceID, fd.vi_subscriber_uuid, x.StartDate, x.StatusID
+FROM [PlanetWeb].[dbo].[FTTPFormData] fd
+OUTER APPLY (
+    SELECT TOP 1 jobs.StatusID, slots.StartDate
+    FROM FTTPScheduleJobs jobs
+    LEFT JOIN FTTPScheduleSlots slots ON slots.ID = jobs.SlotID
+    WHERE jobs.FormDataID = fd.ID AND jobs.TypeID IN {queries.FIBER_INSTALL_JOB_TYPES_SQL}
+    ORDER BY slots.StartDate DESC, jobs.ID DESC
+) x
+WHERE fd.QuoteID IS NOT NULL AND fd.NJPR_PlaceID IS NOT NULL
+"""
+_status_cache = {"key": None, "statuses": None}
+
+
+def _load_orders():
+    conn = db.get_planetweb_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(_ORDERS_QUERY)
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return pd.DataFrame.from_records(
+        [tuple(r) for r in rows], columns=["ID", "PlaceID", "SubscriberUUID", "StartDate", "StatusID"]
+    )
+
+
+def compute_order_statuses(orders, billed_uuids, today):
+    """PlaceID -> order status, best order at the place wins:
+    Completed Order (Vision billed -- the dashboard's own "Installed" --
+    or the fiber job is Complete) > Install Scheduled (fiber install date
+    after today) > Needs Attention (fiber install date today or earlier,
+    same cutoff as the dashboard's Pending vs Needs Attention) > Not
+    Scheduled (an order with no fiber install job) > Order Cancelled
+    (every order's fiber job was cancelled). Places with no order aren't
+    in the result -- they're No Order."""
+    if orders is None or orders.empty:
+        return pd.Series(dtype=object)
+    uuids = orders["SubscriberUUID"].fillna("").astype(str).str.strip().str.lower()
+    status_id = orders["StatusID"]
+    start = pd.to_datetime(orders["StartDate"], errors="coerce").dt.normalize()
+    today = pd.Timestamp(today)
+    live = status_id != _CANCELED_JOB_STATUS_ID
+    rank = pd.Series(4, index=orders.index)                              # Order Cancelled
+    rank[live & start.isna()] = 3                                        # Not Scheduled
+    rank[live & start.notna() & (start <= today)] = 2                    # Needs Attention
+    rank[live & (start > today)] = 1                                     # Install Scheduled
+    rank[uuids.isin(billed_uuids or set()) | status_id.isin(_COMPLETE_JOB_STATUS_IDS)] = 0
+    names = [ORDER_COMPLETED, ORDER_SCHEDULED, ORDER_NEEDS_ATTENTION, ORDER_NOT_SCHEDULED, ORDER_CANCELLED]
+    best = rank.groupby(orders["PlaceID"].astype("int64")).min()
+    return best.map(dict(enumerate(names)))
+
+
+def order_statuses(billed_uuids):
+    """compute_order_statuses() for the current orders, Vision billing set
+    and Eastern day, memoized until one of them changes. Empty (every
+    passing No Order) until the first orders load."""
+    orders = _state["orders"]
+    key = (id(orders), id(billed_uuids), _today())
+    if _status_cache["key"] != key:
+        _status_cache.update(key=key, statuses=compute_order_statuses(orders, billed_uuids, _today()))
+    return _status_cache["statuses"]
 
 
 def _log(message):
@@ -219,6 +304,14 @@ def refresh(full=False):
     with _refresh_lock:
         started = time.time()
         try:
+            # Order statuses change through the day (installs, new
+            # orders), so they reload on every pass, not just full ones.
+            # A failure keeps the last good orders and the snapshot refresh
+            # carries on.
+            try:
+                _state["orders"] = _load_orders()
+            except Exception as exc:
+                _log(f"Order status refresh failed: {db.sanitize_error(exc)}")
             if full or _state["df"] is None:
                 df, watermark = _load_full()
                 _state.update(df=df, watermark=watermark, loaded_at=time.time(), updated_at=time.time(), error=None)
@@ -329,6 +422,13 @@ def _filter(df, filters, search):
         mask &= df["_search"].str.contains(search.lower(), regex=False)
 
     mask &= _hubspot_call_mask(df, filters)
+
+    order_status = filters.get("order_status")
+    if order_status in ORDER_STATUSES:
+        statuses = filters.get("order_statuses")
+        if statuses is None:
+            statuses = pd.Series(dtype=object)
+        mask &= df["PlaceID"].map(statuses).fillna(NO_ORDER) == order_status
 
     return df[mask]
 

@@ -3622,3 +3622,11 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 /* "Open in PAS" next to Vision on account cards (2026-10-26). */
 .td-bulk-links { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 .td-bulk-pas { color: var(--td-accent-blue); }
+/* Passings & Leads order status badge (2026-10-26). */
+.td-order-status { border: 1px solid currentColor; background: transparent; }
+.td-order-status-completed-order { color: var(--td-green); background: var(--td-green-bg); }
+.td-order-status-install-scheduled { color: var(--td-accent-blue); background: var(--td-accent-blue-bg); }
+.td-order-status-needs-attention { color: var(--td-orange); background: var(--td-orange-bg); }
+.td-order-status-not-scheduled { color: var(--td-yellow); background: var(--td-yellow-bg); }
+.td-order-status-order-cancelled { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
+.td-order-status-no-order { color: var(--td-text-muted); }

@@ -46,6 +46,9 @@
                 <span class="td-passing-badge td-passing-badge-residential" title="Marked by {{ row.residential_mark.marked_by_name or 'Unknown' }}{% if row.residential_mark.marked_at %} on {{ row.residential_mark.marked_at.strftime('%-m/%-d/%Y') }}{% endif %} -- hidden from the commercial lists">Marked Residential</span>
                 {% endif %}
                 <span class="td-passing-badge td-passing-badge-{{ 'available-now' if row.AvailabilityID == 1 else 'pre-order' }}">{{ row.availability_label }}</span>
+                {% if row.order_status %}
+                <span class="td-passing-badge td-order-status td-order-status-{{ row.order_status|lower|replace(' ', '-') }}" title="Order status at this place">{{ row.order_status }}</span>
+                {% endif %}
                 <span data-activity-badge>
                     {% if row.last_activity %}
                         {% if row.last_activity.activity_type == 'Call' %}
@@ -142,6 +145,7 @@
                         {{ sort_th('state', 'State') }}
                         {{ sort_th('zip', 'ZIP') }}
                         {{ sort_th('email', 'Email') }}
+                        <th>Order Status</th>
                         <th>Category</th>
                         <th>Property Type</th>
                         <th>Prequal as Business</th>
@@ -164,6 +168,7 @@
                         <td>{{ row.State or '—' }}</td>
                         <td>{{ row.ZipCode or '—' }}</td>
                         <td>{{ row.EmailAddress or '—' }}</td>
+                        <td>{{ row.order_status or '—' }}</td>
                         <td>{{ row.category_label or '—' }}</td>
                         <td>{{ row.property_type_label or '—' }}</td>
                         <td>{{ 'Yes' if row.is_prequal_business else 'No' }}</td>

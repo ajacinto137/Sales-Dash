@@ -1856,6 +1856,25 @@ def _resolve_passings_activity_filters(has_activity, called, visited, rep, last_
     return place_id_in, place_id_not_in
 
 
+_billed_uuids_cache = {"source": None, "uuids": None}
+
+
+def _billed_subscriber_uuids():
+    """Lowercased Vision subscriber uuids with a first invoice -- the
+    dashboard's "Installed" test (_merge_install_dates()) -- for the
+    Passings & Leads order status. Rebuilt only when the background data
+    refresh swaps in new Vision data; None until it has loaded once."""
+    vision = data_store.get("vision_packages")
+    if vision is None or "subscriber_first_invoice_date" not in vision.columns:
+        return None
+    if _billed_uuids_cache["source"] is not vision:
+        billed = vision.loc[vision["subscriber_first_invoice_date"].notna(), "subscriber_uuid"]
+        _billed_uuids_cache.update(
+            source=vision, uuids=set(billed.dropna().astype(str).str.strip().str.lower()),
+        )
+    return _billed_uuids_cache["uuids"]
+
+
 @app.route("/passings")
 @auth.login_required
 def passings_page():
@@ -1925,6 +1944,18 @@ def passings_page():
     hubspot_last_call_to = _parse_date_param(hubspot_last_call_to_raw)
     hubspot_calls_available, hubspot_call_stats = hubspot_store.get_call_stats_by_email()
 
+    # Order status per passing (added 2026-10-26) -- see
+    # passings_cache.compute_order_statuses(). Unavailable (no badge, no
+    # filter) until both the order list and Vision billing have loaded.
+    order_status = request.args.get("order_status", "")
+    if order_status not in passings_cache.ORDER_STATUSES:
+        order_status = ""
+    billed_uuids = _billed_subscriber_uuids()
+    order_statuses = (
+        passings_cache.order_statuses(billed_uuids)
+        if billed_uuids is not None and passings_cache._state["orders"] is not None else None
+    )
+
     sort_key = request.args.get("sort", "became_available")
     sort_dir = request.args.get("dir", "desc")
     try:
@@ -1961,9 +1992,12 @@ def passings_page():
         hubspot_last_call_from=hubspot_last_call_from,
         hubspot_last_call_to=hubspot_last_call_to,
         hubspot_call_stats=hubspot_call_stats,
+        order_status=order_status if order_statuses is not None else None,
+        order_statuses=order_statuses,
     )
-    hubspot_filters_active = bool(
+    snapshot_filters_active = bool(
         hubspot_called is not None or hubspot_min_calls or hubspot_last_call_from or hubspot_last_call_to
+        or order_status
     )
 
     # In-memory snapshot (passings_cache.py, refreshed in the background)
@@ -2012,6 +2046,9 @@ def passings_page():
             activity = {**activity, "activity_at_display": _format_note_timestamp(activity["activity_at"])}
         row["last_activity"] = activity
         row["pas_url"] = pas_place_url(row["PlaceID"])
+        row["order_status"] = (
+            order_statuses.get(int(row["PlaceID"]), passings_cache.NO_ORDER) if order_statuses is not None else None
+        )
         # HubSpot call count / last call for leads (2026-10-26) -- None
         # when the lead's email has no outbound HubSpot calls.
         stats = hubspot_call_stats.get((row["EmailAddress"] or "").strip().lower()) if row["is_lead"] else None
@@ -2054,9 +2091,10 @@ def passings_page():
         last_activity_available=last_activity_available,
         hubspot_calls_available=hubspot_calls_available,
         # The live-SQL fallback (right after a restart) can't apply the
-        # HubSpot call filters -- the template says so instead of quietly
-        # showing unfiltered results.
-        hubspot_filters_ignored=hubspot_filters_active and source is passings_data,
+        # HubSpot call / order status filters -- the template says so
+        # instead of quietly showing unfiltered results.
+        snapshot_filters_ignored=snapshot_filters_active and (source is passings_data or order_statuses is None),
+        order_status_options=passings_cache.ORDER_STATUSES,
         activity_types=passings_activity_store.ACTIVITY_TYPES,
         category_options=PASSINGS_CATEGORY_OPTIONS,
         sort_options=PASSINGS_SORT_OPTIONS,
@@ -2072,6 +2110,7 @@ def passings_page():
             "search": search, "sort": sort_key, "dir": sort_dir,
             "hubspot_called": hubspot_called_raw, "hubspot_min_calls": hubspot_min_calls_raw,
             "hubspot_last_call_from": hubspot_last_call_from_raw, "hubspot_last_call_to": hubspot_last_call_to_raw,
+            "order_status": order_status,
         },
         category_labels=passings_classification.CATEGORY_LABELS,
         last_refreshed=data_store["last_refreshed"],
