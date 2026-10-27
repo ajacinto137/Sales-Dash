@@ -34,11 +34,16 @@
             {% if account.city_state_zip %}<span class="td-bulk-address">{{ account.city_state_zip }}</span>{% endif %}
             <div class="td-bulk-meta">
                 <span class="td-bulk-date">{{ 'Scheduled ' + account.scheduled_date if account.scheduled_date else 'Not scheduled' }}</span>
-                {% if account.vision_url %}
-                <a class="td-bulk-vision" href="{{ account.vision_url }}" target="_blank" rel="noopener noreferrer">Vision &#8599;</a>
-                {% else %}
-                <span class="td-bulk-vision-disabled">Vision unavailable</span>
-                {% endif %}
+                <span class="td-bulk-links">
+                    {% if account.vision_url %}
+                    <a class="td-bulk-vision" href="{{ account.vision_url }}" target="_blank" rel="noopener noreferrer">Vision &#8599;</a>
+                    {% else %}
+                    <span class="td-bulk-vision-disabled">Vision unavailable</span>
+                    {% endif %}
+                    {% if account.pas_url %}
+                    <a class="td-bulk-vision td-bulk-pas" href="{{ account.pas_url }}" target="_blank" rel="noopener noreferrer" title="Open this place in PAS">Open in PAS &#8599;</a>
+                    {% endif %}
+                </span>
             </div>
             {% if view == 'needs_attention' and attention_available %}
             {% include "_attention_controls.html" %}
@@ -69,7 +74,7 @@
                 <div class="td-bulk-grid-cell td-bulk-grid-head" data-sort-key="status" role="columnheader" tabindex="0">Status<span class="td-sort-arrow" data-sort-arrow></span></div>
                 <div class="td-bulk-grid-cell td-bulk-grid-head" data-sort-key="address" role="columnheader" tabindex="0">Address<span class="td-sort-arrow" data-sort-arrow></span></div>
                 <div class="td-bulk-grid-cell td-bulk-grid-head" data-sort-key="scheduled" role="columnheader" tabindex="0">Scheduled<span class="td-sort-arrow" data-sort-arrow></span></div>
-                <div class="td-bulk-grid-cell td-bulk-grid-head" data-sort-key="vision" role="columnheader" tabindex="0">Vision<span class="td-sort-arrow" data-sort-arrow></span></div>
+                <div class="td-bulk-grid-cell td-bulk-grid-head" data-sort-key="vision" role="columnheader" tabindex="0">Links<span class="td-sort-arrow" data-sort-arrow></span></div>
 
                 {% for account in accounts %}
                 <div class="td-bulk-grid-row" role="row"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}"{% endif %}>
@@ -83,6 +88,9 @@
                         <a class="td-bulk-vision" href="{{ account.vision_url }}" target="_blank" rel="noopener noreferrer">Vision &#8599;</a>
                         {% else %}
                         <span class="td-bulk-vision-disabled">—</span>
+                        {% endif %}
+                        {% if account.pas_url %}
+                        <a class="td-bulk-vision td-bulk-pas" href="{{ account.pas_url }}" target="_blank" rel="noopener noreferrer" title="Open this place in PAS">PAS &#8599;</a>
                         {% endif %}
                     </div>
                 </div>

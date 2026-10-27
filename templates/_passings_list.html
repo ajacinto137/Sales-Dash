@@ -63,7 +63,7 @@
 
             <div class="td-passing-meta-row">
                 {% if row.EmailAddress %}<span><span class="td-passing-meta-label">Email:</span>{{ row.EmailAddress }}</span>{% endif %}
-                <span><span class="td-passing-meta-label">Passing ID:</span><a class="td-passing-place-link" href="{{ row.planetweb_url }}" target="_blank" rel="noopener" title="Open this place in PlanetWeb">{{ row.PlaceID }}</a></span>
+                <span><span class="td-passing-meta-label">Passing ID:</span><a class="td-passing-place-link" href="{{ row.pas_url }}" target="_blank" rel="noopener" title="Open this place in PAS">{{ row.PlaceID }}</a></span>
                 {% if row.property_type_label %}<span><span class="td-passing-meta-label">Property:</span>{{ row.property_type_label }}</span>{% endif %}
                 {% if row.AddressUnits %}<span><span class="td-passing-meta-label">Units:</span>{{ row.AddressUnits }}</span>{% endif %}
                 {% if row.BecameAvailable %}<span><span class="td-passing-meta-label">Available:</span>{{ row.BecameAvailable.strftime('%m/%d/%Y') }}</span>{% endif %}
@@ -92,8 +92,8 @@
                 <button type="button" class="td-quick-action-btn" data-log-activity="{{ activity_type }}">Log {{ activity_type }}</button>
                 {% endfor %}
                 <button type="button" class="td-quick-action-btn" data-open-note-panel>+ Note</button>
-                <a class="td-quick-action-btn" href="{{ row.planetweb_url }}"
-                   target="_blank" rel="noopener" title="Open this place in PlanetWeb">Open in PlanetWeb &#8599;</a>
+                <a class="td-quick-action-btn" href="{{ row.pas_url }}"
+                   target="_blank" rel="noopener" title="Open this place in PAS">Open in PAS &#8599;</a>
                 {% if row.is_lead %}
                 <a class="td-quick-action-btn td-quick-action-btn--hubspot" href="{{ url_for('passings_open_hubspot', place_id=row.PlaceID) }}"
                    target="_blank" rel="noopener" title="Open this email's contact in HubSpot">Open in HubSpot &#8599;</a>
@@ -175,7 +175,7 @@
                         <td data-activity-rep-cell>{{ row.last_activity.rep_display_name if row.last_activity else '—' }}</td>
                         <td>{{ "{:,}".format(row.hubspot_calls.calls) if row.hubspot_calls else ('0' if row.is_lead else '—') }}</td>
                         <td>{{ row.hubspot_calls.last_call_display if row.hubspot_calls else '—' }}</td>
-                        <td><a class="td-passing-place-link" href="{{ row.planetweb_url }}" target="_blank" rel="noopener" title="Open this place in PlanetWeb">{{ row.PlaceID }}</a></td>
+                        <td><a class="td-passing-place-link" href="{{ row.pas_url }}" target="_blank" rel="noopener" title="Open this place in PAS">{{ row.PlaceID }}</a></td>
                     </tr>
                     {% endfor %}
                 </tbody>

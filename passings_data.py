@@ -80,14 +80,6 @@ def _today():
 
 PAGE_SIZE = 50
 
-# A passing's PlaceID is PlanetWeb's place id -- its page in PlanetWeb
-# (PAS), linked from every Passings & Leads card (added 2026-10-26).
-PLANETWEB_PLACE_URL = "https://pas.planet.net/Places/Detail?place_id={place_id}#Summary"
-
-
-def planetweb_place_url(place_id):
-    return PLANETWEB_PLACE_URL.format(place_id=int(place_id))
-
 TIME_RANGE_OPTIONS = [
     ("7d", "7 Days"),
     ("30d", "30 Days"),

@@ -39,6 +39,7 @@ from queries import (
     WEB_SALES_QUERY,
     SERVICE_CANCELLATIONS_QUERY,
     VISION_PACKAGES_QUERY,
+    pas_place_url,
 )
 from sales_metrics import (
     BULK_ACCOUNT_VIEWS,
@@ -2010,7 +2011,7 @@ def passings_page():
         if activity is not None:
             activity = {**activity, "activity_at_display": _format_note_timestamp(activity["activity_at"])}
         row["last_activity"] = activity
-        row["planetweb_url"] = passings_data.planetweb_place_url(row["PlaceID"])
+        row["pas_url"] = pas_place_url(row["PlaceID"])
         # HubSpot call count / last call for leads (2026-10-26) -- None
         # when the lead's email has no outbound HubSpot calls.
         stats = hubspot_call_stats.get((row["EmailAddress"] or "").strip().lower()) if row["is_lead"] else None

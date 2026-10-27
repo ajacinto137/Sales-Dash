@@ -164,6 +164,8 @@ def test_hubspot_call_filters_cover_leads_only():
     assert ids(pc.get_page({"hubspot_called": True, "hubspot_call_stats": upper}, "", "place_id", "asc", 1)) == [1]
 
 
-def test_planetweb_place_url():
-    import passings_data
-    assert passings_data.planetweb_place_url(204428) == "https://pas.planet.net/Places/Detail?place_id=204428#Summary"
+def test_pas_place_url():
+    from queries import pas_place_url
+    assert pas_place_url(204428) == "https://pas.planet.net/Places/Detail?place_id=204428#Summary"
+    assert pas_place_url(204428.0) == "https://pas.planet.net/Places/Detail?place_id=204428#Summary"
+    assert pas_place_url(None) is None and pas_place_url(float("nan")) is None

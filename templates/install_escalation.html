@@ -122,6 +122,7 @@
                         <td>
                             {{ a.address or '—' }}
                             <span class="td-cp-sub">{{ [a.city, a.state]|select|join(', ') }} {{ a.zip or '' }}</span>
+                            {% if a.pas_url %}<a class="td-cp-link td-cp-sub" href="{{ a.pas_url }}" target="_blank" rel="noopener noreferrer">Open in PAS &#8599;</a>{% endif %}
                         </td>
                         <td>
                             <span class="td-esc-ready">{{ a.job_type or '—' }} &middot; Ready</span>

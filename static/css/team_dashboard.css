@@ -3619,3 +3619,6 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-passing-hubspot-none { color: var(--td-text-muted); }
 .td-passing-place-link { color: var(--td-accent-blue); text-decoration: none; }
 .td-passing-place-link:hover { text-decoration: underline; }
+/* "Open in PAS" next to Vision on account cards (2026-10-26). */
+.td-bulk-links { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.td-bulk-pas { color: var(--td-accent-blue); }

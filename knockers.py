@@ -103,7 +103,7 @@ _QUERY = """
 SELECT order_id, referral_code, sale_date, first_name, last_name, address, apartment_suite,
        city, state, zipcode, municipality, subscriber_uuid, scheduled_status, installation_date,
        install_date, order_cancellation_date, service_cancellation_date, package_speed, voice,
-       payment_method
+       payment_method, place_id
 FROM external_rep_sales
 WHERE in_source
 """
@@ -145,6 +145,7 @@ def normalize(raw):
         "first_name": df["first_name"],
         "last_name": df["last_name"],
         "address": df["address"],
+        "place_id": df["place_id"] if "place_id" in df.columns else None,
         "apartment_suite": df["apartment_suite"],
         "city": df["city"],
         "state": df["state"].fillna("").astype(str).str.strip().str.upper(),

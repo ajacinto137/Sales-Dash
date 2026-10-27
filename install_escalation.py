@@ -23,7 +23,7 @@ import pandas as pd
 import db
 import db_migrations
 import permissions
-from queries import FIBER_INSTALL_JOB_TYPES_SQL
+from queries import FIBER_INSTALL_JOB_TYPES_SQL, pas_place_url
 from sales_metrics import _today
 
 READY_STATUS_ID = 8
@@ -62,7 +62,8 @@ SELECT
     fd.City,
     fd.State,
     fd.Zipcode,
-    fd.InsertDate
+    fd.InsertDate,
+    fd.NJPR_PlaceID AS PlaceID
 FROM FTTPScheduleJobs j
 JOIN FTTPScheduleSlots s
     ON s.ID = j.SlotID
@@ -148,6 +149,7 @@ def load_accounts(force=False):
                 "state": (_clean(job["State"]) or "").upper() or None,
                 "zip": _clean(job["Zipcode"]),
                 "ordered": job["InsertDate"].date() if job["InsertDate"] else None,
+                "pas_url": pas_place_url(job["PlaceID"]),
             })
         _cache.update(at=time.time(), day=today, rows=rows)
         return rows, None

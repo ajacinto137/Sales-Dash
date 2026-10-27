@@ -677,6 +677,15 @@ MIGRATIONS = [
         );
         """,
     ),
+    (
+        17,
+        "external_rep_sales.place_id (Open in PAS on account cards, 2026-10-26)",
+        """
+        -- The order's FTTPFormData.NJPR_PlaceID (PlanetWeb place), filled
+        -- by the next External Rep Sales sync. See external_sales_store.COLUMNS.
+        ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS place_id BIGINT;
+        """,
+    ),
 ]
 
 _schema_ready = False

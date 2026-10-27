@@ -10,6 +10,23 @@ import re
 FIBER_INSTALL_JOB_TYPE_IDS = (1, 10, 15)
 FIBER_INSTALL_JOB_TYPES_SQL = "(" + ", ".join(str(i) for i in FIBER_INSTALL_JOB_TYPE_IDS) + ")"
 
+# An order's FTTPFormData.NJPR_PlaceID (and a passing's PlaceID) is the
+# PlanetWeb place id -- its page in PAS, linked as "Open in PAS" from
+# Passings & Leads cards and every account card (2026-10-26).
+PAS_PLACE_URL = "https://pas.planet.net/Places/Detail?place_id={place_id}#Summary"
+
+
+def pas_place_url(place_id):
+    """PAS page for a place id, or None when there isn't one."""
+    if place_id is None:
+        return None
+    try:
+        if place_id != place_id:  # NaN
+            return None
+        return PAS_PLACE_URL.format(place_id=int(place_id))
+    except (TypeError, ValueError):
+        return None
+
 # Shared by MAIN_SALES_QUERY and WEB_SALES_QUERY -- everything but the WHERE.
 _SALES_SELECT = f"""
 SELECT
@@ -54,7 +71,9 @@ SELECT
 
     sched.StartDate,
 
-    fd.[SalesChannel_ID]
+    fd.[SalesChannel_ID],
+
+    fd.[NJPR_PlaceID] AS PlaceID
 
 FROM [PlanetWeb].[dbo].[FTTPFormData] fd
 
@@ -256,7 +275,9 @@ SELECT
         ELSE 'Scheduled'
     END AS Scheduled,
 
-    sched.StartDate
+    sched.StartDate,
+
+    fd.[NJPR_PlaceID] AS PlaceID
 
 FROM [PlanetWeb].[dbo].[FTTPFormData] fd
 

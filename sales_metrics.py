@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from queries import DOOR_KNOCKER_CODES, WEB_SALES_SOURCE_TOKEN
+from queries import DOOR_KNOCKER_CODES, WEB_SALES_SOURCE_TOKEN, pas_place_url
 
 # InsertDate on the PlanetWeb SQL Server is already written in
 # America/New_York local time, not UTC -- so sale_datetime only needs this
@@ -222,6 +222,7 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
         "city": df["City"] if "City" in df.columns else None,
         "state": df["State"] if "State" in df.columns else None,
         "zipcode": df["Zipcode"] if "Zipcode" in df.columns else None,
+        "place_id": df["PlaceID"] if "PlaceID" in df.columns else None,
     })
 
     row_count_ok = len(normalized) == original_count
@@ -1143,6 +1144,8 @@ def build_bulk_account_rows(df):
             "status": row["status"],
             "sales_channel": _clean_text(row["sales_channel"]),
             "vision_url": build_vision_url(state, row["subscriber_uuid"]),
+            # The order's PlanetWeb place page ("Open in PAS", 2026-10-26).
+            "pas_url": pas_place_url(row.get("place_id")),
         })
     return accounts
 
