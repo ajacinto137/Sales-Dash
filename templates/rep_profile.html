@@ -11,6 +11,7 @@
     <script src="{{ url_for('static', filename='js/outbound_calls.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/attention.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/passings.js') }}" defer></script>
 </head>
 <body class="td-body">
 {% include "_topnav.html" %}
@@ -60,6 +61,9 @@
                 Installs <span class="td-tab-count">{{ "{:,}".format(monthly_installs.total) }}</span>
             </button>
             <button type="button" class="td-tab" data-tab="monthly-status">Monthly Status</button>
+            <button type="button" class="td-tab" data-tab="checked-out">
+                Checked Out <span class="td-tab-count" data-checked-out-total>{{ "{:,}".format(checked_out|length) }}</span>
+            </button>
         </nav>
     </header>
 
@@ -300,6 +304,52 @@
         </div>
         {% else %}
         <p class="td-empty">No sales yet.</p>
+        {% endif %}
+    </section>
+
+    <!-- ================= Checked Out =================
+         Canonical name: "Checked Out" tab (added 2026-10-27). Passings &
+         Leads cards checked out to this rep (Check Out on /passings),
+         newest first, in the same card as /passings. Buckets are this
+         profile's own custom groups -- never shown anywhere else.
+         static/js/passings.js wires the filter chips/buckets/Return. -->
+    <section class="td-tab-panel" data-tab-panel="checked-out" style="display: none;"
+             data-checked-out data-rep-name="{{ rep_name }}">
+        <div class="td-section-heading">
+            <h2>Checked Out</h2>
+            <span class="td-muted-inline">Passings &amp; Leads accounts checked out to {{ rep_name }} &middot; buckets are only shown on this profile</span>
+        </div>
+
+        {% if not checked_out_available %}
+        <p class="td-empty">Checked out accounts couldn't be loaded right now. Try again in a minute.</p>
+        {% elif not checked_out %}
+        <p class="td-empty">Nothing checked out yet. Tick cards on <a href="{{ url_for('passings_page') }}">Passings &amp; Leads</a> and press Check Out.</p>
+        {% else %}
+        <div class="td-checkout-buckets">
+            <div class="td-checkout-bucket-chips" data-bucket-chips>
+                <button type="button" class="td-checkout-chip td-checkout-chip-active" data-bucket-filter="all">All <span data-bucket-count="all"></span></button>
+                <button type="button" class="td-checkout-chip" data-bucket-filter="">Unsorted <span data-bucket-count=""></span></button>
+                {% for bucket in checkout_buckets %}
+                <span class="td-checkout-chip-wrap" data-bucket-chip="{{ bucket.id }}">
+                    <button type="button" class="td-checkout-chip" data-bucket-filter="{{ bucket.id }}">{{ bucket.name }} <span data-bucket-count="{{ bucket.id }}"></span></button>
+                    <button type="button" class="td-checkout-chip-delete" data-bucket-delete="{{ bucket.id }}" title="Delete the {{ bucket.name }} bucket (its accounts go back to Unsorted)" aria-label="Delete bucket {{ bucket.name }}">&times;</button>
+                </span>
+                {% endfor %}
+            </div>
+            <form class="td-checkout-bucket-form" data-bucket-create>
+                <input type="text" class="td-search-input" maxlength="60" placeholder="New bucket name" data-bucket-name required>
+                <button type="submit" class="td-btn td-btn-ghost">+ Add Bucket</button>
+            </form>
+            <p class="td-error-panel-message" data-bucket-error style="display: none;"></p>
+        </div>
+
+        <div class="td-bulk-list">
+            {% set checkout_returnable = true %}
+            {% for row in checked_out %}
+            {% include "_passing_card.html" %}
+            {% endfor %}
+        </div>
+        <p class="td-empty" data-bucket-empty style="display: none;">No accounts in this bucket.</p>
         {% endif %}
     </section>
 

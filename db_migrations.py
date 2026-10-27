@@ -707,6 +707,36 @@ MIGRATIONS = [
         ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS sale_datetime TIMESTAMP;
         """,
     ),
+    (
+        20,
+        "passing_checkouts (Passings & Leads Check Out, 2026-10-27)",
+        """
+        -- A Passings & Leads card checked out to a sales rep; it shows on
+        -- that rep's Rep Profile "Checked Out" tab and stays on /passings.
+        -- One rep per place: checking it out again moves it. Return
+        -- deletes the row. rep_name is sales_reps.name, the Rep Profile key.
+        -- Buckets are a rep profile's own custom groups for its checked-out
+        -- cards; they never show anywhere else (by request).
+        CREATE TABLE IF NOT EXISTS passing_checkout_buckets (
+            id SERIAL PRIMARY KEY,
+            rep_name TEXT NOT NULL,
+            name TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_passing_checkout_buckets_rep_name
+            ON passing_checkout_buckets (rep_name, lower(name));
+        CREATE TABLE IF NOT EXISTS passing_checkouts (
+            place_id BIGINT PRIMARY KEY,
+            sales_rep_id INTEGER REFERENCES sales_reps(id),
+            rep_name TEXT NOT NULL,
+            checked_out_by_user_id INTEGER REFERENCES users(id),
+            checked_out_by_name TEXT,
+            checked_out_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            bucket_id INTEGER REFERENCES passing_checkout_buckets(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_passing_checkouts_rep_name ON passing_checkouts (rep_name);
+        """,
+    ),
 ]
 
 _schema_ready = False

@@ -3715,3 +3715,45 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
     vertical-align: middle;
 }
 .td-active-badge .td-active-dot { margin-right: 6px; }
+
+/* ---------------- Passings Check Out + Rep Profile Checked Out buckets (2026-10-27) ---------------- */
+.td-checkout-toolbar-row { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.td-checkout-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.td-checkout-bar .td-error-panel-message { margin: 0; }
+.td-checkout-select-all { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--td-text-secondary); cursor: pointer; }
+.td-checkout-checkbox { width: 16px; height: 16px; flex: none; accent-color: var(--td-accent-blue); cursor: pointer; }
+.td-checkout-col { width: 36px; text-align: center; }
+.td-passing-badge-checked-out { color: var(--td-green); background: var(--td-green-bg); }
+.td-checkout-table-tag { color: var(--td-green); }
+.td-quick-action-btn--return { color: var(--td-orange); }
+.td-quick-action-btn--return:hover { border-color: var(--td-orange); }
+.td-checkout-bucket-row { align-items: center; }
+.td-select-sm { padding: 3px 8px; font-size: 12px; }
+.td-checkout-buckets { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.td-checkout-bucket-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.td-checkout-chip-wrap { display: inline-flex; align-items: stretch; }
+.td-checkout-chip {
+    border: 1px solid var(--td-border);
+    background: var(--td-panel-alt);
+    color: var(--td-text-secondary);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.td-checkout-chip-wrap .td-checkout-chip { border-radius: 999px 0 0 999px; }
+.td-checkout-chip:hover { color: var(--td-text-primary); border-color: var(--td-accent-blue); }
+.td-checkout-chip-active { color: var(--td-text-primary); border-color: var(--td-accent-blue); background: var(--td-accent-blue-bg); }
+.td-checkout-chip-delete {
+    border: 1px solid var(--td-border);
+    border-left: none;
+    background: var(--td-panel-alt);
+    color: var(--td-text-muted);
+    border-radius: 0 999px 999px 0;
+    padding: 0 10px 0 8px;
+    cursor: pointer;
+}
+.td-checkout-chip-delete:hover { color: var(--td-orange); }
+.td-checkout-bucket-form { display: flex; gap: 8px; max-width: 420px; }
+.td-checkout-bucket-form .td-search-input { flex: 1; }

@@ -19,7 +19,21 @@
 {% if rows %}
 <div class="td-bulk-view" data-bulk-view>
 
-    <div class="td-bulk-view-toggle-row">
+    <div class="td-bulk-view-toggle-row td-checkout-toolbar-row">
+        {# Check Out (2026-10-27): ticked cards go to a rep's Rep Profile
+           "Checked Out" tab; they stay here too. static/js/passings.js. #}
+        <div class="td-checkout-bar" data-checkout-bar>
+            <label class="td-checkout-select-all"><input type="checkbox" data-checkout-select-all> Select page</label>
+            <span class="td-muted-inline" data-checkout-count>0 selected</span>
+            <select class="td-select" data-checkout-rep aria-label="Sales rep to check out to">
+                <option value="">Check out to…</option>
+                {% for r in checkout_reps %}
+                <option value="{{ r.id }}" {{ 'selected' if r.id == checkout_default_rep_id else '' }}>{{ r.name }}</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="td-btn td-btn-primary" data-checkout-submit disabled>Check Out</button>
+            <span class="td-error-panel-message" data-checkout-message style="display: none;"></span>
+        </div>
         <div class="td-chart-toggle">
             <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-bulk-view-btn="cards">Cards</button>
             <button type="button" class="td-chart-toggle-btn" data-bulk-view-btn="table">Table</button>
@@ -29,106 +43,8 @@
 
     <div class="td-bulk-list" data-bulk-view-panel="cards">
         {% for row in rows %}
-        <div class="td-passing-card{{ ' td-passing-card--hot' if row.category == 'commercial_hot_lead' else '' }}" data-passing-card data-place-id="{{ row.PlaceID }}">
-            <div class="td-passing-card-head">
-                <span class="td-passing-address">{{ row.FullAddress or '—' }}</span>
-            </div>
-            <span class="td-bulk-address">{{ row.City }}{% if row.City and row.State %}, {% endif %}{{ row.State }} {{ row.ZipCode }}</span>
-
-            <div class="td-passing-badges">
-                {% if row.category_label %}
-                <span class="td-passing-badge td-passing-badge-{{ row.category|replace('_', '-') }}">{{ row.category_label }}</span>
-                {% endif %}
-                {% if row.is_prequal_business %}
-                <span class="td-passing-badge td-passing-badge-prequal-business">Prequal as Business</span>
-                {% endif %}
-                {% if row.residential_mark %}
-                <span class="td-passing-badge td-passing-badge-residential" title="Marked by {{ row.residential_mark.marked_by_name or 'Unknown' }}{% if row.residential_mark.marked_at %} on {{ row.residential_mark.marked_at.strftime('%-m/%-d/%Y') }}{% endif %} -- hidden from the commercial lists">Marked Residential</span>
-                {% endif %}
-                <span class="td-passing-badge td-passing-badge-{{ 'available-now' if row.AvailabilityID == 1 else 'pre-order' }}">{{ row.availability_label }}</span>
-                {% if row.order_status %}
-                <span class="td-passing-badge td-order-status td-order-status-{{ row.order_status|lower|replace(' ', '-') }}" title="Order status at this place">{{ row.order_status }}</span>
-                {% endif %}
-                <span data-activity-badge>
-                    {% if row.last_activity %}
-                        {% if row.last_activity.activity_type == 'Call' %}
-                        <span class="td-passing-badge td-passing-badge-called">Called</span>
-                        {% elif row.last_activity.activity_type == 'Field Visit' %}
-                        <span class="td-passing-badge td-passing-badge-visited">Visited</span>
-                        {% else %}
-                        <span class="td-passing-badge td-passing-badge-called">{{ row.last_activity.activity_type }}</span>
-                        {% endif %}
-                    {% else %}
-                    <span class="td-passing-badge td-passing-badge-no-activity">No Activity</span>
-                    {% endif %}
-                </span>
-            </div>
-
-            <div class="td-passing-meta-row">
-                {% if row.EmailAddress %}<span><span class="td-passing-meta-label">Email:</span>{{ row.EmailAddress }}</span>{% endif %}
-                {% if row.is_lead %}<span><span class="td-passing-meta-label">Phone:</span>{% if row.phone_display %}<a class="td-passing-place-link" href="tel:{{ row.phone_tel }}">{{ row.phone_display }}</a>{% else %}NA{% endif %}</span>{% endif %}
-                <span><span class="td-passing-meta-label">Passing ID:</span><a class="td-passing-place-link" href="{{ row.pas_url }}" target="_blank" rel="noopener" title="Open this place in PAS">{{ row.PlaceID }}</a></span>
-                {% if row.property_type_label %}<span><span class="td-passing-meta-label">Property:</span>{{ row.property_type_label }}</span>{% endif %}
-                {% if row.AddressUnits %}<span><span class="td-passing-meta-label">Units:</span>{{ row.AddressUnits }}</span>{% endif %}
-                {% if row.BecameAvailable %}<span><span class="td-passing-meta-label">Available:</span>{{ row.BecameAvailable.strftime('%m/%d/%Y') }}</span>{% endif %}
-            </div>
-
-            <div class="td-passing-meta-row" data-last-activity-row style="{{ 'display: none;' if not row.last_activity else '' }}">
-                <span class="td-passing-meta-label">Last Activity:</span>
-                <span data-last-activity-text>{% if row.last_activity %}{{ row.last_activity.activity_type }} by {{ row.last_activity.rep_display_name or 'Unknown' }} &middot; {{ row.last_activity.activity_at_display }}{% endif %}</span>
-            </div>
-
-            {# HubSpot calls (2026-10-26): leads only, outbound HubSpot calls
-               to a contact with this email (hubspot_store.get_call_stats_by_email). #}
-            {% if row.is_lead and hubspot_calls_available %}
-            <div class="td-passing-meta-row td-passing-hubspot-row">
-                {% if row.hubspot_calls %}
-                <span><span class="td-passing-meta-label">HubSpot Calls:</span><span class="td-passing-hubspot-count">{{ "{:,}".format(row.hubspot_calls.calls) }}</span></span>
-                <span><span class="td-passing-meta-label">Last Call:</span>{{ row.hubspot_calls.last_call_display }}</span>
-                {% else %}
-                <span><span class="td-passing-meta-label">HubSpot Calls:</span><span class="td-passing-hubspot-none">Not called yet</span></span>
-                {% endif %}
-            </div>
-            {% endif %}
-
-            <div class="td-quick-actions" data-quick-actions>
-                {% for activity_type in activity_types %}
-                <button type="button" class="td-quick-action-btn" data-log-activity="{{ activity_type }}">Log {{ activity_type }}</button>
-                {% endfor %}
-                <button type="button" class="td-quick-action-btn" data-open-note-panel>+ Note</button>
-                <a class="td-quick-action-btn" href="{{ row.pas_url }}"
-                   target="_blank" rel="noopener" title="Open this place in PAS">Open in PAS &#8599;</a>
-                {% if row.is_lead %}
-                <a class="td-quick-action-btn td-quick-action-btn--hubspot" href="{{ url_for('passings_open_hubspot', place_id=row.PlaceID) }}"
-                   target="_blank" rel="noopener" title="Open this email's contact in HubSpot">Open in HubSpot &#8599;</a>
-                {% endif %}
-                {# "Residential Address" (2026-10-20): a commercial card that's
-                   really a house -- marking it moves it out of Commercial Hot
-                   Leads / Field Targets for everyone. Undo restores it. #}
-                {% if row.can_mark_residential %}
-                <button type="button" class="td-quick-action-btn td-quick-action-btn--residential" data-mark-residential="1"
-                        title="This is a house -- remove it from the commercial lists">Residential Address</button>
-                {% elif row.residential_mark %}
-                <button type="button" class="td-quick-action-btn" data-mark-residential="0"
-                        title="Put this back in the commercial lists">Undo Residential</button>
-                {% endif %}
-            </div>
-            <p class="td-error-panel-message" data-mark-residential-error style="display: none;"></p>
-
-            <div class="td-attention-panel" data-note-panel style="display: none;">
-                <select class="td-select" data-note-activity-type>
-                    {% for activity_type in activity_types %}
-                    <option value="{{ activity_type }}">{{ activity_type }}</option>
-                    {% endfor %}
-                </select>
-                <textarea class="td-search-input" rows="2" placeholder="Optional note…" data-note-input></textarea>
-                <div class="td-attention-actions">
-                    <button type="button" class="td-attention-link" data-note-save>Save</button>
-                    <button type="button" class="td-attention-link" data-note-cancel>Cancel</button>
-                </div>
-                <p class="td-error-panel-message" data-note-error style="display: none;"></p>
-            </div>
-        </div>
+        {% set checkout_selectable = true %}
+        {% include "_passing_card.html" %}
         {% endfor %}
     </div>
 
@@ -141,6 +57,7 @@
                         {% set next_dir = 'asc' if (selected.sort == key and selected.dir == 'desc') else 'desc' %}
                         <th><a class="td-sort-link" href="{{ url_for('passings_page', **dict(request.args.to_dict(), sort=key, dir=next_dir, page=1)) }}">{{ label }}{% if selected.sort == key %} {{ '▲' if selected.dir == 'asc' else '▼' }}{% endif %}</a></th>
                         {% endmacro %}
+                        <th class="td-checkout-col"></th>
                         {{ sort_th('address', 'Address') }}
                         {{ sort_th('city', 'City') }}
                         {{ sort_th('state', 'State') }}
@@ -165,13 +82,14 @@
                 <tbody>
                     {% for row in rows %}
                     <tr data-passing-row data-place-id="{{ row.PlaceID }}">
+                        <td class="td-checkout-col"><input type="checkbox" class="td-checkout-checkbox" data-checkout-select value="{{ row.PlaceID }}" aria-label="Select {{ row.FullAddress or row.PlaceID }} to check out"></td>
                         <td><span class="td-cell-truncate" title="{{ row.FullAddress }}">{{ row.FullAddress or '—' }}</span></td>
                         <td>{{ row.City or '—' }}</td>
                         <td>{{ row.State or '—' }}</td>
                         <td>{{ row.ZipCode or '—' }}</td>
                         <td>{{ row.EmailAddress or '—' }}</td>
                         <td>{{ (row.phone_display or 'NA') if row.is_lead else '—' }}</td>
-                        <td>{{ row.order_status or '—' }}</td>
+                        <td>{{ row.order_status or '—' }}{% if row.checkout %} &middot; <span class="td-checkout-table-tag">Checked out to {{ row.checkout.rep_name }}</span>{% endif %}</td>
                         <td>{{ row.category_label or '—' }}</td>
                         <td>{{ row.property_type_label or '—' }}</td>
                         <td>{{ 'Yes' if row.is_prequal_business else 'No' }}</td>

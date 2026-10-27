@@ -1223,6 +1223,10 @@ def rep_profile(rep_name):
     # get_rep_achievements()'s docstring. Always all-time, purely display.
     achievements = get_rep_achievements(normalized, rep_name)
 
+    # Checked Out tab (added 2026-10-27) -- Passings & Leads cards checked
+    # out to this rep, newest checkout first.
+    checked_out_available, checked_out, hubspot_calls_available = _checked_out_passings(rep_name)
+
     # Needs Attention workflow controls -- see attach_attention_metadata()
     # and README.md "Needs Attention Workflow". needs_attention_count
     # stays len(needs_attention) below, computed before this call and
@@ -1263,12 +1267,54 @@ def rep_profile(rep_name):
         attention_progress=attention_progress,
         attention_statuses=attention_store.ATTENTION_STATUSES,
         achievements=achievements,
+        checked_out=checked_out,
+        checked_out_available=checked_out_available,
+        checkout_buckets=passings_activity_store.get_buckets(rep_name)[1],
+        activity_types=passings_activity_store.ACTIVITY_TYPES,
+        hubspot_calls_available=hubspot_calls_available,
         hubspot_context=hubspot_context,
         can_view_call_history=permissions.can_view_call_history(viewer, rep_name),
         call_date_ranges=hubspot_logic.DATE_RANGES,
         call_default_range=hubspot_logic.DEFAULT_DATE_RANGE,
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+def _checked_out_passings(rep_name):
+    """(available, rows, hubspot_calls_available) for the Rep Profile's
+    Checked Out tab: the Passings & Leads rows checked out to this rep,
+    decorated like /passings cards, newest checkout first. available is
+    False when appdb or the passings data couldn't be read."""
+    available, checkouts = passings_activity_store.get_checkouts(rep_name)
+    if not available or not checkouts:
+        return available, [], False
+    passings_cache.start_scheduler()
+    source = passings_cache if passings_cache.wait_until_ready(20) else passings_data
+    _, residential_marks = passings_activity_store.get_residential_marks()
+    filters = {"place_id_in": sorted(checkouts), "residential_ids": set(residential_marks)}
+    rows, page = [], 1
+    while True:
+        result = source.get_page(filters, None, "place_id", "asc", page)
+        if not result.get("ok"):
+            return False, [], False
+        rows.extend(result["rows"])
+        if page >= result["total_pages"]:
+            break
+        page += 1
+    billed_uuids = _billed_subscriber_uuids()
+    order_statuses = (
+        passings_cache.order_statuses(billed_uuids)
+        if billed_uuids is not None and passings_cache._state["orders"] is not None else None
+    )
+    hubspot_calls_available, hubspot_call_stats = hubspot_store.get_call_stats_by_email()
+    _decorate_passing_rows(rows, order_statuses, hubspot_call_stats, residential_marks, checkouts)
+    for row in rows:
+        row["checkout"] = {
+            **row["checkout"],
+            "checked_out_at_display": _format_note_timestamp(row["checkout"]["checked_out_at"]),
+        }
+    rows.sort(key=lambda r: r["checkout"]["checked_out_at"], reverse=True)
+    return True, rows, hubspot_calls_available
 
 
 # ================================================================
@@ -1880,6 +1926,46 @@ def _billed_subscriber_uuids():
     return _billed_uuids_cache["uuids"]
 
 
+def _decorate_passing_rows(rows, order_statuses, hubspot_call_stats, residential_marks, checkouts):
+    """Adds the appdb/snapshot extras a Passing card shows (last activity,
+    PAS link, order status, HubSpot calls, residential mark, checkout) to
+    rows in place. Shared by /passings and the Rep Profile's Checked Out
+    tab. Returns whether last activity could be loaded."""
+    last_activity_available, last_activity_map = passings_activity_store.get_last_activity_map(
+        [row["PlaceID"] for row in rows]
+    )
+    for row in rows:
+        activity = last_activity_map.get(row["PlaceID"])
+        if activity is not None:
+            activity = {**activity, "activity_at_display": _format_note_timestamp(activity["activity_at"])}
+        row["last_activity"] = activity
+        row["pas_url"] = pas_place_url(row["PlaceID"])
+        row["order_status"] = (
+            order_statuses.get(int(row["PlaceID"]), passings_cache.NO_ORDER) if order_statuses is not None else None
+        )
+        # HubSpot call count / last call for leads (2026-10-26) -- None
+        # when the lead's email has no outbound HubSpot calls.
+        stats = hubspot_call_stats.get((row["EmailAddress"] or "").strip().lower()) if row["is_lead"] else None
+        row["hubspot_calls"] = (
+            {"calls": stats["calls"], "last_call_display": _format_note_timestamp(stats["last_call_at"])}
+            if stats else None
+        )
+        # Offer "Residential Address" on commercial cards; once marked, the
+        # card shows as residential with an Undo.
+        row["can_mark_residential"] = row["category"] in ("commercial_hot_lead", "commercial_field_target")
+        mark = residential_marks.get(row["PlaceID"])
+        row["residential_mark"] = mark
+        if mark:
+            reclassified = passings_classification.classify(
+                {"email": row["EmailAddress"], "prequal_as_business": 0, "class_name": None}
+            )
+            row.update({k: reclassified[k] for k in ("category", "category_label", "primary_action", "property_type_label")})
+            row["can_mark_residential"] = False
+        # Check Out (2026-10-27): who this place is checked out to, if anyone.
+        row["checkout"] = checkouts.get(row["PlaceID"])
+    return last_activity_available
+
+
 @app.route("/passings")
 @auth.login_required
 def passings_page():
@@ -2042,36 +2128,10 @@ def passings_page():
     low_penetration_labels = [m["market"] for m in market_by_city_low_penetration]
     low_penetration_values = [round(m["lead_penetration_pct"], 1) for m in market_by_city_low_penetration]
 
-    last_activity_available, last_activity_map = passings_activity_store.get_last_activity_map(
-        [row["PlaceID"] for row in page_result["rows"]]
+    _, checkouts = passings_activity_store.get_checkouts()
+    last_activity_available = _decorate_passing_rows(
+        page_result["rows"], order_statuses, hubspot_call_stats, residential_marks, checkouts
     )
-    for row in page_result["rows"]:
-        activity = last_activity_map.get(row["PlaceID"])
-        if activity is not None:
-            activity = {**activity, "activity_at_display": _format_note_timestamp(activity["activity_at"])}
-        row["last_activity"] = activity
-        row["pas_url"] = pas_place_url(row["PlaceID"])
-        row["order_status"] = (
-            order_statuses.get(int(row["PlaceID"]), passings_cache.NO_ORDER) if order_statuses is not None else None
-        )
-        # HubSpot call count / last call for leads (2026-10-26) -- None
-        # when the lead's email has no outbound HubSpot calls.
-        stats = hubspot_call_stats.get((row["EmailAddress"] or "").strip().lower()) if row["is_lead"] else None
-        row["hubspot_calls"] = (
-            {"calls": stats["calls"], "last_call_display": _format_note_timestamp(stats["last_call_at"])}
-            if stats else None
-        )
-        # Offer "Residential Address" on commercial cards; once marked, the
-        # card shows as residential with an Undo.
-        row["can_mark_residential"] = row["category"] in ("commercial_hot_lead", "commercial_field_target")
-        mark = residential_marks.get(row["PlaceID"])
-        row["residential_mark"] = mark
-        if mark:
-            reclassified = passings_classification.classify(
-                {"email": row["EmailAddress"], "prequal_as_business": 0, "class_name": None}
-            )
-            row.update({k: reclassified[k] for k in ("category", "category_label", "primary_action", "property_type_label")})
-            row["can_mark_residential"] = False
 
     reps_with_activity = passings_activity_store.get_reps_with_activity()
     filter_options = source.get_filter_options()
@@ -2101,6 +2161,9 @@ def passings_page():
         snapshot_filters_ignored=snapshot_filters_active and (source is passings_data or order_statuses is None),
         order_status_options=passings_cache.ORDER_STATUSES,
         activity_types=passings_activity_store.ACTIVITY_TYPES,
+        # Every Sales Rep (by request, 2026-10-27), not just reps with a login.
+        checkout_reps=user_store.list_sales_reps(),
+        checkout_default_rep_id=(auth.current_user() or {}).get("sales_rep_id"),
         category_options=PASSINGS_CATEGORY_OPTIONS,
         sort_options=PASSINGS_SORT_OPTIONS,
         time_range_options=passings_data.TIME_RANGE_OPTIONS,
@@ -2132,6 +2195,66 @@ def passings_mark_residential():
     payload = request.get_json(silent=True) or {}
     ok, error = passings_activity_store.set_residential_mark(
         payload.get("place_id"), bool(payload.get("residential")), auth.current_user()
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/passings/checkout", methods=["POST"])
+@auth.login_required
+def passings_checkout():
+    """Check Out (2026-10-27): the selected cards go to one sales rep's
+    Rep Profile "Checked Out" tab. They stay on /passings. Any logged-in
+    user may check out to any Sales Rep (check_out() rejects unknown ones)."""
+    payload = request.get_json(silent=True) or {}
+    ok, error, count = passings_activity_store.check_out(
+        payload.get("place_ids"), payload.get("sales_rep_id"), auth.current_user()
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True, "count": count})
+
+
+@app.route("/passings/checkout/return", methods=["POST"])
+@auth.login_required
+def passings_checkout_return():
+    """"Return" on a Checked Out card: takes it off the rep's profile."""
+    payload = request.get_json(silent=True) or {}
+    ok, error = passings_activity_store.return_checkout(payload.get("place_id"))
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
+# Checked Out buckets (2026-10-27): each Rep Profile's own custom groups
+# for its checked-out cards -- scoped to that rep, never shown elsewhere.
+
+@app.route("/dashboard/reps/<rep_name>/checkout-buckets", methods=["POST"])
+@auth.login_required
+def checkout_bucket_create(rep_name):
+    payload = request.get_json(silent=True) or {}
+    ok, error, bucket = passings_activity_store.create_bucket(rep_name, payload.get("name"))
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True, "bucket": bucket})
+
+
+@app.route("/dashboard/reps/<rep_name>/checkout-buckets/<int:bucket_id>/delete", methods=["POST"])
+@auth.login_required
+def checkout_bucket_delete(rep_name, bucket_id):
+    ok, error = passings_activity_store.delete_bucket(rep_name, bucket_id)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/dashboard/reps/<rep_name>/checkout-buckets/assign", methods=["POST"])
+@auth.login_required
+def checkout_bucket_assign(rep_name):
+    payload = request.get_json(silent=True) or {}
+    ok, error = passings_activity_store.set_checkout_bucket(
+        rep_name, payload.get("place_id"), payload.get("bucket_id")
     )
     if not ok:
         return jsonify({"ok": False, "error": error}), 400

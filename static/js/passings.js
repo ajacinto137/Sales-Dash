@@ -179,4 +179,175 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         }
     });
+    function postJson(url, body) {
+        return fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }).then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (data) {
+                if (!res.ok || !data.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+                return data;
+            });
+        });
+    }
+
+    function showError(el, message) {
+        if (!el) return;
+        el.textContent = message;
+        el.style.display = message ? "block" : "none";
+    }
+
+    // ---- Check Out (2026-10-27): tick cards (or table rows), pick a
+    // rep, Check Out. Cards and table rows share data-place-id, so a box
+    // ticked in one view is ticked in the other. Reloads afterwards so the
+    // "Checked out to" badges show. ----
+    var checkoutBar = document.querySelector("[data-checkout-bar]");
+    if (checkoutBar) {
+        var boxes = document.querySelectorAll("[data-checkout-select]");
+        var selectAll = checkoutBar.querySelector("[data-checkout-select-all]");
+        var countEl = checkoutBar.querySelector("[data-checkout-count]");
+        var repSelect = checkoutBar.querySelector("[data-checkout-rep]");
+        var submitBtn = checkoutBar.querySelector("[data-checkout-submit]");
+        var messageEl = checkoutBar.querySelector("[data-checkout-message]");
+
+        var selectedIds = function () {
+            var ids = {};
+            boxes.forEach(function (box) { if (box.checked) ids[box.value] = true; });
+            return Object.keys(ids);
+        };
+        var refresh = function () {
+            var n = selectedIds().length;
+            countEl.textContent = n + " selected";
+            submitBtn.disabled = n === 0 || !repSelect.value;
+            var all = boxes.length > 0 && Array.prototype.every.call(boxes, function (b) { return b.checked; });
+            selectAll.checked = all;
+        };
+        boxes.forEach(function (box) {
+            box.addEventListener("change", function () {
+                document.querySelectorAll('[data-checkout-select][value="' + box.value + '"]').forEach(function (other) {
+                    other.checked = box.checked;
+                });
+                refresh();
+            });
+        });
+        selectAll.addEventListener("change", function () {
+            boxes.forEach(function (box) { box.checked = selectAll.checked; });
+            refresh();
+        });
+        repSelect.addEventListener("change", refresh);
+        submitBtn.addEventListener("click", function () {
+            var ids = selectedIds();
+            if (!ids.length || !repSelect.value) return;
+            submitBtn.disabled = true;
+            showError(messageEl, "");
+            postJson("/passings/checkout", { place_ids: ids, sales_rep_id: repSelect.value })
+                .then(function () { window.location.reload(); })
+                .catch(function (err) {
+                    showError(messageEl, err.message);
+                    refresh();
+                });
+        });
+        refresh();
+    }
+
+    // ---- Rep Profile "Checked Out" tab: bucket chips filter the cards,
+    // each card's Bucket dropdown moves it, Return takes it off the tab.
+    // Buckets belong to this profile only. ----
+    var checkedOut = document.querySelector("[data-checked-out]");
+    if (!checkedOut) return;
+    var repBase = "/dashboard/reps/" + encodeURIComponent(checkedOut.getAttribute("data-rep-name")) + "/checkout-buckets";
+    var bucketError = checkedOut.querySelector("[data-bucket-error]");
+    var emptyEl = checkedOut.querySelector("[data-bucket-empty]");
+    var activeFilter = "all";
+
+    function applyBuckets() {
+        var counts = { all: 0 };
+        var shown = 0;
+        checkedOut.querySelectorAll("[data-passing-card]").forEach(function (card) {
+            var bucket = card.getAttribute("data-bucket-id") || "";
+            counts.all += 1;
+            counts[bucket] = (counts[bucket] || 0) + 1;
+            var visible = activeFilter === "all" || activeFilter === bucket;
+            card.style.display = visible ? "" : "none";
+            if (visible) shown += 1;
+        });
+        checkedOut.querySelectorAll("[data-bucket-count]").forEach(function (el) {
+            el.textContent = "(" + (counts[el.getAttribute("data-bucket-count")] || 0) + ")";
+        });
+        var total = document.querySelector("[data-checked-out-total]");
+        if (total) total.textContent = counts.all.toLocaleString();
+        if (emptyEl) emptyEl.style.display = shown ? "none" : "block";
+    }
+
+    checkedOut.querySelectorAll("[data-bucket-filter]").forEach(function (chip) {
+        chip.addEventListener("click", function () {
+            activeFilter = chip.getAttribute("data-bucket-filter");
+            checkedOut.querySelectorAll("[data-bucket-filter]").forEach(function (c) {
+                c.classList.toggle("td-checkout-chip-active", c === chip);
+            });
+            applyBuckets();
+        });
+    });
+
+    var createForm = checkedOut.querySelector("[data-bucket-create]");
+    if (createForm) {
+        createForm.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var input = createForm.querySelector("[data-bucket-name]");
+            showError(bucketError, "");
+            postJson(repBase, { name: input.value })
+                .then(function () { window.location.hash = "checked-out"; window.location.reload(); })
+                .catch(function (err) { showError(bucketError, err.message); });
+        });
+    }
+
+    checkedOut.querySelectorAll("[data-bucket-delete]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            showError(bucketError, "");
+            postJson(repBase + "/" + btn.getAttribute("data-bucket-delete") + "/delete", {})
+                .then(function () { window.location.hash = "checked-out"; window.location.reload(); })
+                .catch(function (err) { showError(bucketError, err.message); });
+        });
+    });
+
+    checkedOut.querySelectorAll("[data-passing-card]").forEach(function (card) {
+        var placeId = card.getAttribute("data-place-id");
+        var select = card.querySelector("[data-checkout-bucket-select]");
+        if (select) {
+            select.addEventListener("change", function () {
+                var previous = card.getAttribute("data-bucket-id") || "";
+                select.disabled = true;
+                showError(bucketError, "");
+                postJson(repBase + "/assign", { place_id: placeId, bucket_id: select.value || null })
+                    .then(function () {
+                        card.setAttribute("data-bucket-id", select.value);
+                        applyBuckets();
+                    })
+                    .catch(function (err) {
+                        select.value = previous;
+                        showError(bucketError, err.message);
+                    })
+                    .then(function () { select.disabled = false; });
+            });
+        }
+        var returnBtn = card.querySelector("[data-checkout-return]");
+        if (returnBtn) {
+            returnBtn.addEventListener("click", function () {
+                returnBtn.disabled = true;
+                showError(bucketError, "");
+                postJson("/passings/checkout/return", { place_id: placeId })
+                    .then(function () {
+                        card.remove();
+                        applyBuckets();
+                    })
+                    .catch(function (err) {
+                        returnBtn.disabled = false;
+                        showError(bucketError, err.message);
+                    });
+            });
+        }
+    });
+
+    applyBuckets();
 });
