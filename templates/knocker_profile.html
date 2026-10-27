@@ -111,10 +111,8 @@
                     <td class="td-magenta"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='needs_attention', **b_args) }}">{{ b.needs_attention }}</a></td>
                 </tr>
                 {% endfor %}
-                </tbody>
-                <tfoot>
                 {% for label, r in [('Outside a blitz', rep_blitz_outside), ('All Time', rep_blitz_total)] if r %}
-                <tr class="td-channel-state-total">
+                <tr class="td-channel-state-total" data-sort-fixed>
                     <td class="td-rep-cell"{% if loop.first %} data-formula="Sales on days that weren't part of a blitz"{% endif %}>{{ label }}</td>
                     <td></td><td></td>
                     <td class="td-text-primary">{{ r.sales }}</td>
@@ -127,7 +125,7 @@
                     <td class="td-magenta">{{ r.needs_attention }}</td>
                 </tr>
                 {% endfor %}
-                </tfoot>
+                </tbody>
             </table>
         </div></div>
     </section>
