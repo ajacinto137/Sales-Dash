@@ -2546,6 +2546,9 @@ def knockers_page():
         "dir": sort_dir if key == sort else None,
         "next_dir": ("asc" if sort_dir == "desc" else "desc") if key == sort else default_dir,
     } for key, label, default_dir in knockers.KNOCKER_TABLE_COLUMNS]
+    # The rates sit in their own table to the right (2026-10-26, by request).
+    rate_columns = [c for c in table_columns if c["key"] in knockers.KNOCKER_RATE_COLUMN_KEYS]
+    table_columns = [c for c in table_columns if c["key"] not in knockers.KNOCKER_RATE_COLUMN_KEYS]
 
     state_rows, state_total = knockers.state_rows(period_df)
 
@@ -2569,7 +2572,7 @@ def knockers_page():
         daily_averages=calculate_daily_averages(df),
         monthly_forecast=calculate_monthly_forecast(df),
         status=knockers.status_summary(period_df),
-        rows=rows, active_codes=active_codes, table_columns=table_columns, sort=sort, sort_dir=sort_dir,
+        rows=rows, active_codes=active_codes, table_columns=table_columns, rate_columns=rate_columns, sort=sort, sort_dir=sort_dir,
         state_rows=state_rows, state_total=state_total,
         town_rows=knockers.town_rows(period_df),
         rep_monthly_activity=calculate_rep_monthly_activity(df, None, cal_year, cal_month),

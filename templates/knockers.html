@@ -157,20 +157,26 @@
                 <input class="td-date-input" type="search" name="search" value="{{ search }}" placeholder="Find a code…" aria-label="Find a referral code">
             </form>
         </div>
+        {# Rates live in a second table to the right (2026-10-26, by
+           request). Both tables render the same rows in the same order
+           and .td-kn-board fixes their row heights, so each rate row
+           lines up with its code. #}
+        {% macro sort_header(col) %}
+        <th{% if formulas[col.key] %} data-formula="{{ formulas[col.key] }}"{% endif %}>
+            <a class="td-sort-link{{ ' td-sort-active' if col.active else '' }}"
+               href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
+                {{ col.label }}{% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
+            </a>
+        </th>
+        {% endmacro %}
+        <div class="td-kn-board">
         <div class="td-table-card">
             <div class="td-table-scroll">
                 <table class="td-table">
                     <thead>
                         <tr>
                             <th>#</th>
-                            {% for col in table_columns %}
-                            <th{% if formulas[col.key] %} data-formula="{{ formulas[col.key] }}"{% endif %}>
-                                <a class="td-sort-link{{ ' td-sort-active' if col.active else '' }}"
-                                   href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
-                                    {{ col.label }}{% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
-                                </a>
-                            </th>
-                            {% endfor %}
+                            {% for col in table_columns %}{{ sort_header(col) }}{% endfor %}
                         </tr>
                     </thead>
                     <tbody>
@@ -181,18 +187,36 @@
                             {% for key, status_key, color in [('sales', 'all', 'td-text-primary'), ('installed', 'installed', 'td-green')] %}
                             <td class="{{ color }}"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=status_key, **acct_args) }}">{{ row[key] }}</a></td>
                             {% endfor %}
-                            <td class="td-green">{{ "%.1f"|format(row.all_time_install_rate) ~ '%' if row.all_time_install_rate is not none else '—' }}</td>
-                            <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status='card_on_file', **acct_args) }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' if row.card_on_file_rate is not none else '—' }}</a></td>
                             {% for key, color in [('pending', 'td-yellow'), ('needs_attention', 'td-magenta'), ('cancelled', 'td-orange'), ('service_cancelled', 'td-purple')] %}
                             <td class="{{ color }}">{% if row[key] %}<a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=key, **acct_args) }}">{{ row[key] }}</a>{% else %}0{% endif %}</td>
                             {% endfor %}
                         </tr>
                         {% else %}
-                        <tr><td colspan="10" class="td-empty-row">No door-knocker sales for this period.</td></tr>
+                        <tr><td colspan="8" class="td-empty-row">No door-knocker sales for this period.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+        </div>
+        {% if rows %}
+        <div class="td-table-card td-kn-board-rates">
+            <div class="td-table-scroll">
+                <table class="td-table">
+                    <thead>
+                        <tr>{% for col in rate_columns %}{{ sort_header(col) }}{% endfor %}</tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status='card_on_file', **acct_args) }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' if row.card_on_file_rate is not none else '—' }}</a></td>
+                            <td class="td-green">{{ "%.1f"|format(row.all_time_install_rate) ~ '%' if row.all_time_install_rate is not none else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
         </div>
     </section>
 

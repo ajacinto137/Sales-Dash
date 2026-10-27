@@ -3631,22 +3631,19 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-order-status-order-cancelled { color: var(--td-accent-magenta); background: var(--td-accent-magenta-bg); }
 .td-order-status-no-order { color: var(--td-text-muted); }
 
-/* Knocker Profile Blitzes (2026-10-26): table on the left, the current
-   blitz's and all-time Card on File / Install Rate tiles on the right;
-   stacks under the table on narrow screens. */
-.td-kn-blitz-split {
+/* Knocker Leaderboard + its rates table to the right (2026-10-26). The
+   two tables share row order; fixed header/row heights and no wrapping
+   keep each rate row level with its referral code. */
+.td-kn-board {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 240px;
+    grid-template-columns: minmax(0, 1fr) 260px;
     gap: 16px;
     align-items: start;
 }
-.td-kn-blitz-rates { display: flex; flex-direction: column; gap: 18px; }
-.td-kn-blitz-rate-group { display: flex; flex-direction: column; gap: 8px; }
-.td-kn-blitz-rate-group > p { margin: 0; }
-.td-kn-blitz-rate-group .td-profile-metric { padding: 14px 16px; gap: 6px; }
-.td-kn-blitz-rate-group .td-profile-metric-value { font-size: 24px; }
-@media (max-width: 900px) {
-    .td-kn-blitz-split { grid-template-columns: minmax(0, 1fr); }
-    .td-kn-blitz-rates { flex-direction: row; flex-wrap: wrap; }
-    .td-kn-blitz-rate-group { flex: 1 1 200px; }
+.td-kn-board thead tr { height: 58px; }
+.td-kn-board tbody tr { height: 48px; }
+.td-kn-board tbody td { padding-top: 0; padding-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-kn-board .td-table-scroll { overflow-y: hidden; }
+@media (max-width: 640px) {
+    .td-kn-board { grid-template-columns: minmax(0, 1fr) 170px; gap: 8px; }
 }
