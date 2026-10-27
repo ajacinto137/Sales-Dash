@@ -42,8 +42,9 @@ def test_query_matches_vba_source():
 
 
 def test_columns_cover_all_21_fields_with_spec_labels():
-    # The VBA query's 21 fields + Place ID (added 2026-10-26 for "Open in PAS").
-    assert len(store.SOURCE_COLUMNS) == 22
+    # The VBA query's 21 fields + Place ID (added 2026-10-26 for "Open in PAS")
+    # + Sale Time (2026-10-26, knocker active dot).
+    assert len(store.SOURCE_COLUMNS) == 23
     assert [c[3] for c in store.COLUMNS if not c[1]] == [
         "Install Date", "Order Cancellation Date", "Service Cancellation Date"]
     labels = {src: label for _key, src, _col, label, _shown in store.SOURCE_COLUMNS}
@@ -53,7 +54,7 @@ def test_columns_cover_all_21_fields_with_spec_labels():
         "State": "State", "Zipcode": "ZIP Code", "ReferralData": "External Rep", "Date": "Sale Date", "Q1": "Q1",
         "PhoneNumber": "Phone Number", "Municipality": "Municipality", "Cc_PayBy": "Payment Method",
         "vi_subscriber_id": "Subscriber ID", "vi_subscriber_uuid": "Subscriber UUID", "Voice": "Voice",
-        "Scheduled": "Scheduling Status", "StartDate": "Installation Date", "PlaceID": "Place ID",
+        "Scheduled": "Scheduling Status", "StartDate": "Installation Date", "PlaceID": "Place ID", "DateTime": "Sale Time",
     }
 
 

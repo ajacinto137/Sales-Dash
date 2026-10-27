@@ -24,7 +24,7 @@
         <div class="td-profile-headline">
             <div class="td-header-titles">
                 <p class="td-profile-subtitle">Door Knocker &middot; Referral Code</p>
-                <h1 class="td-profile-name">{{ code }}</h1>
+                <h1 class="td-profile-name">{{ code }}{% if active %} <span class="td-active-badge" title="Sold in the last 24 hours"><span class="td-active-dot"></span>Rep Active</span>{% endif %}</h1>
                 <p class="td-cp-subline">
                     {{ "{:,}".format(all_time.sales) }} all-time sales &middot; {{ "{:,}".format(all_time.installed) }} installed
                     {% if all_time.install_rate is not none %}<span data-formula="{{ formulas.all_time_install_rate }}">({{ "%.1f"|format(all_time.install_rate) }}% all-time install rate)</span>{% endif %}

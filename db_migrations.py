@@ -698,6 +698,15 @@ MIGRATIONS = [
         WHERE id = 1 AND synced_from IS NULL AND initial_sync_completed_at IS NOT NULL;
         """,
     ),
+    (
+        19,
+        "external_rep_sales.sale_datetime (knocker active dot, 2026-10-26)",
+        """
+        -- FTTPFormData.InsertDate (Eastern local time). Filled for every
+        -- row by the next External Rep Sales sync. See external_sales_store.COLUMNS.
+        ALTER TABLE external_rep_sales ADD COLUMN IF NOT EXISTS sale_datetime TIMESTAMP;
+        """,
+    ),
 ]
 
 _schema_ready = False

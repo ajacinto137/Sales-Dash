@@ -154,6 +154,7 @@
                 <input type="hidden" name="period" value="{{ period }}">
                 <input type="hidden" name="start" value="{{ custom_start }}">
                 <input type="hidden" name="end" value="{{ custom_end }}">
+                <input type="hidden" name="cof" value="{{ cof_view }}">
                 <input class="td-date-input" type="search" name="search" value="{{ search }}" placeholder="Find a code…" aria-label="Find a referral code">
             </form>
         </div>
@@ -163,8 +164,20 @@
            lines up with its code. #}
         {% macro sort_header(col) %}
         <th{% if formulas[col.key] %} data-formula="{{ formulas[col.key] }}"{% endif %}>
+            {% if col.key == 'card_on_file_rate' %}
+            {# Card on File: latest blitz (default) or all time. #}
+            <form class="td-kn-cof-form" method="get" action="{{ url_for('knockers_page', _anchor='knocker-leaderboard') }}">
+                {% for name, value in [('period', period), ('start', custom_start), ('end', custom_end), ('search', search), ('sort', sort), ('dir', sort_dir)] %}
+                <input type="hidden" name="{{ name }}" value="{{ value }}">
+                {% endfor %}
+                <select class="td-kn-cof-select" name="cof" data-autosubmit aria-label="Card on File rate to show">
+                    <option value="blitz"{{ ' selected' if cof_view == 'blitz' }}>Current Blitz</option>
+                    <option value="all_time"{{ ' selected' if cof_view == 'all_time' }}>All Time</option>
+                </select>
+            </form>
+            {% endif %}
             <a class="td-sort-link{{ ' td-sort-active' if col.active else '' }}"
-               href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
+               href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, cof=cof_view, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
                 {{ col.label }}{% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
             </a>
         </th>
@@ -183,7 +196,7 @@
                         {% for row in rows %}
                         <tr>
                             <td class="td-rank">{{ row.rank }}</td>
-                            <td class="td-rep-cell"><a class="td-rep-link" href="{{ url_for('knocker_profile', code=row.code, period=period, start=custom_start, end=custom_end) }}">{{ row.code }}</a></td>
+                            <td class="td-rep-cell">{% if row.active %}<span class="td-active-dot" title="Rep active · sold in the last 24 hours"></span>{% endif %}<a class="td-rep-link" href="{{ url_for('knocker_profile', code=row.code, period=period, start=custom_start, end=custom_end) }}">{{ row.code }}</a></td>
                             {% for key, status_key, color in [('sales', 'all', 'td-text-primary'), ('installed', 'installed', 'td-green')] %}
                             <td class="{{ color }}"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=status_key, **acct_args) }}">{{ row[key] }}</a></td>
                             {% endfor %}
@@ -208,7 +221,7 @@
                     <tbody>
                         {% for row in rows %}
                         <tr>
-                            <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status='card_on_file', **acct_args) }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' if row.card_on_file_rate is not none else '—' }}</a></td>
+                            <td class="td-cyan"{% if row.cof_note %} title="{{ row.cof_note }}"{% endif %}>{% if row.cof_url and row.card_on_file_rate is not none %}<a class="td-metric-link" href="{{ row.cof_url }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' }}</a>{% else %}—{% endif %}</td>
                             <td class="td-green">{{ "%.1f"|format(row.all_time_install_rate) ~ '%' if row.all_time_install_rate is not none else '—' }}</td>
                         </tr>
                         {% endfor %}

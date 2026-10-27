@@ -100,6 +100,10 @@ COLUMNS = [
     # Not in the original VBA query: the order's PlanetWeb place, for the
     # account cards' "Open in PAS" link (2026-10-26, migration 17).
     ("place_id", "PlaceID", "place_id", "Place ID", False),
+    # The order's full timestamp (Date above is just the day), for the
+    # Door Knockers "sold in the last 24 hours" active dot (2026-10-26,
+    # migration 19).
+    ("sale_datetime", "DateTime", "sale_datetime", "Sale Time", False),
     ("install_date", None, "install_date", "Install Date", True),
     ("order_cancellation_date", None, "order_cancellation_date", "Order Cancellation Date", True),
     ("service_cancellation_date", None, "service_cancellation_date", "Service Cancellation Date", True),

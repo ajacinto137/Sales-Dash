@@ -30,12 +30,12 @@ captured) and "skip".
 
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 
 import db
-from sales_metrics import _today, build_bulk_account_rows, filter_by_period
+from sales_metrics import EASTERN_TZ, _today, build_bulk_account_rows, filter_by_period
 
 CARD_ON_FILE_METHODS = {"card", "ach"}
 
@@ -105,7 +105,7 @@ _QUERY = """
 SELECT order_id, referral_code, sale_date, first_name, last_name, address, apartment_suite,
        city, state, zipcode, municipality, subscriber_uuid, scheduled_status, installation_date,
        install_date, order_cancellation_date, service_cancellation_date, package_speed, voice,
-       payment_method, place_id
+       payment_method, place_id, sale_datetime
 FROM external_rep_sales
 WHERE in_source
 """
@@ -131,7 +131,7 @@ def normalize(raw):
     return pd.DataFrame({
         "sale_id": df["order_id"].astype("int64"),
         "sale_date": pd.to_datetime(df["sale_date"], errors="coerce"),
-        "sale_datetime": pd.NaT,
+        "sale_datetime": pd.to_datetime(df["sale_datetime"], errors="coerce") if "sale_datetime" in df.columns else pd.NaT,
         "sales_rep": df["referral_code"].fillna("").str.strip().str.lower(),
         "sales_channel": "Door to Door",
         "subscriber_uuid": df["subscriber_uuid"],
@@ -233,11 +233,13 @@ def knocker_rows(df):
 
 
 def add_all_time_install_rates(rows, all_time_df):
-    """Sets each row's all_time_install_rate from that code's whole
-    history, whatever period the rows themselves cover."""
-    all_time = {r["code"]: r["install_rate"] for r in knocker_rows(all_time_df)}
+    """Sets each row's all_time_install_rate and all_time_card_on_file_rate
+    from that code's whole history, whatever period the rows cover."""
+    all_time = {r["code"]: r for r in knocker_rows(all_time_df)}
     for row in rows:
-        row["all_time_install_rate"] = all_time.get(row["code"])
+        whole = all_time.get(row["code"], {})
+        row["all_time_install_rate"] = whole.get("install_rate")
+        row["all_time_card_on_file_rate"] = whole.get("card_on_file_rate")
     return rows
 
 
@@ -561,3 +563,42 @@ def rep_blitzes(code_df):
     if not undated.empty:
         other = undated if other is None else pd.concat([other, undated])
     return blitzes, (_summarize(other) if other is not None else None), _summarize(code_df)
+
+
+def latest_blitz_by_code(df):
+    """{code: that knocker's newest rep_blitzes() blitz} for every code
+    with one. Recomputed only when the knocker cache reloads (it takes
+    ~0.5s across all codes)."""
+    key = (_cache["loaded_at"], _cache["for_date"], 0 if df is None else len(df))
+    if _latest_blitz_memo.get("key") != key:
+        latest = {}
+        if df is not None and not df.empty:
+            for code, group in df.groupby("sales_rep"):
+                blitzes = rep_blitzes(group)[0]
+                if blitzes:
+                    latest[code] = blitzes[0]
+        _latest_blitz_memo.update(key=key, value=latest)
+    return _latest_blitz_memo["value"]
+
+
+_latest_blitz_memo = {}
+
+
+# ------------------------------------------------- Active knockers
+# A knocker is "active" with a sale in the last ACTIVE_HOURS (added
+# 2026-10-26, by request): a green dot on the leaderboard, "Rep Active"
+# on their profile. sale_datetime is FTTPFormData.InsertDate in Eastern
+# local time (naive), so it's compared to Eastern "now". A row synced
+# before sale_datetime existed falls back to its sale date.
+ACTIVE_HOURS = 24
+
+
+def active_codes(df, now=None):
+    if df is None or df.empty:
+        return set()
+    now = now or datetime.now(EASTERN_TZ).replace(tzinfo=None)
+    cutoff = now - timedelta(hours=ACTIVE_HOURS)
+    stamped = df["sale_datetime"].notna()
+    recent = (stamped & (df["sale_datetime"] >= cutoff)) | (
+        ~stamped & (df["sale_date"] >= pd.Timestamp(cutoff.date())))
+    return set(df.loc[recent, "sales_rep"])

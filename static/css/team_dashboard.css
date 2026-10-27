@@ -3640,10 +3640,51 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
     gap: 16px;
     align-items: start;
 }
-.td-kn-board thead tr { height: 58px; }
 .td-kn-board tbody tr { height: 48px; }
 .td-kn-board tbody td { padding-top: 0; padding-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-kn-board .td-table-scroll { overflow-y: hidden; }
 @media (max-width: 640px) {
     .td-kn-board { grid-template-columns: minmax(0, 1fr) 170px; gap: 8px; }
 }
+.td-kn-board thead tr { height: 84px; }
+.td-kn-cof-form { padding: 10px 8px 0; }
+.td-kn-cof-select {
+    width: 100%;
+    background: var(--td-panel-alt);
+    color: var(--td-text-primary);
+    border: 1px solid var(--td-border);
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.td-kn-board-rates .td-sort-link { padding-top: 6px; }
+
+/* Active knocker (sold in the last 24 hours, 2026-10-26): a green dot
+   by the code on the leaderboard; dot + "Rep Active" on the profile. */
+.td-active-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--td-green);
+    box-shadow: 0 0 6px var(--td-green);
+    margin-right: 7px;
+    vertical-align: middle;
+}
+.td-active-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 10px;
+    padding: 4px 10px;
+    border: 1px solid var(--td-border);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--td-green);
+    vertical-align: middle;
+}
+.td-active-badge .td-active-dot { margin-right: 6px; }

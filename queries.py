@@ -277,7 +277,11 @@ SELECT
 
     sched.StartDate,
 
-    fd.[NJPR_PlaceID] AS PlaceID
+    fd.[NJPR_PlaceID] AS PlaceID,
+
+    -- When the order was placed (Eastern local time), for the knockers'
+    -- "active in the last 24 hours" dot (2026-10-26).
+    fd.InsertDate AS DateTime
 
 FROM [PlanetWeb].[dbo].[FTTPFormData] fd
 

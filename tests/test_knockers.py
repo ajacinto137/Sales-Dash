@@ -231,3 +231,22 @@ def test_rep_blitzes_split_runs_by_gap_and_state():
 
 def test_rep_blitzes_empty():
     assert knockers.rep_blitzes(None) == ([], None, None)
+
+
+def test_active_codes_uses_last_24_hours():
+    from datetime import datetime
+    df = pd.DataFrame({
+        "sales_rep": ["aaa", "bbb", "ccc", "ddd"],
+        "sale_date": pd.to_datetime(["2026-10-22", "2026-10-21", "2026-10-21", "2026-10-21"]),
+        "sale_datetime": pd.to_datetime(["2026-10-22 09:00", "2026-10-21 15:00", "2026-10-21 13:00", None]),
+    })
+    now = datetime(2026, 10, 22, 14, 0)
+    # aaa today; bbb 23h ago; ccc 25h ago; ddd has no time -> yesterday's date counts.
+    assert knockers.active_codes(df, now=now) == {"aaa", "bbb", "ddd"}
+    assert knockers.active_codes(None) == set()
+
+
+def test_all_time_card_on_file_rate_added():
+    df = norm()
+    rows = knockers.add_all_time_install_rates(knockers.knocker_rows(df[df["sale_id"] == 1]), df)
+    assert rows[0]["code"] == "aaa" and round(rows[0]["all_time_card_on_file_rate"], 1) == 66.7

@@ -2533,6 +2533,28 @@ def knockers_page():
     period_df = filter_by_period(df, period, custom_start, custom_end)
 
     rows = knockers.add_all_time_install_rates(knockers.knocker_rows(period_df), df)
+    # Card on File column: each code's latest blitz (default) or all time
+    # (dropdown added 2026-10-26, by request). It also drives that
+    # column's sort.
+    cof_view = request.args.get("cof", "blitz")
+    if cof_view not in ("blitz", "all_time"):
+        cof_view = "blitz"
+    latest_blitz = knockers.latest_blitz_by_code(df)
+    active = knockers.active_codes(df)
+    for row in rows:
+        blitz = latest_blitz.get(row["code"])
+        row["active"] = row["code"] in active
+        if cof_view == "all_time":
+            row["card_on_file_rate"] = row["all_time_card_on_file_rate"]
+            row["cof_url"] = url_for("knocker_accounts", code=row["code"], status="card_on_file", period="all_time")
+            row["cof_note"] = None
+        else:
+            row["card_on_file_rate"] = blitz["card_on_file_rate"] if blitz else None
+            row["cof_url"] = url_for(
+                "knocker_accounts", code=row["code"], status="card_on_file", state=blitz["state_key"],
+                period="custom", start=blitz["start"].isoformat(), end=blitz["end"].isoformat()) if blitz else None
+            row["cof_note"] = (f"{blitz['town'] + ', ' if blitz['town'] else ''}{blitz['state']} · {blitz['date_label']}"
+                               if blitz else "No blitzes yet")
     active_codes = len(rows)
     if search:
         rows = [r for r in rows if search in r["code"]]
@@ -2572,7 +2594,7 @@ def knockers_page():
         daily_averages=calculate_daily_averages(df),
         monthly_forecast=calculate_monthly_forecast(df),
         status=knockers.status_summary(period_df),
-        rows=rows, active_codes=active_codes, table_columns=table_columns, rate_columns=rate_columns, sort=sort, sort_dir=sort_dir,
+        rows=rows, active_codes=active_codes, table_columns=table_columns, rate_columns=rate_columns, cof_view=cof_view, sort=sort, sort_dir=sort_dir,
         state_rows=state_rows, state_total=state_total,
         town_rows=knockers.town_rows(period_df),
         rep_monthly_activity=calculate_rep_monthly_activity(df, None, cal_year, cal_month),
@@ -2613,6 +2635,7 @@ def knocker_profile(code):
         active_page="knockers",
         load_error=load_error,
         code=code,
+        active=code in knockers.active_codes(code_df),
         period=period, custom_start=custom_start, custom_end=custom_end,
         status=knockers.status_summary(period_df),
         all_time=knockers.status_summary(code_df),
