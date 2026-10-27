@@ -10,8 +10,8 @@ customer, gathered on demand when someone clicks an account card:
   notes, extra phones/emails. Virginia customers live in the virginia_*
   copies of the subscriber/package/task tables (no VA tickets/payments
   tables exist).
-- appdb: Needs Attention status/notes, and HubSpot calls to the
-  customer's phone number.
+- appdb: Needs Attention status/notes, and HubSpot calls with the
+  customer (any of their phone numbers or emails).
 
 Unlike the dashboard (served from the in-memory snapshot), this page
 queries per request -- it's one customer by primary key / indexed uuid,
@@ -29,6 +29,7 @@ import re
 
 import attention_store
 import db
+import hubspot_logic
 import needs_attention_service
 from sales_metrics import EASTERN_TZ
 
@@ -515,37 +516,78 @@ def _load_vision(subscriber_uuid, state):
 
 # ----------------------------------------------------------------- appdb
 
-def _load_calls(phone):
-    number = phone_e164(phone)
-    if not number:
-        return []
+CALLS_SHOWN = 100
+
+
+def _call_numbers(phones):
+    """Every way HubSpot may have stored these phones: +1XXXXXXXXXX
+    (almost all calls) and 1XXXXXXXXXX (a few dozen)."""
+    numbers = set()
+    for phone in phones:
+        number = phone_e164(phone)
+        if number:
+            numbers.update((number, number[1:]))
+    return sorted(numbers)
+
+
+def _load_calls(phones, emails):
+    """HubSpot calls with this customer (widened 2026-10-27, by request):
+    to or from any of their phone numbers (order phone, SMS phone, Vision
+    phones), or logged on a HubSpot contact with any of their emails.
+    Newest CALLS_SHOWN, plus totals over all of them."""
+    numbers = _call_numbers(phones)
+    emails = sorted({e.strip().lower() for e in emails if e and e.strip()})
+    if not numbers and not emails:
+        return {"calls": [], "total": 0, "outbound": 0, "inbound": 0, "last_call": None}
     conn = db.get_appdb_connection()
     try:
         with conn.cursor() as cur:
+            cur.execute("SELECT portal_id, ui_domain FROM hubspot_sync_state WHERE id = 1")
+            portal_id, ui_domain = cur.fetchone() or (None, None)
             cur.execute(
                 """
-                SELECT c.call_timestamp, c.direction, c.duration_ms, c.title,
+                WITH matched AS (
+                    SELECT c.*, (c.to_number = ANY(%(numbers)s) OR c.from_number = ANY(%(numbers)s)) AS by_phone
+                    FROM hubspot_calls c
+                    LEFT JOIN hubspot_contacts hc ON hc.contact_id = c.contact_id
+                    WHERE c.to_number = ANY(%(numbers)s) OR c.from_number = ANY(%(numbers)s)
+                       OR lower(trim(hc.email)) = ANY(%(emails)s)
+                )
+                SELECT c.call_timestamp, c.direction, c.duration_ms, c.title, c.recording_url, c.contact_id, c.by_phone,
                        COALESCE(d.label, c.disposition) AS outcome,
-                       COALESCE(sr.name, m.hubspot_name) AS rep
-                FROM hubspot_calls c
+                       COALESCE(sr.name, m.hubspot_name) AS rep,
+                       count(*) OVER () AS total,
+                       count(*) FILTER (WHERE c.direction = 'OUTBOUND') OVER () AS outbound,
+                       count(*) FILTER (WHERE c.direction = 'INBOUND') OVER () AS inbound
+                FROM matched c
                 LEFT JOIN hubspot_dispositions d ON d.disposition_id = c.disposition
                 LEFT JOIN hubspot_user_mappings m ON m.hubspot_owner_id = c.hubspot_owner_id
                 LEFT JOIN sales_reps sr ON sr.id = m.sales_rep_id
-                WHERE c.to_number = %s OR c.from_number = %s
-                ORDER BY c.call_timestamp DESC
-                LIMIT 50
+                ORDER BY c.call_timestamp DESC NULLS LAST
+                LIMIT %(limit)s
                 """,
-                (number, number),
+                {"numbers": numbers, "emails": emails, "limit": CALLS_SHOWN},
             )
             rows = _rows(cur)
     finally:
         conn.close()
-    return [{
+    calls = [{
         "when": fmt_datetime(r["call_timestamp"].astimezone(EASTERN_TZ)) if r["call_timestamp"] else None,
         "direction": (r["direction"] or "").title() or None,
         "duration": f"{int(r['duration_ms'] // 60000)}m {int(r['duration_ms'] // 1000 % 60)}s" if r["duration_ms"] else None,
         "outcome": r["outcome"], "rep": r["rep"], "title": r["title"],
+        "matched_by": "Phone" if r["by_phone"] else "Email",
+        "recording_url": hubspot_logic.safe_https_url(r["recording_url"]),
+        "contact_url": hubspot_logic.hubspot_contact_url(ui_domain, portal_id, r["contact_id"]),
     } for r in rows]
+    first = rows[0] if rows else {}
+    return {
+        "calls": calls,
+        "total": int(first.get("total") or 0),
+        "outbound": int(first.get("outbound") or 0),
+        "inbound": int(first.get("inbound") or 0),
+        "last_call": calls[0]["when"] if calls else None,
+    }
 
 
 # ------------------------------------------------------------------ main
@@ -591,7 +633,11 @@ def load_customer_profile(sale_id, state, subscriber_uuid, phone, include_calls)
 
     if include_calls:
         try:
-            profile["calls"] = _load_calls(phone)
+            vision = profile["vision"] or {}
+            profile["calls"] = _load_calls(
+                [phone, raw.get("SMSPhoneNumber")] + [p["value"] for p in vision.get("phones") or []],
+                [raw.get("EmailAddress")] + [e["value"] for e in vision.get("emails") or []],
+            )
         except Exception as exc:
             errors["calls"] = db.sanitize_error(exc)
 

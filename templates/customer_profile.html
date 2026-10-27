@@ -368,24 +368,56 @@
     {% endif %}
     {% endif %}
 
-    {# ---------- HubSpot calls ---------- #}
+    {# ---------- HubSpot calls ----------
+       Matched by any of the customer's phone numbers (order, SMS, Vision)
+       or a HubSpot contact with any of their emails (widened 2026-10-27).
+       customer_profile._load_calls. #}
     {% if can_view_calls %}
+    {% set hs = profile.calls %}
     <section class="td-section">
-        <div class="td-section-heading"><h2>Calls with this Customer</h2><span class="td-muted-inline">HubSpot &middot; matched by phone number</span></div>
+        <div class="td-section-heading"><h2>HubSpot Calls</h2><span class="td-muted-inline">Matched by the customer's phone numbers and email</span></div>
         {% if errors.calls %}{{ notice("Call history is unavailable right now (" ~ errors.calls ~ ").") }}
-        {% elif profile.calls %}
+        {% elif hs and hs.total %}
+        <div class="td-cp-glance td-cp-calls-glance">
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Total Calls</span>
+                <span class="td-profile-metric-value td-cyan td-cp-glance-value">{{ "{:,}".format(hs.total) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Outbound</span>
+                <span class="td-profile-metric-value td-green td-cp-glance-value">{{ "{:,}".format(hs.outbound) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Inbound</span>
+                <span class="td-profile-metric-value td-purple td-cp-glance-value">{{ "{:,}".format(hs.inbound) }}</span>
+            </div>
+            <div class="td-profile-metric">
+                <span class="td-profile-metric-label">Last Call</span>
+                <span class="td-profile-metric-value td-yellow td-cp-glance-value">{{ hs.last_call or '—' }}</span>
+            </div>
+        </div>
         <div class="td-table-card"><div class="td-table-scroll">
             <table class="td-table td-cp-table">
-                <thead><tr><th>When</th><th>Rep</th><th>Direction</th><th>Outcome</th><th>Duration</th></tr></thead>
+                <thead><tr><th>When</th><th>Rep</th><th>Direction</th><th>Outcome</th><th>Duration</th><th>Matched By</th><th>Links</th></tr></thead>
                 <tbody>
-                {% for c in profile.calls %}
-                <tr><td>{{ c.when or '—' }}</td><td>{{ c.rep or '—' }}</td><td>{{ c.direction or '—' }}</td><td>{{ c.outcome or '—' }}</td><td>{{ c.duration or '—' }}</td></tr>
+                {% for c in hs.calls %}
+                <tr>
+                    <td>{{ c.when or '—' }}{% if c.title %}<span class="td-cp-sub">{{ c.title }}</span>{% endif %}</td>
+                    <td>{{ c.rep or '—' }}</td><td>{{ c.direction or '—' }}</td><td>{{ c.outcome or '—' }}</td>
+                    <td>{{ c.duration or '—' }}</td><td>{{ c.matched_by }}</td>
+                    <td>
+                        {% if c.recording_url %}<a class="td-cp-link" href="{{ c.recording_url }}" target="_blank" rel="noopener">Recording &#8599;</a>{% endif %}
+                        {% if c.contact_url %}{% if c.recording_url %} &middot; {% endif %}<a class="td-cp-link" href="{{ c.contact_url }}" target="_blank" rel="noopener">Contact &#8599;</a>{% endif %}
+                        {% if not c.recording_url and not c.contact_url %}—{% endif %}
+                    </td>
+                </tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div></div>
+        {% if hs.total > hs.calls|length %}<p class="td-muted-inline">Showing the newest {{ hs.calls|length }} of {{ "{:,}".format(hs.total) }} calls.</p>{% endif %}
         {% else %}
-        <p class="td-empty">No HubSpot calls to or from this customer's phone number.</p>
+        <p class="td-empty">No HubSpot calls found for this customer's phone numbers or email.</p>
         {% endif %}
     </section>
     {% endif %}

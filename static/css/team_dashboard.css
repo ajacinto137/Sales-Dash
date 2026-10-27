@@ -3757,3 +3757,4 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-checkout-chip-delete:hover { color: var(--td-orange); }
 .td-checkout-bucket-form { display: flex; gap: 8px; max-width: 420px; }
 .td-checkout-bucket-form .td-search-input { flex: 1; }
+.td-cp-calls-glance { margin-bottom: 14px; }
