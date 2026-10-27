@@ -2733,6 +2733,12 @@ def knockers_page():
     if trend_range not in ("12m", "mtd", "wtd"):
         trend_range = "12m"
     state_views = {key: _state_filtered(df, code) for key, _, code in DASHBOARD_STATE_VIEWS}
+    rate_views = [
+        {"key": key, "label": label, "rows": knockers.monthly_rates(_state_filtered(df, code))}
+        for key, label, code in KNOCKER_RATE_VIEWS
+    ]
+    first_sale = df["sale_date"].min() if df is not None and not df.empty else None
+    first_sale_month = date(first_sale.year, first_sale.month, 1) if pd.notna(first_sale) else knockers.RATE_TREND_START
 
     return render_template(
         "knockers.html",
@@ -2752,10 +2758,15 @@ def knockers_page():
         monthly_trend_views={key: calculate_monthly_sales_trend(v) for key, v in state_views.items()},
         mtd_trend_views={key: calculate_month_to_date_comparison(v) for key, v in state_views.items()},
         wtd_trend_views={key: calculate_week_to_date_comparison(v) for key, v in state_views.items()},
-        rate_views=[
-            {"key": key, "label": label, "rows": knockers.monthly_rates(_state_filtered(df, code))}
-            for key, label, code in KNOCKER_RATE_VIEWS
-        ],
+        rate_views=rate_views,
+        # Monthly Sales by Status (2026-10-27, by request): the same monthly
+        # rows as stacked bars -- each bar's five statuses add up to that
+        # month's sales. Clicking a segment opens that month's accounts.
+        monthly_status_views=[{"key": key, "label": label, "rows": [{
+            **r, "name": r["label"],
+            "url": url_for("knocker_accounts", period="custom", start=r["start"], end=r["end"], state=code),
+        } for r in knockers.monthly_rates(_state_filtered(df, code), start=first_sale_month)]}
+            for key, label, code in KNOCKER_RATE_VIEWS],
         trend_view=trend_view, trend_range=trend_range,
         synced_at=_knockers_sync_display(),
         last_refreshed=data_store["last_refreshed"],

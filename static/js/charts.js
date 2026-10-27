@@ -277,9 +277,40 @@ function createBlitzDailyChart(canvasEl, tokens) {
 
 // Account status per blitz as horizontal stacked bars (one row per blitz,
 // or one row for a single blitz). Click a segment -> those accounts.
-function createStatusStackedChart(canvasEl, tokens) {
+// Same stacked statuses as upright monthly columns (Door Knockers
+// "Monthly Sales by Status", added 2026-10-27): one bar per sale month,
+// the five statuses stack to that month's sales, total printed on top.
+function createMonthlyStatusChart(canvasEl, tokens) {
+    return createStatusStackedChart(canvasEl, tokens, true);
+}
+
+// Prints each stack's total (row.sales) above its column.
+function stackTotalsPlugin(rows, color) {
+    return {
+        id: "stackTotals",
+        afterDatasetsDraw(chart) {
+            const meta = chart.getDatasetMeta(chart.data.datasets.length - 1);
+            const { ctx } = chart;
+            ctx.save();
+            ctx.font = "700 11px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillStyle = color;
+            meta.data.forEach((bar, i) => {
+                if (!rows[i] || !rows[i].sales) return;
+                ctx.fillText(rows[i].sales.toLocaleString(), bar.x, chart.scales.y.getPixelForValue(rows[i].sales) - 5);
+            });
+            ctx.restore();
+        },
+    };
+}
+
+function createStatusStackedChart(canvasEl, tokens, vertical) {
     const rows = JSON.parse(canvasEl.dataset.rows || "[]");
+    const countAxis = { ...baseScaleOptions(tokens), stacked: true, beginAtZero: true, ticks: { ...baseScaleOptions(tokens).ticks, precision: 0 } };
+    const labelAxis = { ...baseScaleOptions(tokens), stacked: true, grid: { display: false } };
+    if (vertical) countAxis.grace = "8%";
     return new Chart(canvasEl, {
+        plugins: vertical ? [stackTotalsPlugin(rows, getComputedStyle(canvasEl).getPropertyValue("--td-text-primary").trim() || tokens.axisText)] : [],
         type: "bar",
         data: {
             labels: rows.map((r) => r.name),
@@ -289,18 +320,18 @@ function createStatusStackedChart(canvasEl, tokens) {
                 data: rows.map((r) => r[key]),
                 backgroundColor: tokens.statusColors[key],
                 borderColor: tokens.panel,
-                borderWidth: { right: 2 },
+                borderWidth: vertical ? { top: 2 } : { right: 2 },
                 borderSkipped: false,
                 borderRadius: 0,
-                maxBarThickness: 26,
+                maxBarThickness: vertical ? 44 : 26,
             })),
         },
         options: {
-            indexAxis: "y",
+            indexAxis: vertical ? "x" : "y",
             responsive: true,
             maintainAspectRatio: false,
             animation: baseAnimation(),
-            interaction: { mode: "nearest", axis: "y", intersect: true },
+            interaction: { mode: "nearest", axis: vertical ? "x" : "y", intersect: true },
             onClick: (_evt, elements) => {
                 if (!elements.length) return;
                 const row = rows[elements[0].index];
@@ -310,10 +341,7 @@ function createStatusStackedChart(canvasEl, tokens) {
             onHover: (evt, elements) => {
                 evt.native.target.style.cursor = elements.length ? "pointer" : "default";
             },
-            scales: {
-                x: { ...baseScaleOptions(tokens), stacked: true, beginAtZero: true, ticks: { ...baseScaleOptions(tokens).ticks, precision: 0 } },
-                y: { ...baseScaleOptions(tokens), stacked: true, grid: { display: false } },
-            },
+            scales: vertical ? { x: labelAxis, y: countAxis } : { x: countAxis, y: labelAxis },
             plugins: {
                 legend: {
                     display: true,
@@ -327,6 +355,7 @@ function createStatusStackedChart(canvasEl, tokens) {
                         const pct = total ? ` (${((item.raw / total) * 100).toFixed(1)}%)` : "";
                         return `${item.dataset.label}: ${item.raw}${pct}`;
                     },
+                    footer: (items) => `Sales: ${rows[items[0].dataIndex].sales.toLocaleString()}`,
                 }),
             },
         },
@@ -895,6 +924,7 @@ const CHART_TOGGLE_FACTORIES = {
     monthToDate: createMonthToDateChart,
     weekToDate: createWeekToDateChart,
     rateTrend: createRateTrendChart,
+    monthlyStatus: createMonthlyStatusChart,
     salesVolume: createSalesVolumeChart,
     bucketSeries: createBucketSeriesChart,
 };
@@ -1234,6 +1264,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // (a chart created while hidden would size to 0).
     wireVisibleCalendarAndTrendCards();
     wireChartToggle(document.getElementById("knocker-rates-toggle"));
+    wireChartToggle(document.getElementById("knocker-monthly-status-toggle"));
     // Sales Volume tab's own nested Team/NJ/NY/VA toggle -- wired
     // unconditionally like team-monthly-trend-toggle above, not lazily
     // via the outer toggle, since Sales Volume is the outer toggle's

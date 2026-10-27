@@ -327,10 +327,13 @@ def _rate_if_enough(n, base):
     return _rate(n, base) if base >= MIN_RATE_BASE else None
 
 
-def monthly_rates(df, today=None):
+def monthly_rates(df, today=None, start=RATE_TREND_START):
+    """Per sale month from `start` through this month. The rate chart
+    starts at RATE_TREND_START; Monthly Sales by Status passes the first
+    sale's month so every sale lands in a bar."""
     today = today or _today()
     months = []
-    y, m = RATE_TREND_START.year, RATE_TREND_START.month
+    y, m = start.year, start.month
     while (y, m) <= (today.year, today.month):
         months.append((y, m))
         y, m = (y + 1, 1) if m == 12 else (y, m + 1)
@@ -348,6 +351,8 @@ def monthly_rates(df, today=None):
         rows.append({
             "label": first.strftime("%b %Y"),
             "short": first.strftime("%b"),
+            "start": first.isoformat(),
+            "end": (next_first - timedelta(days=1)).isoformat(),
             **stats,
             "order_cancel_rate": _rate_if_enough(stats["cancelled"], stats["sales"]) if first >= ORDER_CANCEL_RELIABLE_FROM else None,
             "needs_attention_rate": _rate_if_enough(stats["needs_attention"], stats["sales"]),
