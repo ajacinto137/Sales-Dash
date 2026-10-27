@@ -204,6 +204,7 @@ html, body.td-body {
     display: flex;
     align-items: center;
     gap: 14px;
+    margin-left: auto;
 }
 
 .td-last-refreshed {
@@ -212,18 +213,27 @@ html, body.td-body {
     white-space: nowrap;
 }
 
-/* ---------------- Global search (top nav) ----------------
+/* ---------------- Global search ----------------
    Reps + customer accounts, see templates/_topnav.html,
-   static/js/search.js, GET /search in app.py. .td-topnav-links no
-   longer carries flex: 1 (see above) -- this element takes the
-   flexible space in the topnav row instead, so it grows/shrinks with
-   the viewport up to max-width, with .td-topnav-right pinned to the
-   far right as before. */
+   static/js/search.js, GET /search in app.py. Its own centered row
+   under the top nav since 2026-10-26 (was inside the nav bar);
+   .td-topnav-right keeps itself at the far right with margin-left: auto. */
+
+.td-global-search-bar {
+    display: flex;
+    justify-content: center;
+    padding: 14px 32px;
+    border-bottom: 1px solid var(--td-border-soft);
+}
 
 .td-global-search {
     position: relative;
-    flex: 1;
-    max-width: 340px;
+    width: 100%;
+    max-width: 560px;
+}
+
+@media (max-width: 640px) {
+    .td-global-search-bar { padding: 12px 16px; }
 }
 
 .td-global-search-input {

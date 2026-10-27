@@ -64,16 +64,6 @@
         {% endif %}
     </nav>
 
-    <!-- Global search: reps + customer accounts, debounced fetch to
-         /search (see app.py), wired up by static/js/search.js. A no-op
-         script on any page that ever stops including this partial. -->
-    <div class="td-global-search" data-global-search>
-        <input type="search" class="td-search-input td-global-search-input"
-               placeholder="Search reps or accounts…" autocomplete="off"
-               data-global-search-input>
-        <div class="td-global-search-results" data-global-search-results style="display: none;"></div>
-    </div>
-
     <div class="td-topnav-right">
         {% if last_refreshed %}<span class="td-last-refreshed">Last refreshed: {{ last_refreshed }}</span>{% endif %}
         <form action="{{ url_for('refresh') }}?dataset=all" method="post">
@@ -85,5 +75,19 @@
             <button type="submit" class="td-btn td-btn-ghost">Log Out</button>
         </form>
         {% endif %}
+    </div>
+</div>
+
+<!-- Global search: reps + customer accounts, debounced fetch to
+     /search (see app.py), wired up by static/js/search.js. A no-op
+     script on any page that ever stops including this partial. Moved
+     out of the nav bar into its own centered row below it 2026-10-26
+     (by request). -->
+<div class="td-global-search-bar">
+    <div class="td-global-search" data-global-search>
+        <input type="search" class="td-search-input td-global-search-input"
+               placeholder="Search reps or accounts…" autocomplete="off"
+               data-global-search-input>
+        <div class="td-global-search-results" data-global-search-results style="display: none;"></div>
     </div>
 </div>
