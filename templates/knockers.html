@@ -155,6 +155,12 @@
                 <input type="hidden" name="start" value="{{ custom_start }}">
                 <input type="hidden" name="end" value="{{ custom_end }}">
                 <input type="hidden" name="cof" value="{{ cof_view }}">
+                <input type="hidden" name="sort" value="{{ sort }}">
+                <input type="hidden" name="dir" value="{{ sort_dir }}">
+                <label class="td-kn-active-filter{{ ' td-kn-active-filter-on' if active_only }}" title="Only knockers with a sale in the last 24 hours">
+                    <input type="checkbox" name="active" value="1"{{ ' checked' if active_only }} data-autosubmit>
+                    <span class="td-active-dot"></span>Active only ({{ active_count }})
+                </label>
                 <input class="td-date-input" type="search" name="search" value="{{ search }}" placeholder="Find a code…" aria-label="Find a referral code">
             </form>
         </div>
@@ -167,7 +173,7 @@
             {% if col.key == 'card_on_file_rate' %}
             {# Card on File: latest blitz (default) or all time. #}
             <form class="td-kn-cof-form" method="get" action="{{ url_for('knockers_page', _anchor='knocker-leaderboard') }}">
-                {% for name, value in [('period', period), ('start', custom_start), ('end', custom_end), ('search', search), ('sort', sort), ('dir', sort_dir)] %}
+                {% for name, value in [('period', period), ('start', custom_start), ('end', custom_end), ('search', search), ('sort', sort), ('dir', sort_dir), ('active', '1' if active_only else '')] %}
                 <input type="hidden" name="{{ name }}" value="{{ value }}">
                 {% endfor %}
                 <select class="td-kn-cof-select" name="cof" data-autosubmit aria-label="Card on File rate to show">
@@ -177,7 +183,7 @@
             </form>
             {% endif %}
             <a class="td-sort-link{{ ' td-sort-active' if col.active else '' }}"
-               href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, cof=cof_view, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
+               href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, cof=cof_view, active='1' if active_only else none, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
                 {{ col.label }}{% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
             </a>
         </th>
@@ -205,7 +211,7 @@
                             {% endfor %}
                         </tr>
                         {% else %}
-                        <tr><td colspan="8" class="td-empty-row">No door-knocker sales for this period.</td></tr>
+                        <tr><td colspan="8" class="td-empty-row">{{ "No knockers have sold in the last 24 hours." if active_only else "No door-knocker sales for this period." }}</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

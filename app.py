@@ -2556,6 +2556,11 @@ def knockers_page():
             row["cof_note"] = (f"{blitz['town'] + ', ' if blitz['town'] else ''}{blitz['state']} · {blitz['date_label']}"
                                if blitz else "No blitzes yet")
     active_codes = len(rows)
+    active_count = sum(r["active"] for r in rows)
+    # "Active only" filter (2026-10-26, by request): sold in the last 24 hours.
+    active_only = request.args.get("active") == "1"
+    if active_only:
+        rows = [r for r in rows if r["active"]]
     if search:
         rows = [r for r in rows if search in r["code"]]
     sort = request.args.get("sort", "sales")
@@ -2594,7 +2599,7 @@ def knockers_page():
         daily_averages=calculate_daily_averages(df),
         monthly_forecast=calculate_monthly_forecast(df),
         status=knockers.status_summary(period_df),
-        rows=rows, active_codes=active_codes, table_columns=table_columns, rate_columns=rate_columns, cof_view=cof_view, sort=sort, sort_dir=sort_dir,
+        rows=rows, active_codes=active_codes, table_columns=table_columns, rate_columns=rate_columns, cof_view=cof_view, active_only=active_only, active_count=active_count, sort=sort, sort_dir=sort_dir,
         state_rows=state_rows, state_total=state_total,
         town_rows=knockers.town_rows(period_df),
         rep_monthly_activity=calculate_rep_monthly_activity(df, None, cal_year, cal_month),

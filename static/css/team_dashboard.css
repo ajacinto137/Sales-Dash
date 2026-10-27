@@ -3522,7 +3522,24 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
     gap: 16px;
     align-items: start;
 }
-.td-kn-search { margin-left: auto; }
+.td-kn-search { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.td-kn-active-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 12px;
+    border: 1px solid var(--td-border);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--td-text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+.td-kn-active-filter input { position: absolute; opacity: 0; pointer-events: none; }
+.td-kn-active-filter:hover { color: var(--td-text-primary); }
+.td-kn-active-filter-on { color: var(--td-green); border-color: var(--td-green); background: var(--td-green-bg); }
+.td-kn-active-filter:focus-within { outline: 2px solid var(--td-green); outline-offset: 2px; }
 .td-kn-search input { min-width: 180px; }
 
 @media (max-width: 640px) {

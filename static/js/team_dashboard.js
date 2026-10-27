@@ -333,9 +333,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     window.addEventListener("scroll", hideFormula, true);
 
-    // <select data-autosubmit> submits its form on change (Knocker
-    // Leaderboard's Card on File view, 2026-10-26).
-    document.querySelectorAll("select[data-autosubmit]").forEach(function (select) {
-        select.addEventListener("change", function () { select.form.submit(); });
+    // A <select> or checkbox with data-autosubmit submits its form on
+    // change (Knocker Leaderboard's Card on File view and Active only
+    // filter, 2026-10-26).
+    document.querySelectorAll("select[data-autosubmit], input[data-autosubmit]").forEach(function (field) {
+        field.addEventListener("change", function () { field.form.submit(); });
     });
 });
