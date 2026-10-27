@@ -1908,6 +1908,22 @@ def passings_page():
     last_activity_to = _parse_date_param(last_activity_to_raw)
     search = request.args.get("search", "").strip()
 
+    # HubSpot call filters (added 2026-10-26) -- leads only, matched by
+    # email to synced outbound HubSpot calls; see
+    # passings_cache._hubspot_call_mask().
+    hubspot_called_raw = request.args.get("hubspot_called", "")
+    hubspot_called = _parse_bool_param(hubspot_called_raw)
+    hubspot_min_calls_raw = request.args.get("hubspot_min_calls", "").strip()
+    try:
+        hubspot_min_calls = max(0, int(hubspot_min_calls_raw)) if hubspot_min_calls_raw else None
+    except ValueError:
+        hubspot_min_calls, hubspot_min_calls_raw = None, ""
+    hubspot_last_call_from_raw = request.args.get("hubspot_last_call_from", "")
+    hubspot_last_call_to_raw = request.args.get("hubspot_last_call_to", "")
+    hubspot_last_call_from = _parse_date_param(hubspot_last_call_from_raw)
+    hubspot_last_call_to = _parse_date_param(hubspot_last_call_to_raw)
+    hubspot_calls_available, hubspot_call_stats = hubspot_store.get_call_stats_by_email()
+
     sort_key = request.args.get("sort", "became_available")
     sort_dir = request.args.get("dir", "desc")
     try:
@@ -1938,6 +1954,16 @@ def passings_page():
     # the live-SQL fallback below can't see appdb marks).
     _, residential_marks = passings_activity_store.get_residential_marks()
     filters["residential_ids"] = set(residential_marks)
+    filters.update(
+        hubspot_called=hubspot_called,
+        hubspot_min_calls=hubspot_min_calls,
+        hubspot_last_call_from=hubspot_last_call_from,
+        hubspot_last_call_to=hubspot_last_call_to,
+        hubspot_call_stats=hubspot_call_stats,
+    )
+    hubspot_filters_active = bool(
+        hubspot_called is not None or hubspot_min_calls or hubspot_last_call_from or hubspot_last_call_to
+    )
 
     # In-memory snapshot (passings_cache.py, refreshed in the background)
     # once it has loaded; the live PlanetWeb queries only until then, e.g.
@@ -1984,6 +2010,13 @@ def passings_page():
         if activity is not None:
             activity = {**activity, "activity_at_display": _format_note_timestamp(activity["activity_at"])}
         row["last_activity"] = activity
+        # HubSpot call count / last call for leads (2026-10-26) -- None
+        # when the lead's email has no outbound HubSpot calls.
+        stats = hubspot_call_stats.get((row["EmailAddress"] or "").strip().lower()) if row["is_lead"] else None
+        row["hubspot_calls"] = (
+            {"calls": stats["calls"], "last_call_display": _format_note_timestamp(stats["last_call_at"])}
+            if stats else None
+        )
         # Offer "Residential Address" on commercial cards; once marked, the
         # card shows as residential with an Undo.
         row["can_mark_residential"] = row["category"] in ("commercial_hot_lead", "commercial_field_target")
@@ -2017,6 +2050,11 @@ def passings_page():
         filter_options=filter_options,
         reps_with_activity=reps_with_activity,
         last_activity_available=last_activity_available,
+        hubspot_calls_available=hubspot_calls_available,
+        # The live-SQL fallback (right after a restart) can't apply the
+        # HubSpot call filters -- the template says so instead of quietly
+        # showing unfiltered results.
+        hubspot_filters_ignored=hubspot_filters_active and source is passings_data,
         activity_types=passings_activity_store.ACTIVITY_TYPES,
         category_options=PASSINGS_CATEGORY_OPTIONS,
         sort_options=PASSINGS_SORT_OPTIONS,
@@ -2030,6 +2068,8 @@ def passings_page():
             "city": city, "state": state, "zip": zip_code, "rep": rep,
             "last_activity_from": last_activity_from_raw, "last_activity_to": last_activity_to_raw,
             "search": search, "sort": sort_key, "dir": sort_dir,
+            "hubspot_called": hubspot_called_raw, "hubspot_min_calls": hubspot_min_calls_raw,
+            "hubspot_last_call_from": hubspot_last_call_from_raw, "hubspot_last_call_to": hubspot_last_call_to_raw,
         },
         category_labels=passings_classification.CATEGORY_LABELS,
         last_refreshed=data_store["last_refreshed"],

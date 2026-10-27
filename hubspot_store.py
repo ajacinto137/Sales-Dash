@@ -1115,6 +1115,57 @@ def contact_url_for_email(email):
     return logic.hubspot_contact_search_url(ui_domain, portal_id, email), False
 
 
+CALL_STATS_CACHE_SECONDS = 60
+_call_stats_cache = {"at": 0.0, "stats": None}
+_call_stats_lock = threading.Lock()
+
+
+def get_call_stats_by_email():
+    """(available, {email_lowercased: {"calls", "last_call_at",
+    "last_call_date"}}) -- Passings & Leads' HubSpot call count / last
+    call per lead (added 2026-10-26). Counts OUTBOUND calls associated
+    with a cached contact (hubspot_contacts) carrying that email; several
+    contacts sharing one email are summed. last_call_date is the business-
+    timezone date of the latest call. One grouped query, cached for
+    CALL_STATS_CACHE_SECONDS since the call sync only lands new calls
+    about once a minute. available=False (empty stats) when appdb is down;
+    a failed refresh keeps serving the last good stats."""
+    with _call_stats_lock:
+        cached = _call_stats_cache["stats"]
+        if cached is not None and time.time() - _call_stats_cache["at"] < CALL_STATS_CACHE_SECONDS:
+            return True, cached
+        conn = None
+        try:
+            conn = _connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT lower(trim(hc.email)), count(*), max(c.call_timestamp)
+                    FROM hubspot_calls c
+                    JOIN hubspot_contacts hc ON hc.contact_id = c.contact_id
+                    WHERE c.direction = 'OUTBOUND'
+                      AND hc.email IS NOT NULL AND trim(hc.email) <> ''
+                    GROUP BY 1
+                    """
+                )
+                stats = {
+                    email: {
+                        "calls": int(calls),
+                        "last_call_at": last_at,
+                        "last_call_date": last_at.astimezone(BUSINESS_TZ).date() if last_at else None,
+                    }
+                    for email, calls, last_at in cur.fetchall()
+                }
+        except Exception as exc:
+            _log(f"Could not read call stats by email: {db.sanitize_error(exc)}")
+            return (cached is not None), (cached or {})
+        finally:
+            if conn is not None:
+                conn.close()
+        _call_stats_cache.update(at=time.time(), stats=stats)
+        return True, stats
+
+
 def test_connection():
     """Hits each endpoint the sync needs with a minimal read and reports
     per-endpoint results -- the precise "which endpoint / status / scope"

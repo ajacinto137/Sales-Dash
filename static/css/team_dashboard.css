@@ -3613,3 +3613,7 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
     .td-esc-filters { margin-left: 0; width: 100%; }
     .td-esc-filters .td-search-input { width: 100%; min-width: 0; }
 }
+
+/* Passings & Leads: HubSpot call count / last call on lead cards (2026-10-26). */
+.td-passing-hubspot-count { color: var(--td-accent-magenta); font-weight: 700; }
+.td-passing-hubspot-none { color: var(--td-text-muted); }

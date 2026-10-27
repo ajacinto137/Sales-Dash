@@ -147,3 +147,18 @@ def test_residential_marks_move_commercial_places_out_of_commercial_categories()
     assert ids(pc.get_page(dict(marks, prequal_only=True), "", "place_id", "asc", 1)) == [4]
     # The shared snapshot is untouched; unmarked queries see it as before.
     assert ids(pc.get_page({"category": "commercial_hot_lead"}, "", "place_id", "asc", 1)) == [4]
+
+
+def test_hubspot_call_filters_cover_leads_only():
+    stats = {"b@y.com": {"calls": 4, "last_call_at": None, "last_call_date": date(2026, 10, 20)}}
+    page = lambda **f: ids(pc.get_page(dict(f, hubspot_call_stats=stats), "", "place_id", "asc", 1))
+    assert page() == [1, 2, 3, 4, 5]  # inactive filters leave everything in
+    assert page(hubspot_called=True) == [4]
+    assert page(hubspot_called=False) == [1]  # leads with no calls -- never non-leads
+    assert page(hubspot_min_calls=4) == [4]
+    assert page(hubspot_min_calls=5) == []
+    assert page(hubspot_last_call_from=date(2026, 10, 20), hubspot_last_call_to=date(2026, 10, 20)) == [4]
+    assert page(hubspot_last_call_from=date(2026, 10, 21)) == []
+    # Email matching ignores case and surrounding spaces.
+    upper = {"A@X.COM".lower(): {"calls": 1, "last_call_at": None, "last_call_date": date(2026, 10, 1)}}
+    assert ids(pc.get_page({"hubspot_called": True, "hubspot_call_stats": upper}, "", "place_id", "asc", 1)) == [1]

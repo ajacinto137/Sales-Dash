@@ -331,12 +331,40 @@
             <input type="date" id="passings-last-activity-to" name="last_activity_to" class="td-date-input" value="{{ selected.last_activity_to }}">
         </div>
 
+        {# HubSpot call filters (2026-10-26): leads only, by outbound HubSpot
+           calls to the lead's email -- passings_cache._hubspot_call_mask(). #}
+        <div class="td-marketing-filter-field">
+            <label for="passings-hubspot-called">HubSpot Calls</label>
+            <select id="passings-hubspot-called" name="hubspot_called" class="td-admin-inline-select">
+                <option value="" {{ 'selected' if selected.hubspot_called == '' else '' }}>Any</option>
+                <option value="yes" {{ 'selected' if selected.hubspot_called == 'yes' else '' }}>Called in HubSpot</option>
+                <option value="no" {{ 'selected' if selected.hubspot_called == 'no' else '' }}>Never Called</option>
+            </select>
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-hubspot-min-calls">Times Called (min)</label>
+            <input type="number" min="0" step="1" id="passings-hubspot-min-calls" name="hubspot_min_calls" class="td-search-input" value="{{ selected.hubspot_min_calls }}" placeholder="e.g. 3">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-hubspot-last-from">Last Call From</label>
+            <input type="date" id="passings-hubspot-last-from" name="hubspot_last_call_from" class="td-date-input" value="{{ selected.hubspot_last_call_from }}">
+        </div>
+        <div class="td-marketing-filter-field">
+            <label for="passings-hubspot-last-to">Last Call To</label>
+            <input type="date" id="passings-hubspot-last-to" name="hubspot_last_call_to" class="td-date-input" value="{{ selected.hubspot_last_call_to }}">
+        </div>
+
         <div class="td-marketing-filter-actions">
             <button type="submit" class="td-btn td-btn-primary">Apply</button>
             <a class="td-btn td-btn-ghost" href="{{ url_for('passings_page') }}">Clear Filters</a>
         </div>
     </form>
 
+    {% if hubspot_filters_ignored %}
+    <p class="td-muted-inline">The HubSpot call filters aren't applied yet -- Passings & Leads is still loading after a restart. Reload in a few seconds.</p>
+    {% elif not hubspot_calls_available %}
+    <p class="td-muted-inline">HubSpot call counts are temporarily unavailable.</p>
+    {% endif %}
     {% if not last_activity_available %}
     <p class="td-muted-inline">Activity status is temporarily unavailable -- every record below shows as No Activity until this is restored.</p>
     {% endif %}

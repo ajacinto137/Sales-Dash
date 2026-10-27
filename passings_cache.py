@@ -84,6 +84,10 @@ def _prepare(df):
     df["BecameAvailable"] = pd.to_datetime(df["BecameAvailable"], errors="coerce")
     df["EmailInsertDate"] = pd.to_datetime(df["EmailInsertDate"], errors="coerce")
     df["_email_valid"] = _email_valid(df["EmailAddress"])
+    # Lowercased, trimmed email of a valid lead ("" otherwise) -- the key
+    # into hubspot_store.get_call_stats_by_email() for the HubSpot call
+    # filters below.
+    df["_email_l"] = df["EmailAddress"].fillna("").astype(str).str.strip().str.lower().where(df["_email_valid"], "")
     df["_marked"] = False
     _classify(df)
     df["_city_l"] = df["City"].fillna("").astype(str).str.lower()
@@ -324,7 +328,42 @@ def _filter(df, filters, search):
     if search:
         mask &= df["_search"].str.contains(search.lower(), regex=False)
 
+    mask &= _hubspot_call_mask(df, filters)
+
     return df[mask]
+
+
+def _hubspot_call_mask(df, filters):
+    """HubSpot call filters (added 2026-10-26): `hubspot_called`
+    (True = leads with at least one outbound HubSpot call, False = leads
+    with none), `hubspot_min_calls` and `hubspot_last_call_from/_to`
+    (business-timezone dates), all over leads only, using
+    filters["hubspot_call_stats"] from hubspot_store.get_call_stats_by_email().
+    Snapshot-only: the stats live in appdb, which passings_data's
+    PlanetWeb SQL can't join -- same as the Residential Address marks."""
+    called = filters.get("hubspot_called")
+    min_calls = filters.get("hubspot_min_calls")
+    last_from = filters.get("hubspot_last_call_from")
+    last_to = filters.get("hubspot_last_call_to")
+    if called is None and not min_calls and not last_from and not last_to:
+        return True
+    stats = filters.get("hubspot_call_stats") or {}
+    emails = df["_email_l"]
+    calls = emails.map({e: v["calls"] for e, v in stats.items()}).fillna(0)
+    mask = df["_email_valid"].copy()
+    if called is True:
+        mask &= calls > 0
+    elif called is False:
+        mask &= calls == 0
+    if min_calls:
+        mask &= calls >= int(min_calls)
+    if last_from or last_to:
+        last = pd.to_datetime(emails.map({e: v["last_call_date"] for e, v in stats.items()}))
+        if last_from:
+            mask &= last >= pd.Timestamp(last_from)
+        if last_to:
+            mask &= last <= pd.Timestamp(last_to)
+    return mask
 
 
 def _plain(value, column):

@@ -74,6 +74,19 @@
                 <span data-last-activity-text>{% if row.last_activity %}{{ row.last_activity.activity_type }} by {{ row.last_activity.rep_display_name or 'Unknown' }} &middot; {{ row.last_activity.activity_at_display }}{% endif %}</span>
             </div>
 
+            {# HubSpot calls (2026-10-26): leads only, outbound HubSpot calls
+               to a contact with this email (hubspot_store.get_call_stats_by_email). #}
+            {% if row.is_lead and hubspot_calls_available %}
+            <div class="td-passing-meta-row td-passing-hubspot-row">
+                {% if row.hubspot_calls %}
+                <span><span class="td-passing-meta-label">HubSpot Calls:</span><span class="td-passing-hubspot-count">{{ "{:,}".format(row.hubspot_calls.calls) }}</span></span>
+                <span><span class="td-passing-meta-label">Last Call:</span>{{ row.hubspot_calls.last_call_display }}</span>
+                {% else %}
+                <span><span class="td-passing-meta-label">HubSpot Calls:</span><span class="td-passing-hubspot-none">Not called yet</span></span>
+                {% endif %}
+            </div>
+            {% endif %}
+
             <div class="td-quick-actions" data-quick-actions>
                 {% for activity_type in activity_types %}
                 <button type="button" class="td-quick-action-btn" data-log-activity="{{ activity_type }}">Log {{ activity_type }}</button>
@@ -136,6 +149,8 @@
                         <th>Last Activity</th>
                         <th>Activity Type</th>
                         <th>Rep</th>
+                        <th>HubSpot Calls</th>
+                        <th>Last HubSpot Call</th>
                         {{ sort_th('place_id', 'Passing ID') }}
                     </tr>
                 </thead>
@@ -156,6 +171,8 @@
                         <td data-last-activity-cell>{{ row.last_activity.activity_at_display if row.last_activity else 'No Activity' }}</td>
                         <td data-activity-type-cell>{{ row.last_activity.activity_type if row.last_activity else '—' }}</td>
                         <td data-activity-rep-cell>{{ row.last_activity.rep_display_name if row.last_activity else '—' }}</td>
+                        <td>{{ "{:,}".format(row.hubspot_calls.calls) if row.hubspot_calls else ('0' if row.is_lead else '—') }}</td>
+                        <td>{{ row.hubspot_calls.last_call_display if row.hubspot_calls else '—' }}</td>
                         <td>{{ row.PlaceID }}</td>
                     </tr>
                     {% endfor %}
