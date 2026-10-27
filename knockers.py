@@ -499,3 +499,63 @@ def state_group_summaries(df):
          "slugs": [b["slug"] for b in BLITZES if b["state"] == st]}
         for st in states
     ]
+
+
+# ------------------------------------------------- A knocker's own blitzes
+# Per-code blitzes on the Knocker Profile (added 2026-10-26, by request --
+# separate from the team BLITZES above). A knocker's blitz is a run of
+# their selling days in one state with no more than REP_BLITZ_MAX_GAP_DAYS
+# between consecutive selling days (a Sunday or two off doesn't end it),
+# found per state so a stray sale across the border doesn't split a run.
+# Runs with fewer than REP_BLITZ_MIN_SELLING_DAYS selling days aren't a
+# blitz; their sales are summed into one "Outside a blitz" row so the
+# table still adds up to the knocker's all-time sales.
+REP_BLITZ_MAX_GAP_DAYS = 3
+REP_BLITZ_MIN_SELLING_DAYS = 3
+
+
+def _selling_runs(days):
+    """Sorted dates -> lists of dates, split where the gap is too long."""
+    runs = []
+    for d in days:
+        if runs and (d - runs[-1][-1]).days <= REP_BLITZ_MAX_GAP_DAYS:
+            runs[-1].append(d)
+        else:
+            runs.append([d])
+    return runs
+
+
+def rep_blitzes(code_df):
+    """(blitzes newest first, outside-a-blitz summary or None, total) for
+    one referral code's sales. Each blitz has its state, dates, top town
+    and the usual _summarize() stats."""
+    if code_df is None or code_df.empty:
+        return [], None, None
+    dated = code_df[code_df["sale_date"].notna()]
+    blitzes, outside = [], []
+    for state, group in dated.groupby("state"):
+        dates = group["sale_date"].dt.date
+        for run in _selling_runs(sorted(set(dates))):
+            sales = group[(dates >= run[0]) & (dates <= run[-1])]
+            if len(run) < REP_BLITZ_MIN_SELLING_DAYS:
+                outside.append(sales)
+                continue
+            towns = sales["municipality"].replace("", pd.NA).dropna().str.title().value_counts()
+            ongoing = (_today() - run[-1]).days <= REP_BLITZ_MAX_GAP_DAYS
+            blitzes.append({
+                "state": state or "Unknown",
+                "state_key": state,
+                "town": towns.index[0] if not towns.empty else None,
+                "start": run[0],
+                "end": run[-1],
+                "ongoing": ongoing,
+                "date_label": f"{run[0].strftime('%b %-d')} – {run[-1].strftime('%b %-d, %Y')}" + (" (ongoing)" if ongoing else ""),
+                "selling_days": len(run),
+                **_summarize(sales),
+            })
+    blitzes.sort(key=lambda b: b["start"], reverse=True)
+    other = pd.concat(outside) if outside else None
+    undated = code_df[code_df["sale_date"].isna()]
+    if not undated.empty:
+        other = undated if other is None else pd.concat([other, undated])
+    return blitzes, (_summarize(other) if other is not None else None), _summarize(code_df)

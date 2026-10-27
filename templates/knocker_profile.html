@@ -70,6 +70,69 @@
         </div>
     </section>
 
+    {% if rep_blitzes %}
+    {# This knocker's own blitzes (added 2026-10-26) -- runs of selling
+       days in one state, found by knockers.rep_blitzes(); all time, so
+       independent of the period filter. #}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Blitzes</h2>
+            <span class="td-muted-inline">{{ rep_blitzes|length }} blitz{{ 'es' if rep_blitzes|length != 1 }} &middot; all time, independent of the period filter above</span>
+        </div>
+        <div class="td-table-card"><div class="td-table-scroll">
+            <table data-sortable class="td-table">
+                <thead><tr>
+                    <th data-formula="A blitz = {{ rep_blitz_rule[0] }}+ selling days in one state, with no more than {{ rep_blitz_rule[1] }} days between selling days">Blitz</th>
+                    <th>Dates</th>
+                    <th data-formula="Selling Days = days with at least one sale">Selling Days</th>
+                    <th data-formula="{{ formulas.sales }}">Sales</th>
+                    <th data-formula="{{ formulas.installed }}">Installs</th>
+                    <th data-formula="{{ formulas.install_rate }}">Install Rate</th>
+                    <th data-formula="{{ formulas.pending }}">Pending</th>
+                    <th data-formula="{{ formulas.card_on_file_rate }}">Card on File</th>
+                    <th data-formula="{{ formulas.cancelled }}">Cancels</th>
+                    <th data-formula="{{ formulas.service_cancelled }}">Service Cancels</th>
+                    <th data-formula="{{ formulas.needs_attention }}">Needs Attention</th>
+                </tr></thead>
+                <tbody>
+                {% for b in rep_blitzes %}
+                {% set b_args = {'code': code, 'state': b.state_key, 'period': 'custom', 'start': b.start.isoformat(), 'end': b.end.isoformat()} %}
+                <tr>
+                    <td class="td-rep-cell">{{ b.town ~ ', ' if b.town }}{{ b.state }}</td>
+                    <td data-sort-value="{{ b.start.isoformat() }}">{{ b.date_label }}</td>
+                    <td>{{ b.selling_days }}</td>
+                    <td class="td-text-primary"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='all', **b_args) }}">{{ b.sales }}</a></td>
+                    <td class="td-green"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='installed', **b_args) }}">{{ b.installed }}</a></td>
+                    <td class="td-green">{{ "%.1f"|format(b.install_rate) ~ '%' if b.install_rate is not none else '—' }}</td>
+                    <td class="td-yellow"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='pending', **b_args) }}">{{ b.pending }}</a></td>
+                    <td class="td-cyan"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='card_on_file', **b_args) }}">{{ "%.1f"|format(b.card_on_file_rate) ~ '%' if b.card_on_file_rate is not none else '—' }}</a></td>
+                    <td class="td-orange"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='cancelled', **b_args) }}">{{ b.cancelled }}</a></td>
+                    <td class="td-purple"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='service_cancelled', **b_args) }}">{{ b.service_cancelled }}</a></td>
+                    <td class="td-magenta"><a class="td-metric-link" href="{{ url_for('knocker_accounts', status='needs_attention', **b_args) }}">{{ b.needs_attention }}</a></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                {% for label, r in [('Outside a blitz', rep_blitz_outside), ('All Time', rep_blitz_total)] if r %}
+                <tr class="td-channel-state-total">
+                    <td class="td-rep-cell"{% if loop.first %} data-formula="Sales on days that weren't part of a blitz"{% endif %}>{{ label }}</td>
+                    <td></td><td></td>
+                    <td class="td-text-primary">{{ r.sales }}</td>
+                    <td class="td-green">{{ r.installed }}</td>
+                    <td class="td-green">{{ "%.1f"|format(r.install_rate) ~ '%' if r.install_rate is not none else '—' }}</td>
+                    <td class="td-yellow">{{ r.pending }}</td>
+                    <td class="td-cyan">{{ "%.1f"|format(r.card_on_file_rate) ~ '%' if r.card_on_file_rate is not none else '—' }}</td>
+                    <td class="td-orange">{{ r.cancelled }}</td>
+                    <td class="td-purple">{{ r.service_cancelled }}</td>
+                    <td class="td-magenta">{{ r.needs_attention }}</td>
+                </tr>
+                {% endfor %}
+                </tfoot>
+            </table>
+        </div></div>
+    </section>
+    {% endif %}
+
     <section class="td-section">
         <div class="td-section-heading">
             <h2>Sales Activity</h2>

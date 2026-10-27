@@ -208,3 +208,26 @@ def test_monthly_rates_skip_tiny_months():
     with mock.patch.object(knockers, "_today", return_value=TODAY):
         aug = {r["short"]: r for r in knockers.monthly_rates(df, today=TODAY)}["Aug"]
     assert aug["sales"] == 1 and aug["cancelled"] == 1 and aug["order_cancel_rate"] is None
+
+
+def test_rep_blitzes_split_runs_by_gap_and_state():
+    days = (["2026-09-01", "2026-09-02", "2026-09-04", "2026-09-07"]   # NJ run (gaps 1, 2, 3)
+            + ["2026-09-15", "2026-09-16"]                            # NJ, only 2 days -> outside
+            + ["2026-09-03", "2026-09-20", "2026-09-21", "2026-09-22"])  # stray NY day + NY run
+    states = ["NJ"] * 6 + ["NY"] * 4
+    rows = [(i + 1, "aaa", d, None, None, None, None, st, "vernon")
+            for i, (d, st) in enumerate(zip(days, states))]
+    frame = raw(rows[:7])
+    frame = pd.concat([frame, raw(rows[7:])], ignore_index=True)
+    with mock.patch.object(knockers, "_today", return_value=TODAY):
+        blitzes, outside, total = knockers.rep_blitzes(knockers.normalize(frame))
+    assert [(b["state"], b["start"], b["end"], b["sales"]) for b in blitzes] == [
+        ("NY", date(2026, 9, 20), date(2026, 9, 22), 3),
+        ("NJ", date(2026, 9, 1), date(2026, 9, 7), 4),
+    ]
+    assert blitzes[0]["town"] == "Vernon" and not blitzes[0]["ongoing"]
+    assert outside["sales"] == 3 and total["sales"] == 10
+
+
+def test_rep_blitzes_empty():
+    assert knockers.rep_blitzes(None) == ([], None, None)

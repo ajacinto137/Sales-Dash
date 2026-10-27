@@ -2603,6 +2603,7 @@ def knocker_profile(code):
     state_rows, state_total = knockers.state_rows(period_df)
     _title, accounts = knockers.account_view(code_df, status="all", period=period, start=custom_start, end=custom_end)
     _with_knocker_links(accounts)
+    rep_blitzes, rep_blitz_outside, rep_blitz_total = knockers.rep_blitzes(code_df)
 
     return render_template(
         "knocker_profile.html",
@@ -2615,6 +2616,8 @@ def knocker_profile(code):
         first_sale=code_df["sale_date"].min() if code_df is not None and not code_df.empty else None,
         state_rows=state_rows, state_total=state_total,
         town_rows=knockers.town_rows(period_df, limit=15),
+        rep_blitzes=rep_blitzes, rep_blitz_outside=rep_blitz_outside, rep_blitz_total=rep_blitz_total,
+        rep_blitz_rule=(knockers.REP_BLITZ_MIN_SELLING_DAYS, knockers.REP_BLITZ_MAX_GAP_DAYS),
         rep_monthly_activity=calculate_rep_monthly_activity(code_df, code, cal_year, cal_month),
         accounts=accounts,
         view="knockers",
