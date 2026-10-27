@@ -43,6 +43,36 @@
     <p class="td-cp-notice">Door-knocker data is unavailable right now ({{ load_error }}).</p>
     {% endif %}
 
+    {# Headline rates (added 2026-10-26, by request): the current (or
+       latest) blitz's and all-time Card on File % and Install Rate, the
+       same numbers as the panel beside the Blitzes table. #}
+    {% set top_blitz = rep_blitzes[0] if rep_blitzes else none %}
+    <section class="td-section">
+        <div class="td-kn-status">
+            {% for label, sub, value, color, formula, url in [
+                (('Current' if top_blitz and top_blitz.ongoing else 'Latest') ~ ' Blitz Card on File',
+                 ((top_blitz.town ~ ', ' if top_blitz.town) ~ top_blitz.state ~ ' · ' ~ top_blitz.date_label) if top_blitz else 'No blitzes yet',
+                 top_blitz.card_on_file_rate if top_blitz else none, 'td-cyan', formulas.card_on_file_rate,
+                 url_for('knocker_accounts', status='card_on_file', code=code, state=top_blitz.state_key, period='custom', start=top_blitz.start.isoformat(), end=top_blitz.end.isoformat()) if top_blitz else none),
+                (('Current' if top_blitz and top_blitz.ongoing else 'Latest') ~ ' Blitz Install Rate',
+                 ((top_blitz.installed|string) ~ ' of ' ~ ((top_blitz.sales - top_blitz.pending)|string) ~ ' sales not pending') if top_blitz else 'No blitzes yet',
+                 top_blitz.install_rate if top_blitz else none, 'td-green', formulas.install_rate, none),
+                ('All Time Card on File', (all_time.card_on_file|string) ~ ' of ' ~ "{:,}".format(all_time.sales) ~ ' sales',
+                 all_time.card_on_file_rate, 'td-cyan', formulas.card_on_file_rate,
+                 url_for('knocker_accounts', status='card_on_file', code=code, period='all_time')),
+                ('All Time Install Rate', (all_time.installed|string) ~ ' of ' ~ ((all_time.sales - all_time.pending)|string) ~ ' sales not pending',
+                 all_time.install_rate, 'td-green', formulas.all_time_install_rate, none)] %}
+            <div class="td-profile-metric" data-formula="{{ formula }}">
+                <span class="td-profile-metric-label">{{ label }}</span>
+                {% set shown = "%.1f"|format(value) ~ '%' if value is not none else '—' %}
+                {% if url %}<a class="td-profile-metric-value td-profile-metric-link {{ color }}" href="{{ url }}">{{ shown }}</a>
+                {% else %}<span class="td-profile-metric-value {{ color }}">{{ shown }}</span>{% endif %}
+                <span class="td-muted-inline">{{ sub }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
     {% set acct_args = {'code': code, 'period': period, 'start': custom_start, 'end': custom_end} %}
     <section class="td-section">
         <div class="td-section-heading">
