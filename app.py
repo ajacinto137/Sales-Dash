@@ -2549,6 +2549,18 @@ def _serialize_escalation_mark(mark, user):
     }
 
 
+@app.route("/lead-feeder")
+@auth.login_required
+def lead_feeder_page():
+    """Lead Feeder (added 2026-10-28) -- main-nav page; placeholder until
+    its content is defined."""
+    return render_template(
+        "lead_feeder.html",
+        active_page="lead_feeder",
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
 @app.route("/tools/install-escalation")
 @auth.login_required
 def install_escalation_page():

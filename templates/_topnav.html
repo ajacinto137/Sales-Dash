@@ -46,6 +46,8 @@
              own door-knocking shifts (staffing_store.py). Login-gated;
              who may post/sign up is decided server-side. -->
         <a class="{{ 'td-topnav-active' if active_page == 'staffing' else '' }}" href="{{ url_for('staffing_page') }}">Staffing</a>
+        <!-- Lead Feeder (added 2026-10-28) -- login-gated like the pages above. -->
+        <a class="{{ 'td-topnav-active' if active_page == 'lead_feeder' else '' }}" href="{{ url_for('lead_feeder_page') }}">Lead Feeder</a>
         <!-- Tools (added 2026-10-26) -- dropdown of rep work tools; opens
              on hover or keyboard focus, no JS. Add new tools as links in
              .td-topnav-menu-list. Login-gated like the pages above. -->
