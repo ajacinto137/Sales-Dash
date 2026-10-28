@@ -3665,7 +3665,7 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
    keep each rate row level with its referral code. */
 .td-kn-board {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-columns: minmax(0, 1fr) 370px;
     gap: 16px;
     align-items: start;
 }
@@ -3673,7 +3673,7 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-kn-board tbody td { padding-top: 0; padding-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-kn-board .td-table-scroll { overflow-y: hidden; }
 @media (max-width: 640px) {
-    .td-kn-board { grid-template-columns: minmax(0, 1fr) 170px; gap: 8px; }
+    .td-kn-board { grid-template-columns: minmax(0, 1fr) 240px; gap: 8px; }
 }
 .td-kn-board thead tr { height: 84px; }
 .td-kn-cof-form { padding: 10px 8px 0; }

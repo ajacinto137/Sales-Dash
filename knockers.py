@@ -66,6 +66,9 @@ KNOCKER_TABLE_COLUMNS = [
     ("sales", "Sales", "desc"),
     ("installed", "Installs", "desc"),
     ("card_on_file_rate", "Card on File", "desc"),
+    # Install Rate for the period picked at the top (2026-10-27, by
+    # request), beside the all-time one.
+    ("install_rate", "Install Rate", "desc"),
     ("all_time_install_rate", "All Time Install Rate", "desc"),
     ("pending", "Pending", "desc"),
     ("needs_attention", "Needs Attention", "desc"),
@@ -74,7 +77,7 @@ KNOCKER_TABLE_COLUMNS = [
 ]
 KNOCKER_SORT_KEYS = {key for key, _, _ in KNOCKER_TABLE_COLUMNS}
 # Shown in a separate table beside the leaderboard, row-aligned with it.
-KNOCKER_RATE_COLUMN_KEYS = ("card_on_file_rate", "all_time_install_rate")
+KNOCKER_RATE_COLUMN_KEYS = ("card_on_file_rate", "install_rate", "all_time_install_rate")
 
 # The equation behind every Door Knocker metric, shown in a hover box
 # (added 2026-10-23, by request). Templates use it as the `formulas`
