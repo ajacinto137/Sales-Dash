@@ -3764,58 +3764,7 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 /* Sales by Town on the Team Leaderboard (2026-10-27). */
 .td-town-scroll { max-height: 520px; overflow-y: auto; }
 .td-town-table thead th { position: sticky; top: 0; background: var(--td-panel); z-index: 1; }
-.td-town-table .td-num { text-align: right; white-space: nowrap; }
-.td-town-table tfoot td { border-top: 2px solid var(--td-border-soft); font-weight: 700; }
-
-/* Sales by Town color pass (2026-10-27, by request): same neon accents as
-   the rest of the page -- top-3 rank badges match the record lists, Sales
-   uses the gradient, Install Rate is green/yellow/magenta by 80/60%, and
-   Share gets a gradient bar scaled to the top town. */
-.td-town-rank {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 4px;
-    border-radius: var(--td-radius-sm);
-    background: var(--td-panel-alt);
-    border: 1px solid var(--td-border);
-    color: var(--td-cyan);
-    font-size: 11.5px;
-    font-weight: 700;
-}
-.td-town-rank-1 { background: var(--td-accent-lime-bg); border-color: var(--td-accent-lime); color: var(--td-accent-lime); box-shadow: 0 0 8px var(--td-accent-lime-bg); }
-.td-town-rank-2 { background: var(--td-accent-blue-bg); border-color: var(--td-accent-blue); color: var(--td-accent-blue); }
-.td-town-rank-3 { background: var(--td-accent-violet-bg); border-color: var(--td-accent-violet); color: var(--td-accent-violet); }
-.td-town-state {
-    display: inline-block;
-    padding: 1px 7px;
-    border-radius: 999px;
-    background: var(--td-cyan-bg);
-    color: var(--td-cyan);
-    font-size: 11.5px;
-    font-weight: 700;
-}
-.td-town-sales {
-    background: linear-gradient(90deg, var(--td-accent-blue), var(--td-accent-violet));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    font-weight: 700;
-}
-.td-town-share { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
-.td-town-share-bar {
-    width: 70px;
-    height: 6px;
-    border-radius: 999px;
-    overflow: hidden;
-    background: var(--td-panel-alt);
-    border: 1px solid var(--td-border-soft);
-}
-.td-town-share-bar > span {
-    display: block;
-    height: 100%;
-    background: linear-gradient(90deg, var(--td-accent-blue), var(--td-accent-violet));
-}
-.td-town-table tbody tr:hover { background: var(--td-panel-alt); }
+/* Same header/cell spacing as the Individual Rep Leaderboard (whose
+   headers get theirs from .td-sort-link). */
+.td-town-table thead th { padding: 12px 16px; }
+.td-town-table tfoot td { padding: 14px 16px; text-align: center; border-top: 1px solid var(--td-border); font-weight: 700; }

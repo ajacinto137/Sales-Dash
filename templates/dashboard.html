@@ -830,42 +830,42 @@
             </div>
         </div>
 
+        {# Styled like the Individual Rep Leaderboard (2026-10-27, by
+           request): plain cyan rank, centered equal-width columns, each
+           metric column in its leaderboard color, green Install Rate. #}
         {% set town_cols = [('sales', 'Sales', 'td-text-primary'), ('installs', 'Installed', 'td-green'), ('pending', 'Pending', 'td-yellow'), ('needs_attention', 'Needs Attention', 'td-magenta'), ('outbound', 'Outbound', 'td-cyan'), ('inbound', 'Inbound', 'td-purple')] %}
         {% for key, tb in town_breakdown.items() %}
         <div class="td-table-card" data-bulk-view-panel="town-{{ key }}"{% if not loop.first %} style="display: none;"{% endif %}>
             <div class="td-table-scroll td-town-scroll">
                 <table class="td-table td-town-table" data-sortable>
+                    <colgroup>
+                        {% for _ in range(town_cols|length + 5) %}<col style="width: {{ 100 / (town_cols|length + 5) }}%">{% endfor %}
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th class="td-num">#</th>
+                            <th>#</th>
                             <th>Town</th>
                             <th>State</th>
-                            {% for _, label, _ in town_cols %}<th class="td-num">{{ label }}</th>{% endfor %}
-                            <th class="td-num">Install Rate</th>
-                            <th class="td-num">Share</th>
+                            {% for _, label, _ in town_cols %}<th>{{ label }}</th>{% endfor %}
+                            <th>Install Rate</th>
+                            <th>Share</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in tb.rows %}
                         <tr>
-                            <td class="td-num" data-sort-value="{{ loop.index }}"><span class="td-town-rank{{ ' td-town-rank-' ~ loop.index if loop.index <= 3 else '' }}">{{ loop.index }}</span></td>
+                            <td class="td-rank" data-sort-value="{{ loop.index }}">{{ loop.index }}</td>
                             <td class="td-rep-cell">{{ row.town }}</td>
-                            <td>{% if row.state %}<span class="td-town-state">{{ row.state }}</span>{% else %}—{% endif %}</td>
+                            <td>{{ row.state or '—' }}</td>
                             {% for metric, _, color in town_cols %}
-                            <td class="td-num" data-sort-value="{{ row[metric] }}">
+                            <td class="{{ color }}" data-sort-value="{{ row[metric] }}">
                                 {% if row[metric] %}
-                                <a class="td-metric-link {{ 'td-town-sales' if metric == 'sales' else color }}" href="{{ url_for('all_sales_view', view='town', town=row.town, state=row.state, metric=metric, period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(row[metric]) }}</a>
-                                {% else %}<span class="td-installs-zero">0</span>{% endif %}
+                                <a class="td-metric-link" href="{{ url_for('all_sales_view', view='town', town=row.town, state=row.state, metric=metric, period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(row[metric]) }}</a>
+                                {% else %}0{% endif %}
                             </td>
                             {% endfor %}
-                            {% set rate = row.install_rate %}
-                            <td class="td-num {{ '' if rate is none else ('td-green' if rate >= 80 else ('td-yellow' if rate >= 60 else 'td-magenta')) }}" data-sort-value="{{ rate if rate is not none else '' }}">{{ "%.0f%%"|format(rate) if rate is not none else "—" }}</td>
-                            <td class="td-num" data-sort-value="{{ row.share if row.share is not none else '' }}">
-                                <div class="td-town-share">
-                                    <span class="td-town-share-bar"><span style="width: {{ (row.share / tb.rows[0].share * 100) if row.share and tb.rows[0].share else 0 }}%;"></span></span>
-                                    <span class="td-cyan">{{ "%.1f%%"|format(row.share) if row.share is not none else "—" }}</span>
-                                </div>
-                            </td>
+                            <td class="td-green">{{ "%.1f%%"|format(row.install_rate) if row.install_rate is not none else "—" }}</td>
+                            <td>{{ "%.1f%%"|format(row.share) if row.share is not none else "—" }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -874,9 +874,9 @@
                             <td></td>
                             <td class="td-rep-cell">Total</td>
                             <td>{{ tb.rows|length }} town{{ '' if tb.rows|length == 1 else 's' }}</td>
-                            {% for metric, _, color in town_cols %}<td class="td-num">{% if metric == 'sales' %}<span class="td-gradient-text">{{ "{:,}".format(tb.total[metric]) }}</span>{% else %}<span class="{{ color }}">{{ "{:,}".format(tb.total[metric]) }}</span>{% endif %}</td>{% endfor %}
-                            <td class="td-num td-green">{{ "%.0f%%"|format(tb.total.install_rate) if tb.total.install_rate is not none else "—" }}</td>
-                            <td class="td-num">100%</td>
+                            {% for metric, _, color in town_cols %}<td class="{{ color }}">{{ "{:,}".format(tb.total[metric]) }}</td>{% endfor %}
+                            <td class="td-green">{{ "%.1f%%"|format(tb.total.install_rate) if tb.total.install_rate is not none else "—" }}</td>
+                            <td>100%</td>
                         </tr>
                     </tfoot>
                 </table>
