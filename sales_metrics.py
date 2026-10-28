@@ -223,6 +223,12 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
         "state": df["State"] if "State" in df.columns else None,
         "zipcode": df["Zipcode"] if "Zipcode" in df.columns else None,
         "place_id": df["PlaceID"] if "PlaceID" in df.columns else None,
+        # Internet plan (FTTPRates.ID), its monthly price (MRC) and
+        # market (FTTPMarkets.ID) --
+        # Bonus Predictions tiers each sale from these (bonus.py).
+        "rate_id": df["RateID"] if "RateID" in df.columns else None,
+        "rate_mrc": pd.to_numeric(df["RateMRC"], errors="coerce") if "RateMRC" in df.columns else None,
+        "market_id": df["MarketID"] if "MarketID" in df.columns else None,
     })
 
     row_count_ok = len(normalized) == original_count
@@ -1569,12 +1575,28 @@ def get_install_month_account_view(df, rep, year, month):
 
 # Monthly Status tab columns: key -> (status value, drill-down title).
 # "all" is every account in the month, whatever its status.
+# key -> (status or None for all, label, channels or None for all).
+# Inbound / Outbound Installed added 2026-10-28, by request; Web sales
+# count as inbound, same as the Rep Leaderboard.
 MONTHLY_STATUS_COLUMNS = {
-    "all": (None, "Accounts"),
-    "installed": ("Installed", "Installed"),
-    "pending": ("Pending", "Pending"),
-    "needs_attention": ("Needs Attention", "Needs Attention"),
+    "all": (None, "Accounts", None),
+    "installed": ("Installed", "Installed", None),
+    "inbound_installed": ("Installed", "Inbound Installed", INBOUND_CHANNELS | {WEB_CHANNEL}),
+    "outbound_installed": ("Installed", "Outbound Installed", OUTBOUND_CHANNELS),
+    "pending": ("Pending", "Pending", None),
+    "needs_attention": ("Needs Attention", "Needs Attention", None),
 }
+
+
+def _monthly_status_mask(sales, column):
+    """Rows of `sales` in one MONTHLY_STATUS_COLUMNS column."""
+    status, _label, channels = MONTHLY_STATUS_COLUMNS[column]
+    mask = pd.Series(True, index=sales.index)
+    if status:
+        mask &= sales["status"] == status
+    if channels:
+        mask &= sales["sales_channel"].isin(channels)
+    return mask
 
 
 def _rep_sales_with_month(df, rep):
@@ -1613,9 +1635,9 @@ def calculate_rep_monthly_status(df, rep):
 
     def summarize(group):
         row = {"sales": int(len(group))}
-        for key, (status, _) in MONTHLY_STATUS_COLUMNS.items():
-            if status:
-                row[key] = int((group["status"] == status).sum())
+        for key in MONTHLY_STATUS_COLUMNS:
+            if key != "all":
+                row[key] = int(_monthly_status_mask(group, key).sum())
         row["install_rate"] = (1 - row["needs_attention"] / row["sales"]) * 100 if row["sales"] else None
         return row
 
@@ -1651,14 +1673,13 @@ def get_status_month_account_view(df, rep, year, month, column):
         target = pd.Period(date(year, month, 1), freq="M")
     except (TypeError, ValueError):
         return "Invalid Month", []
-    status, label = MONTHLY_STATUS_COLUMNS[column]
+    label = MONTHLY_STATUS_COLUMNS[column][1]
     title = f"{target.strftime('%B %Y')} {label}"
     sales = _rep_sales_with_month(df, rep)
     if sales.empty:
         return title, []
     filtered = sales[sales["_status_month"] == target]
-    if status:
-        filtered = filtered[filtered["status"] == status]
+    filtered = filtered[_monthly_status_mask(filtered, column)]
     filtered = filtered.assign(
         _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
     ).sort_values("_scheduled_sort", na_position="last")

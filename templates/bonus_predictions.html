@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bonus Predictions — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Bonus Predictions (Tools menu, added 2026-10-28) -- per-rep bonus from
+   installed (earned) and pending (predicted) OUTBOUND sales, each weighted
+   by its market type/tier. Rules: bonus.py. #}
+
+{% macro money(v) %}${{ "{:,.2f}".format(v) }}{% endmacro %}
+
+<div class="td-page">
+
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Bonus Predictions</h1>
+            <p class="td-muted-inline">
+                Paid on <strong>installed outbound</strong> sales only &middot;
+                tier multiplier &times; plan price: GPON / XGSPON Tier 1 = 1x, Tier 2 = 1.25x, Tier 3 = 1.5x &middot;
+                Single Tier = 1x &middot; Door to Door = $200 flat
+            </p>
+        </div>
+        <form class="td-period-form" method="get" action="{{ url_for('bonus_predictions_page') }}">
+            {% include "_period_select.html" %}
+        </form>
+    </header>
+
+    <section class="td-kn-status">
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Earned (Installed)</span>
+            <span class="td-profile-metric-value td-green">{{ money(totals.bonus_installed) }}</span>
+            <span class="td-muted-inline">{{ "{:,}".format(totals.installs) }} outbound installs</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Pending Install</span>
+            <span class="td-profile-metric-value td-yellow">{{ money(totals.bonus_pending) }}</span>
+            <span class="td-muted-inline">{{ "{:,}".format(totals.pending) }} outbound sales with a future install date</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Predicted Total</span>
+            <span class="td-profile-metric-value td-cyan">{{ money(totals.bonus_predicted) }}</span>
+            <span class="td-muted-inline">earned + pending</span>
+        </div>
+        <div class="td-profile-metric">
+            <span class="td-profile-metric-label">Outbound Sales</span>
+            <span class="td-profile-metric-value td-purple">{{ "{:,}".format(totals.sales) }}</span>
+            <span class="td-muted-inline">{{ totals.d2d }} door to door &middot; {{ totals.other }} on untiered plans (no bonus)</span>
+        </div>
+    </section>
+
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Rep Bonuses</h2>
+            <span class="td-muted-inline">Outbound sales by tier (sold in period; Door to Door counted separately) &middot; click a header to sort</span>
+        </div>
+
+        {% if not rows %}
+        <p class="td-empty">No outbound sales in this period.</p>
+        {% else %}
+        <div class="td-table-card">
+            <div class="td-table-scroll td-table-scroll--tall">
+                <table data-sortable class="td-table">
+                    <thead>
+                        <tr>
+                            <th>Sales Rep</th>
+                            <th>Outbound Sales</th>
+                            <th title="GPON Tier 1 (100 / 250) — 1x">GPON T1</th>
+                            <th title="GPON Tier 2 (500) — 1.25x">GPON T2</th>
+                            <th title="GPON Tier 3 (1 Gig) — 1.5x">GPON T3</th>
+                            <th title="XGSPON Tier 1 (1 Gig) — 1x">XGS T1</th>
+                            <th title="XGSPON Tier 2 (2.5 Gig) — 1.25x">XGS T2</th>
+                            <th title="XGSPON Tier 3 (5 Gig) — 1.5x">XGS T3</th>
+                            <th title="Single Tier GPON (1 Gig) — 1x">Single</th>
+                            <th title="Door to Door — $200 flat per install">Door to Door</th>
+                            <th>Installed</th>
+                            <th>Pending</th>
+                            <th>Earned</th>
+                            <th>Predicted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td><a class="td-rep-link" href="{{ url_for('rep_profile', rep_name=r.sales_rep) }}">{{ r.sales_rep }}</a></td>
+                        <td class="td-purple">{{ r.sales }}</td>
+                        <td>{{ r.gpon_1 }}</td>
+                        <td>{{ r.gpon_2 }}</td>
+                        <td>{{ r.gpon_3 }}</td>
+                        <td>{{ r.xgs_1 }}</td>
+                        <td>{{ r.xgs_2 }}</td>
+                        <td>{{ r.xgs_3 }}</td>
+                        <td>{{ r.single }}</td>
+                        <td class="td-orange">{{ r.d2d }}</td>
+                        <td class="td-green">{{ r.installs }}</td>
+                        <td class="td-yellow">{{ r.pending }}</td>
+                        <td class="td-green" data-sort-value="{{ r.bonus_installed }}">{{ money(r.bonus_installed) }}</td>
+                        <td class="td-cyan" data-sort-value="{{ r.bonus_predicted }}">{{ money(r.bonus_predicted) }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
+</div>
+</body>
+</html>

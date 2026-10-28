@@ -262,10 +262,13 @@
             <h2>Install Status by Month</h2>
             <span class="td-muted-inline">By scheduled install month (sale month if no install date) &middot; all time &middot; click a count to see the accounts</span>
         </div>
+        <p class="td-muted-inline">Bonus is paid on installed outbound sales only &middot; tier multiplier &times; plan price (GPON / XGSPON 1x / 1.25x / 1.5x, Single Tier 1x) &middot; Door to Door $200 flat &middot; Predicted adds pending installs</p>
+
+        {% macro bonus_cell(b, field) %}{% if not b %}<span class="td-installs-zero">&mdash;</span>{% else %}{{ "${:,.2f}".format(b['bonus_' ~ field]) }}{% endif %}{% endmacro %}
 
         {% set ms = monthly_status %}
         {% if ms.months %}
-        {% set status_cols = [("all", "sales", "Accounts", "td-cyan"), ("installed", "installed", "Installed", "td-green"), ("pending", "pending", "Pending", "td-yellow"), ("needs_attention", "needs_attention", "Needs Attention", "td-orange")] %}
+        {% set status_cols = [("all", "sales", "Accounts", "td-cyan"), ("installed", "installed", "Installed", "td-green"), ("inbound_installed", "inbound_installed", "Inbound Installed", "td-cyan"), ("outbound_installed", "outbound_installed", "Outbound Installed", "td-purple"), ("pending", "pending", "Pending", "td-yellow"), ("needs_attention", "needs_attention", "Needs Attention", "td-orange")] %}
         <div class="td-record-card td-monthly-status-card">
             <table class="td-installs-table td-monthly-status-table">
                 <thead>
@@ -273,6 +276,8 @@
                         <th>Month</th>
                         {% for _, _, label, _ in status_cols %}<th class="td-num">{{ label }}</th>{% endfor %}
                         <th class="td-num">Install Rate</th>
+                        <th class="td-num">Bonus Earned</th>
+                        <th class="td-num">Bonus Predicted</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -289,6 +294,9 @@
                         </td>
                         {% endfor %}
                         <td class="td-num">{{ "%.0f%%"|format(m.install_rate) if m.install_rate is not none else "—" }}</td>
+                        {% set b = monthly_bonus.months.get((m.year, m.month)) %}
+                        <td class="td-num td-green">{{ bonus_cell(b, 'installed') }}</td>
+                        <td class="td-num td-cyan">{{ bonus_cell(b, 'predicted') }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -298,6 +306,8 @@
                         <td>All Time</td>
                         {% for _, field, _, color in status_cols %}<td class="td-num {{ color }}">{{ "{:,}".format(t[field]) }}</td>{% endfor %}
                         <td class="td-num">{{ "%.0f%%"|format(t.install_rate) if t.install_rate is not none else "—" }}</td>
+                        <td class="td-num td-green">{{ bonus_cell(monthly_bonus.totals, 'installed') }}</td>
+                        <td class="td-num td-cyan">{{ bonus_cell(monthly_bonus.totals, 'predicted') }}</td>
                     </tr>
                 </tfoot>
             </table>

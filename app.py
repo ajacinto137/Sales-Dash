@@ -21,6 +21,7 @@ import hubspot_client
 import hubspot_logic
 import hubspot_store
 import import_service
+import bonus
 import install_escalation
 import knockers
 import marketing_cleaning
@@ -1265,6 +1266,9 @@ def rep_profile(rep_name):
     # attention per scheduled install month, all-time, each count drilling into
     # ?view=status_month.
     monthly_status = calculate_rep_monthly_status(normalized, rep_name)
+    # Bonus Predictions per Monthly Status month (added 2026-10-28) -- see
+    # bonus.calculate_rep_monthly_bonus().
+    monthly_bonus = bonus.calculate_rep_monthly_bonus(normalized, rep_name)
 
     # Cosmetic achievement badges (icons next to the rep's name) -- see
     # get_rep_achievements()'s docstring. Always all-time, purely display.
@@ -1310,6 +1314,7 @@ def rep_profile(rep_name):
         needs_attention_count=len(needs_attention),
         monthly_installs=monthly_installs,
         monthly_status=monthly_status,
+        monthly_bonus=monthly_bonus,
         attention_available=attention_available,
         attention_progress=attention_progress,
         attention_statuses=attention_store.ATTENTION_STATUSES,
@@ -2602,6 +2607,33 @@ def install_escalation_page():
         states=sorted({a["state"] for a in accounts if a["state"]}),
         outcomes=install_escalation.OUTCOMES,
         today=_today(),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/tools/bonus-predictions")
+@auth.login_required
+def bonus_predictions_page():
+    """Bonus Predictions (added 2026-10-28) -- per-rep bonus earned and
+    predicted for the period: installed (+ pending) outbound sales, each
+    paying its tier multiplier x its plan's monthly price (Door to Door
+    $200 flat). Rules: bonus.py."""
+    ensure_data_loaded()
+    normalized = get_normalized_sales()
+
+    period = request.args.get("period", "this_month")
+    custom_start = request.args.get("start", "")
+    custom_end = request.args.get("end", "")
+    period_df = filter_by_period(normalized, period, custom_start, custom_end)
+    rows = bonus.calculate_rep_bonuses(period_df)
+    return render_template(
+        "bonus_predictions.html",
+        active_page="tools",
+        rows=rows,
+        totals=bonus.summarize(rows),
+        period=period,
+        custom_start=custom_start,
+        custom_end=custom_end,
         last_refreshed=data_store["last_refreshed"],
     )
 

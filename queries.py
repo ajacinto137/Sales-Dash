@@ -73,7 +73,13 @@ SELECT
 
     fd.[SalesChannel_ID],
 
-    fd.[NJPR_PlaceID] AS PlaceID
+    fd.[NJPR_PlaceID] AS PlaceID,
+
+    -- Internet plan, its monthly price and market, for Bonus
+    -- Predictions (bonus.py).
+    fd.RateID,
+    rates.MRC AS RateMRC,
+    fd.MarketID
 
 FROM [PlanetWeb].[dbo].[FTTPFormData] fd
 
