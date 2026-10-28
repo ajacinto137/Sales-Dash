@@ -1339,6 +1339,70 @@ def get_town_account_view(df, town, state, metric, period, start, end):
     return title, build_bulk_account_rows(filtered)
 
 
+# ---------------- Monthly Sales by Status (added 2026-10-27, by request) ----------------
+# Team Leaderboard's stacked bars: one per sale month, Installed + Pending
+# + Needs Attention + Cancels = that month's sales. Same chart as the Door
+# Knockers page. Always all-time, independent of the period filter.
+
+MONTHLY_SALES_STATUSES = {
+    "installed": ("Installed", ["Installed"]),
+    "pending": ("Pending", ["Pending"]),
+    "needs_attention": ("Needs Attention", ["Needs Attention"]),
+    "cancels": ("Cancels", ["Cancelled"]),
+}
+
+
+def calculate_monthly_sales_by_status(df):
+    """[{year, month, label, short, sales, installed, pending,
+    needs_attention, cancels}, ...] oldest first, every month from the
+    first sale through this month (zero months included). Empty-safe."""
+    if df is None or df.empty:
+        return []
+    valid = df.dropna(subset=["sale_date"])
+    if valid.empty:
+        return []
+    months = valid["sale_date"].dt.to_period("M")
+    groups = dict(list(valid.groupby(months)))
+    month, last = months.min(), max(months.max(), pd.Period(_today(), freq="M"))
+    rows = []
+    while month <= last:
+        group = groups.get(month, valid.iloc[0:0])
+        row = {"year": month.year, "month": month.month, "label": month.strftime("%b %Y"),
+               "short": month.strftime("%b"), "sales": int(len(group))}
+        for key, (_, statuses) in MONTHLY_SALES_STATUSES.items():
+            row[key] = int(group["status"].isin(statuses).sum())
+        rows.append(row)
+        month += 1
+    return rows
+
+
+def get_month_status_account_view(df, year, month, status):
+    """Team-wide Bulk Account View for one Monthly Sales by Status segment:
+    sales made in that month, narrowed to `status` (a
+    MONTHLY_SALES_STATUSES key, or "all"). Returns (title, []) for an
+    invalid month/status or no matches, never raises."""
+    try:
+        first = date(int(year), int(month), 1)
+    except (TypeError, ValueError):
+        return "Invalid View", []
+    if status != "all" and status not in MONTHLY_SALES_STATUSES:
+        return "Invalid View", []
+    label = "Sales" if status == "all" else MONTHLY_SALES_STATUSES[status][0]
+    title = f"{label} — {first.strftime('%B %Y')} Sales"
+    if df is None or df.empty:
+        return title, []
+    valid = df.dropna(subset=["sale_date"])
+    filtered = valid[(valid["sale_date"].dt.year == first.year) & (valid["sale_date"].dt.month == first.month)]
+    if status != "all":
+        filtered = filtered[filtered["status"].isin(MONTHLY_SALES_STATUSES[status][1])]
+    if filtered.empty:
+        return title, []
+    filtered = filtered.assign(
+        _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
+    ).sort_values("_scheduled_sort", na_position="last")
+    return title, build_bulk_account_rows(filtered)
+
+
 LEADERBOARD_METRIC_TITLES = {
     "sales": "Sales",
     "outbound": "Outbound",

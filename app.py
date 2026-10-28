@@ -55,6 +55,8 @@ from sales_metrics import (
     calculate_channel_state_breakdown,
     calculate_town_breakdown,
     get_town_account_view,
+    calculate_monthly_sales_by_status,
+    get_month_status_account_view,
     calculate_daily_averages,
     calculate_hourly_breakdown,
     calculate_monthly_forecast,
@@ -984,6 +986,19 @@ def dashboard_page():
     for state_code in town_breakdown["All"]["states"]:
         town_breakdown[state_code] = calculate_town_breakdown(_state_filtered(period_df, state_code))
 
+    # Monthly Sales by Status (added 2026-10-27) -- all-time stacked bars,
+    # one panel per state view that has sales. Each row carries the
+    # drill-down URL; the chart appends &status=<segment>.
+    monthly_status_views = []
+    for key, label, _ in DASHBOARD_STATE_VIEWS:
+        rows = calculate_monthly_sales_by_status(state_filtered_normalized[key])
+        if not any(r["sales"] for r in rows):
+            continue
+        for r in rows:
+            r["name"] = r["label"]
+            r["url"] = url_for("all_sales_view", view="month_status", year=r["year"], month=r["month"], state_view=key)
+        monthly_status_views.append({"key": key, "label": label, "rows": rows})
+
     # Sales Volume tab (default tab of Channel & Time-of-Day Performance,
     # added 2026-08-18, team selector reworked 2026-08-19) -- one
     # cumulative-outbound-sales-per-rep line per Sales Rep TEAM (Junior/
@@ -1143,6 +1158,7 @@ def dashboard_page():
         hourly_breakdown=hourly_breakdown,
         channel_state_breakdown=channel_state_breakdown,
         town_breakdown=town_breakdown,
+        monthly_status_views=monthly_status_views,
         sales_volume_views=sales_volume_views,
         volume_view=volume_view,
         team_view_options=team_view_options,
@@ -1758,6 +1774,19 @@ def all_sales_view():
             request.args.get("metric", "sales"), period, custom_start, custom_end,
         )
         all_time = False
+    elif view == "month_status":
+        # Monthly Sales by Status segment click (added 2026-10-27) --
+        # all-time, scoped to the chart's Team/state panel.
+        state_view = request.args.get("state_view", "team")
+        if state_view not in DASHBOARD_STATE_VIEW_KEYS:
+            state_view = "team"
+        view_title, accounts = get_month_status_account_view(
+            _state_filtered(normalized, _state_code_for_view(state_view)),
+            request.args.get("year"), request.args.get("month"), request.args.get("status", "all"),
+        )
+        if state_view != "team":
+            view_title = f"{view_title} — {next(label for key, label, _ in DASHBOARD_STATE_VIEWS if key == state_view)}"
+        all_time = True
     elif view in BULK_ACCOUNT_VIEWS:
         # Team-wide registry views (e.g. Latest Accounts Sold's "View All
         # Sales") leave Web out, like Live Sales Activity itself. The

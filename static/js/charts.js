@@ -1274,6 +1274,7 @@ document.addEventListener("DOMContentLoaded", () => {
     wireVisibleCalendarAndTrendCards();
     wireChartToggle(document.getElementById("knocker-rates-toggle"));
     wireChartToggle(document.getElementById("knocker-monthly-status-toggle"));
+    wireChartToggle(document.getElementById("team-monthly-status-toggle"));
     // Sales Volume tab's own nested Team/NJ/NY/VA toggle -- wired
     // unconditionally like team-monthly-trend-toggle above, not lazily
     // via the outer toggle, since Sales Volume is the outer toggle's
