@@ -56,6 +56,7 @@ from sales_metrics import (
     calculate_town_breakdown,
     get_town_account_view,
     calculate_monthly_sales_by_status,
+    MONTHLY_SALES_STATUSES,
     get_month_status_account_view,
     calculate_daily_averages,
     calculate_hourly_breakdown,
@@ -1073,6 +1074,28 @@ def dashboard_page():
     # Door Knockers KPI row (added 2026-10-23) -- same five numbers from
     # the knocker dataset; omitted if appdb is unreachable.
     knocker_df, _knocker_error = _load_knockers_or_error()
+    # Monthly Sales by Status's "Internal vs Door Knockers" tab (added
+    # 2026-10-27, by request): per month, an internal stack and a knocker
+    # stack side by side -- never summed. Team-wide, all-time.
+    if knocker_df is not None and monthly_status_views:
+        internal = {r["label"]: r for r in monthly_status_views[0]["rows"]}
+        knocker_months = {r["label"]: r for r in calculate_monthly_sales_by_status(knocker_df)}
+        empty = {"sales": 0, **{k: 0 for k in MONTHLY_SALES_STATUSES}}
+        compare_rows = []
+        for period_month in pd.period_range(
+                min(pd.Period(year=r["year"], month=r["month"], freq="M") for r in [*internal.values(), *knocker_months.values()]),
+                pd.Period(_today(), freq="M"), freq="M"):
+            label = period_month.strftime("%b %Y")
+            first, last = period_month.start_time.date(), period_month.end_time.date()
+            k = knocker_months.get(label, empty)
+            compare_rows.append({
+                "label": label, "short": period_month.strftime("%b"),
+                "internal": {**internal.get(label, empty), "url": url_for(
+                    "all_sales_view", view="month_status", year=period_month.year, month=period_month.month, state_view="team")},
+                "knockers": {**{key: k[key] for key in empty}, "url": url_for(
+                    "knocker_accounts", period="custom", start=first.isoformat(), end=last.isoformat())},
+            })
+        monthly_status_views.append({"key": "compare", "label": "Internal vs Door Knockers", "compare": True, "rows": compare_rows})
     knocker_kpis = total_kpis = None
     if knocker_df is not None:
         knocker_kpis = {

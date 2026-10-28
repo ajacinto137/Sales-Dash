@@ -292,6 +292,101 @@ function createMonthlyStatusChart(canvasEl, tokens) {
     return createStatusStackedChart(canvasEl, tokens, true);
 }
 
+// Monthly Sales by Status's "Internal vs Door Knockers" tab (added
+// 2026-10-27): per month an Internal stack and a Door Knockers stack side
+// by side (Chart.js `stack` groups), never summed. Knocker segments are
+// the same status colors, faded, so each status reads the same in both.
+// Rows: [{label, internal: {sales, installed, ..., url}, knockers: {...}}].
+const COMPARE_GROUPS = [["internal", "Internal", 1], ["knockers", "Door Knockers", 0.5]];
+
+function createStatusCompareChart(canvasEl, tokens) {
+    const rows = JSON.parse(canvasEl.dataset.rows || "[]");
+    const datasets = [];
+    COMPARE_GROUPS.forEach(([group, groupLabel, alpha]) => {
+        MONTHLY_STATUSES.forEach(([key, label]) => {
+            datasets.push({
+                label: `${groupLabel} · ${label}`,
+                key,
+                group,
+                stack: group,
+                data: rows.map((r) => r[group][key]),
+                backgroundColor: withAlpha(tokens.statusColors[key === "cancels" ? "cancelled" : key], alpha),
+                borderColor: tokens.panel,
+                borderWidth: { top: 2 },
+                borderSkipped: false,
+                borderRadius: 0,
+                maxBarThickness: 30,
+            });
+        });
+    });
+    const totalColor = getComputedStyle(canvasEl).getPropertyValue("--td-text-primary").trim() || tokens.axisText;
+    const totals = {
+        id: "compareTotals",
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            ctx.save();
+            ctx.textAlign = "center";
+            COMPARE_GROUPS.forEach(([group], g) => {
+                const meta = chart.getDatasetMeta((g + 1) * MONTHLY_STATUSES.length - 1);
+                if (meta.hidden) return;
+                meta.data.forEach((bar, i) => {
+                    const n = rows[i][group].sales;
+                    if (!n) return;
+                    const top = chart.scales.y.getPixelForValue(n);
+                    ctx.font = "700 10.5px sans-serif";
+                    ctx.fillStyle = totalColor;
+                    ctx.fillText(n.toLocaleString(), bar.x, top - 14);
+                    ctx.font = "600 9px sans-serif";
+                    ctx.fillStyle = tokens.axisText;
+                    ctx.fillText(group === "internal" ? "INT" : "DK", bar.x, top - 4);
+                });
+            });
+            ctx.restore();
+        },
+    };
+    return new Chart(canvasEl, {
+        type: "bar",
+        plugins: [totals],
+        data: { labels: rows.map((r) => r.label), datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: baseAnimation(),
+            interaction: { mode: "nearest", axis: "x", intersect: true },
+            onClick: (_evt, elements) => {
+                if (!elements.length) return;
+                const ds = datasets[elements[0].datasetIndex];
+                const url = rows[elements[0].index][ds.group].url;
+                if (url) window.location.href = `${url}&status=${ds.key}`;
+            },
+            onHover: (evt, elements) => {
+                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+            },
+            scales: {
+                x: { ...baseScaleOptions(tokens), stacked: true, grid: { display: false } },
+                y: { ...baseScaleOptions(tokens), stacked: true, beginAtZero: true, grace: "12%", ticks: { ...baseScaleOptions(tokens).ticks, precision: 0 } },
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: { color: tokens.axisText, font: { size: 11, weight: "600" }, boxWidth: 10, boxHeight: 10, padding: 12 },
+                },
+                tooltip: buildTooltipConfig(tokens, {
+                    title: (items) => `${rows[items[0].dataIndex].label} · ${datasets[items[0].datasetIndex].group === "internal" ? "Internal" : "Door Knockers"}`,
+                    label: (item) => {
+                        const ds = datasets[item.datasetIndex];
+                        const total = rows[item.dataIndex][ds.group].sales;
+                        const pct = total ? ` (${((item.raw / total) * 100).toFixed(1)}%)` : "";
+                        return `${MONTHLY_STATUSES.find(([k]) => k === ds.key)[1]}: ${item.raw}${pct}`;
+                    },
+                    footer: (items) => `Sales: ${rows[items[0].dataIndex][datasets[items[0].datasetIndex].group].sales.toLocaleString()}`,
+                }),
+            },
+        },
+    });
+}
+
 // Prints each stack's total (row.sales) above its column.
 function stackTotalsPlugin(rows, color) {
     return {
@@ -934,6 +1029,7 @@ const CHART_TOGGLE_FACTORIES = {
     weekToDate: createWeekToDateChart,
     rateTrend: createRateTrendChart,
     monthlyStatus: createMonthlyStatusChart,
+    statusCompare: createStatusCompareChart,
     salesVolume: createSalesVolumeChart,
     bucketSeries: createBucketSeriesChart,
 };

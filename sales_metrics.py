@@ -1348,7 +1348,9 @@ MONTHLY_SALES_STATUSES = {
     "installed": ("Installed", ["Installed"]),
     "pending": ("Pending", ["Pending"]),
     "needs_attention": ("Needs Attention", ["Needs Attention"]),
-    "cancels": ("Cancels", ["Cancelled"]),
+    # Service Cancelled only exists in the door-knocker data (the
+    # Internal vs Door Knockers comparison runs this on both).
+    "cancels": ("Cancels", ["Cancelled", "Service Cancelled"]),
 }
 
 
