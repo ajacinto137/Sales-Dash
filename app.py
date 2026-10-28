@@ -2092,11 +2092,17 @@ def passings_page():
     # passings_cache._hubspot_call_mask().
     hubspot_called_raw = request.args.get("hubspot_called", "")
     hubspot_called = _parse_bool_param(hubspot_called_raw)
-    hubspot_min_calls_raw = request.args.get("hubspot_min_calls", "").strip()
+    # Max calls replaced the minimum (2026-10-27, by request); 0 is a
+    # real value here (never called), so None means "no limit".
+    hubspot_max_calls_raw = request.args.get("hubspot_max_calls", "").strip()
     try:
-        hubspot_min_calls = max(0, int(hubspot_min_calls_raw)) if hubspot_min_calls_raw else None
+        hubspot_max_calls = max(0, int(hubspot_max_calls_raw)) if hubspot_max_calls_raw else None
     except ValueError:
-        hubspot_min_calls, hubspot_min_calls_raw = None, ""
+        hubspot_max_calls, hubspot_max_calls_raw = None, ""
+    # Has Phone Number (2026-10-27): a usable number on the lead, the
+    # same test as the card's phone/NA -- snapshot-only, like the above.
+    has_phone_raw = request.args.get("has_phone", "")
+    has_phone = _parse_bool_param(has_phone_raw)
     hubspot_last_call_from_raw = request.args.get("hubspot_last_call_from", "")
     hubspot_last_call_to_raw = request.args.get("hubspot_last_call_to", "")
     hubspot_last_call_from = _parse_date_param(hubspot_last_call_from_raw)
@@ -2147,7 +2153,8 @@ def passings_page():
     filters["residential_ids"] = set(residential_marks)
     filters.update(
         hubspot_called=hubspot_called,
-        hubspot_min_calls=hubspot_min_calls,
+        hubspot_max_calls=hubspot_max_calls,
+        has_phone=has_phone,
         hubspot_last_call_from=hubspot_last_call_from,
         hubspot_last_call_to=hubspot_last_call_to,
         hubspot_call_stats=hubspot_call_stats,
@@ -2155,7 +2162,8 @@ def passings_page():
         order_statuses=order_statuses,
     )
     snapshot_filters_active = bool(
-        hubspot_called is not None or hubspot_min_calls or hubspot_last_call_from or hubspot_last_call_to
+        hubspot_called is not None or hubspot_max_calls is not None or hubspot_last_call_from or hubspot_last_call_to
+        or has_phone is not None
         or order_status
     )
 
@@ -2244,7 +2252,8 @@ def passings_page():
             "city": city, "state": state, "zip": zip_code, "rep": rep,
             "last_activity_from": last_activity_from_raw, "last_activity_to": last_activity_to_raw,
             "search": search, "sort": sort_key, "dir": sort_dir,
-            "hubspot_called": hubspot_called_raw, "hubspot_min_calls": hubspot_min_calls_raw,
+            "hubspot_called": hubspot_called_raw, "hubspot_max_calls": hubspot_max_calls_raw,
+            "has_phone": has_phone_raw,
             "hubspot_last_call_from": hubspot_last_call_from_raw, "hubspot_last_call_to": hubspot_last_call_to_raw,
             "order_status": order_status,
         },

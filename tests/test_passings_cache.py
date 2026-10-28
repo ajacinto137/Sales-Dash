@@ -157,13 +157,20 @@ def test_hubspot_call_filters_cover_leads_only():
     assert page() == [1, 2, 3, 4, 5]  # inactive filters leave everything in
     assert page(hubspot_called=True) == [4]
     assert page(hubspot_called=False) == [1]  # leads with no calls -- never non-leads
-    assert page(hubspot_min_calls=4) == [4]
-    assert page(hubspot_min_calls=5) == []
+    assert page(hubspot_max_calls=0) == [1]  # 0 = never called (leads only)
+    assert page(hubspot_max_calls=3) == [1]
+    assert page(hubspot_max_calls=4) == [1, 4]
     assert page(hubspot_last_call_from=date(2026, 10, 20), hubspot_last_call_to=date(2026, 10, 20)) == [4]
     assert page(hubspot_last_call_from=date(2026, 10, 21)) == []
     # Email matching ignores case and surrounding spaces.
     upper = {"A@X.COM".lower(): {"calls": 1, "last_call_at": None, "last_call_date": date(2026, 10, 1)}}
     assert ids(pc.get_page({"hubspot_called": True, "hubspot_call_stats": upper}, "", "place_id", "asc", 1)) == [1]
+
+
+def test_has_phone_filter():
+    # Only place 1 has a usable number; "" / None show NA on the card.
+    assert ids(pc.get_page({"has_phone": True}, "", "place_id", "asc", 1)) == [1]
+    assert ids(pc.get_page({"has_phone": False}, "", "place_id", "asc", 1)) == [2, 3, 4, 5]
 
 
 def test_pas_place_url():

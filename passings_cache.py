@@ -174,6 +174,9 @@ def _prepare(df):
     # into hubspot_store.get_call_stats_by_email() for the HubSpot call
     # filters below.
     df["_email_l"] = df["EmailAddress"].fillna("").astype(str).str.strip().str.lower().where(df["_email_valid"], "")
+    # Usable phone number -- the same test that decides whether a card
+    # shows the number or NA (Has Phone Number filter, 2026-10-27).
+    df["_has_phone"] = df["PhoneNumber"].map(lambda v: passings_data.format_phone(v)[0] is not None).astype(bool)
     df["_marked"] = False
     _classify(df)
     df["_city_l"] = df["City"].fillna("").astype(str).str.lower()
@@ -399,6 +402,12 @@ def _filter(df, filters, search):
     elif has_lead is False:
         mask &= ~df["_email_valid"]
 
+    has_phone = filters.get("has_phone")
+    if has_phone is True:
+        mask &= df["_has_phone"]
+    elif has_phone is False:
+        mask &= ~df["_has_phone"]
+
     for key, column in (("city", "_city_l"), ("state", "_state_l"), ("zip", "_zip_l")):
         value = filters.get(key)
         if value:
@@ -441,16 +450,18 @@ def _filter(df, filters, search):
 def _hubspot_call_mask(df, filters):
     """HubSpot call filters (added 2026-10-26): `hubspot_called`
     (True = leads with at least one outbound HubSpot call, False = leads
-    with none), `hubspot_min_calls` and `hubspot_last_call_from/_to`
+    with none), `hubspot_max_calls` (at most that many -- 0 = never
+    called; replaced the minimum 2026-10-27, by request) and
+    `hubspot_last_call_from/_to`
     (business-timezone dates), all over leads only, using
     filters["hubspot_call_stats"] from hubspot_store.get_call_stats_by_email().
     Snapshot-only: the stats live in appdb, which passings_data's
     PlanetWeb SQL can't join -- same as the Residential Address marks."""
     called = filters.get("hubspot_called")
-    min_calls = filters.get("hubspot_min_calls")
+    max_calls = filters.get("hubspot_max_calls")
     last_from = filters.get("hubspot_last_call_from")
     last_to = filters.get("hubspot_last_call_to")
-    if called is None and not min_calls and not last_from and not last_to:
+    if called is None and max_calls is None and not last_from and not last_to:
         return True
     stats = filters.get("hubspot_call_stats") or {}
     emails = df["_email_l"]
@@ -460,8 +471,8 @@ def _hubspot_call_mask(df, filters):
         mask &= calls > 0
     elif called is False:
         mask &= calls == 0
-    if min_calls:
-        mask &= calls >= int(min_calls)
+    if max_calls is not None:
+        mask &= calls <= int(max_calls)
     if last_from or last_to:
         last = pd.to_datetime(emails.map({e: v["last_call_date"] for e, v in stats.items()}))
         if last_from:

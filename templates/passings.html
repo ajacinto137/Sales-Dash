@@ -264,6 +264,16 @@
                 <option value="no" {{ 'selected' if selected.has_lead == 'no' else '' }}>No Lead</option>
             </select>
         </div>
+        {# Has Phone Number (2026-10-27): a usable number on the lead --
+           the same test as the card's phone vs NA. #}
+        <div class="td-marketing-filter-field">
+            <label for="passings-has-phone">Has Phone Number</label>
+            <select id="passings-has-phone" name="has_phone" class="td-admin-inline-select">
+                <option value="" {{ 'selected' if selected.has_phone == '' else '' }}>Any</option>
+                <option value="yes" {{ 'selected' if selected.has_phone == 'yes' else '' }}>Has Phone</option>
+                <option value="no" {{ 'selected' if selected.has_phone == 'no' else '' }}>No Phone</option>
+            </select>
+        </div>
         {# "Worked" (renamed from "Activity", 2026-10-20, by request): a
            passing is worked once anyone has logged a Call, Email or Field
            Visit on it -- the same "worked" as Outreach Coverage. #}
@@ -353,8 +363,8 @@
             </select>
         </div>
         <div class="td-marketing-filter-field">
-            <label for="passings-hubspot-min-calls">Times Called (min)</label>
-            <input type="number" min="0" step="1" id="passings-hubspot-min-calls" name="hubspot_min_calls" class="td-search-input" value="{{ selected.hubspot_min_calls }}" placeholder="e.g. 3">
+            <label for="passings-hubspot-max-calls">Times Called (max)</label>
+            <input type="number" min="0" step="1" id="passings-hubspot-max-calls" name="hubspot_max_calls" class="td-search-input" value="{{ selected.hubspot_max_calls }}" placeholder="e.g. 3">
         </div>
         <div class="td-marketing-filter-field">
             <label for="passings-hubspot-last-from">Last Call From</label>
@@ -372,7 +382,7 @@
     </form>
 
     {% if snapshot_filters_ignored %}
-    <p class="td-muted-inline">The HubSpot call and Order Status filters aren't applied yet -- Passings & Leads is still loading after a restart. Reload in a few seconds.</p>
+    <p class="td-muted-inline">The HubSpot call, Has Phone Number and Order Status filters aren't applied yet -- Passings & Leads is still loading after a restart. Reload in a few seconds.</p>
     {% elif not hubspot_calls_available %}
     <p class="td-muted-inline">HubSpot call counts are temporarily unavailable.</p>
     {% endif %}
