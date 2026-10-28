@@ -627,12 +627,12 @@
             <div class="td-record-card td-team-last-calls">
                 <h3>{{ tc.last_call_team }} &middot; Last Call <span class="td-muted-inline">&middot; counts are today</span></h3>
                 {% if tc.last_calls %}
-                {# Calls / Connected / Calls per Sale are today only, like
+                {# Calls / Connected / Calls per Connection / Calls per Sale are today only, like
                    the chart; Last Call is the latest call on any day. #}
                 <div class="td-last-calls-scroll">
                 <table class="td-last-calls-table">
                     <thead>
-                        <tr><th>Rep</th><th>Last Call</th><th class="td-num">Calls</th><th class="td-num">Connected</th><th class="td-num">Calls/Hr</th><th class="td-num">Calls/Sale</th></tr>
+                        <tr><th>Rep</th><th>Last Call</th><th class="td-num">Calls</th><th class="td-num">Connected</th><th class="td-num">Calls/Connection</th><th class="td-num">Calls/Hr</th><th class="td-num">Calls/Sale</th></tr>
                     </thead>
                     <tbody>
                         {% for r in tc.last_calls %}
@@ -645,6 +645,7 @@
                             {% endif %}
                             <td class="td-num td-purple">{{ "{:,}".format(r.calls_today) }}</td>
                             <td class="td-num td-green">{{ "{:,}".format(r.connected_today) }}</td>
+                            <td class="td-num td-magenta"{% if r.calls_per_connection is not none %} title="{{ r.calls_today }} calls / {{ r.connected_today }} connected today"{% endif %}>{{ '%.1f'|format(r.calls_per_connection) if r.calls_per_connection is not none else '—' }}</td>
                             <td class="td-num td-cyan"{% if r.hours_today %} title="{{ r.calls_today }} calls over {{ r.hours_display }} worked (shift starts at first call or 9 AM, ends now or 5 PM, minus a 30-min lunch after 4 hours)"{% endif %}>{{ '%.1f'|format(r.calls_per_hour) if r.calls_per_hour is not none else '—' }}</td>
                             <td class="td-num td-yellow" title="{{ r.calls_today }} calls / {{ r.sales_today }} outbound sale{{ '' if r.sales_today == 1 else 's' }} today">{{ '%.1f'|format(r.calls_per_sale) if r.calls_per_sale is not none else 'N/A' }}</td>
                         </tr>

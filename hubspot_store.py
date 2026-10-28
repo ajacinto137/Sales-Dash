@@ -1065,6 +1065,9 @@ def get_team_call_overview(today, last_call_team="NJ - Sales Reps"):
                     "hours_today": hours,
                     "hours_display": logic.format_hours_minutes(hours * 3600) if hours else None,
                     "calls_per_hour": calls_today / hours if hours else None,
+                    # Calls per Connection (2026-10-28, by request): how
+                    # many dials it took per connected call today.
+                    "calls_per_connection": calls_today / connected_today if connected_today else None,
                 })
         ctx["available"] = True
     except Exception as exc:
