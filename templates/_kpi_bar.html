@@ -4,7 +4,7 @@
    2026-10-23). Import with {% from "_kpi_bar.html" import kpi_bar %}.
    forecast = calculate_monthly_forecast(), averages =
    calculate_daily_averages(), daily = calculate_total_daily_sales().
-   knocker_install_rate adds a sixth card (Team Leaderboard). #}
+   knocker_install_rate adds a sixth card (Door Knockers page). #}
 {% macro kpi_bar(forecast, daily, averages, knocker_install_rate=none) -%}
 <section class="td-kpi-bar">
     <div class="td-kpi" data-formula="{{ formulas.monthly_sales }}">
@@ -32,11 +32,11 @@
         <span class="td-kpi-note">{{ forecast.month_label }} pace</span>
     </div>
     {% if knocker_install_rate is not none %}
-    {# Team Leaderboard only (2026-10-27, by request): door knockers'
-       all-time install rate, shown whichever overview is toggled. #}
+    {# Door Knockers page only (2026-10-27, by request -- moved off the
+       Team Leaderboard the same day): all-time, whatever the period. #}
     <div class="td-kpi" data-formula="{{ formulas.knocker_all_time_install_rate }}">
-        <span class="td-kpi-label">Door Knockers Install Rate</span>
-        <a class="td-kpi-value td-green td-kpi-link" href="{{ url_for('knockers_page', period='all_time') }}">{{ "%.1f"|format(knocker_install_rate) }}%</a>
+        <span class="td-kpi-label">All Time Install Rate</span>
+        <a class="td-kpi-value td-green td-kpi-link" href="{{ url_for('knocker_accounts', status='installed', period='all_time') }}">{{ "%.1f"|format(knocker_install_rate) }}%</a>
         <span class="td-kpi-note">all time &middot; needs attention counts as cancelled</span>
     </div>
     {% endif %}

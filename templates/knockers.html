@@ -44,7 +44,7 @@
     {% endif %}
 
     {# ---------- Knocker Overview (all-time / today-based, like Team Overview) ---------- #}
-    {{ kpi_bar(monthly_forecast, today_sales, daily_averages) }}
+    {{ kpi_bar(monthly_forecast, today_sales, daily_averages, knocker_install_rate=all_time_install_rate) }}
 
     {# ---------- Account Status (period-filtered) ---------- #}
     {% set acct_args = {'period': period, 'start': custom_start, 'end': custom_end} %}

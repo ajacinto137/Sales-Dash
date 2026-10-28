@@ -101,10 +101,10 @@
             <span class="td-kpi-row-hint" data-kpi-hint="total" hidden>Team + Door Knockers, each order counted once</span>
         </div>
         {% endif %}
-        <div data-kpi-panel="team">{{ kpi_bar(monthly_forecast, total_daily_sales, daily_averages, knocker_install_rate=knocker_all_time_install_rate) }}</div>
+        <div data-kpi-panel="team">{{ kpi_bar(monthly_forecast, total_daily_sales, daily_averages) }}</div>
         {% if knocker_kpis %}
-        <div data-kpi-panel="knockers" hidden>{{ kpi_bar(knocker_kpis.forecast, knocker_kpis.daily, knocker_kpis.averages, knocker_install_rate=knocker_all_time_install_rate) }}</div>
-        <div data-kpi-panel="total" hidden>{{ kpi_bar(total_kpis.forecast, total_kpis.daily, total_kpis.averages, knocker_install_rate=knocker_all_time_install_rate) }}</div>
+        <div data-kpi-panel="knockers" hidden>{{ kpi_bar(knocker_kpis.forecast, knocker_kpis.daily, knocker_kpis.averages) }}</div>
+        <div data-kpi-panel="total" hidden>{{ kpi_bar(total_kpis.forecast, total_kpis.daily, total_kpis.averages) }}</div>
         {% endif %}
     </div>
 
