@@ -3402,15 +3402,17 @@ a.td-staff-chip:hover { filter: brightness(1.25); }
 }
 .td-last-calls-table td { padding: 9px 8px 9px 0; border-top: 1px solid var(--td-border-soft); white-space: nowrap; }
 .td-last-calls-table .td-num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-/* Spacing pass (2026-10-28, after Calls/Connection made it 7 columns):
-   even gaps between the number columns, two-line numeric headers
-   bottom-aligned over their values, and a bit more of the row for the
-   table than the chart. */
-.td-last-calls-table th { vertical-align: bottom; }
-.td-last-calls-table th.td-num { white-space: normal; line-height: 1.25; min-width: 52px; }
-.td-last-calls-table th.td-num,
-.td-last-calls-table td.td-num { padding-left: 14px; padding-right: 0; }
-.td-last-calls-table td:first-child { padding-right: 12px; }
+/* Even columns (2026-10-28, by request): 7 equal-width columns via
+   table-layout: fixed, everything centered, headers wrap onto two lines
+   bottom-aligned; long rep names / last-call times wrap instead of
+   pushing columns apart. A bit more of the row goes to the table. */
+.td-last-calls-table { table-layout: fixed; }
+.td-last-calls-table th,
+.td-last-calls-table td,
+.td-last-calls-table .td-num { text-align: center; padding: 9px 4px; white-space: normal; overflow-wrap: anywhere; }
+.td-last-calls-table th { vertical-align: bottom; line-height: 1.25; padding-top: 0; }
+.td-last-calls-table td { vertical-align: middle; }
+.td-last-calls-table .td-last-call { white-space: normal; }
 .td-activity-split.td-team-calls { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
 @media (max-width: 900px) {
     .td-activity-split.td-team-calls { grid-template-columns: 1fr; }
