@@ -142,3 +142,10 @@ def can_work_account(user, owner_rep_name, needs_attention_since):
 
     # Other, or any unrecognized role -- conservative default.
     return False, "Your account does not have permission to work Needs Attention accounts."
+
+
+def can_use_lead_feeder(user):
+    """Lead Feeder (2026-10-28): take and work leads from the shared pool
+    -- active Sales Rep and Admin accounts. Every claim is recorded under
+    the logged-in user; nobody can claim as someone else."""
+    return bool(user) and user.get("status") == "active" and user.get("role") in (ROLE_ADMIN, ROLE_SALES_REP)

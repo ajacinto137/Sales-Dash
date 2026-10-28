@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lead Feeder — Admin — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{% macro ts(dt) -%}
+{{ dt|eastern_ts if dt else '—' }}
+{%- endmacro %}
+{% macro pct(v) -%}
+{{ '—' if v is none else '%.1f%%'|format(v * 100) }}
+{%- endmacro %}
+
+{# Admin > Lead Feeder (2026-10-28) -- team-wide view of the shared lead
+   list: who's on it, every claim, and what came of it. A CLAIM is not a
+   call: Calls / Connected come only from HubSpot's own call records
+   (hubspot_calls, synced every minute) made by the claiming rep's mapped
+   HubSpot owner to that contact on the claim's day; Sales are PlanetWeb
+   orders matching the contact's email or phone placed after the claim.
+   See lead_feeder_store.admin_report(). #}
+
+<div class="td-page">
+    <div class="td-section-heading">
+        <h2>Admin Portal</h2>
+    </div>
+
+    {% include "_admin_nav.html" %}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="td-staff-flash td-staff-flash--{{ category }}" role="status">{{ message }}</div>
+    {% endfor %}
+    {% endwith %}
+
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Lead Feeder</h2>
+            <span class="td-muted-inline">
+                Shared pool:
+                {% if pool.loaded %}updated {{ ts(pool.loaded_at) }}{% else %}not loaded yet{% endif %}
+                {% if pool.error %} &middot; <span class="td-lf-warn-text">last refresh failed: {{ pool.error }}</span>{% endif %}
+                {% if not pool.configured %} &middot; <span class="td-lf-warn-text">HubSpot isn't connected</span>{% endif %}
+            </span>
+            <form method="post" action="{{ url_for('admin_lead_feeder_refresh') }}">
+                <button class="td-btn td-btn-ghost" type="submit">Refresh from HubSpot now</button>
+            </form>
+        </div>
+
+        <form method="get" class="td-lf-row">
+            <label class="td-lf-toggle">From <input class="td-date-input" type="date" name="start" value="{{ start.isoformat() }}"></label>
+            <label class="td-lf-toggle">To <input class="td-date-input" type="date" name="end" value="{{ end.isoformat() }}"></label>
+            <button class="td-btn" type="submit">Show</button>
+            <a class="td-btn td-btn-ghost" href="{{ url_for('admin_lead_feeder') }}">Today</a>
+        </form>
+
+        {% if report_error %}
+        <section class="td-error-panel">
+            <div class="td-error-panel-title">Lead Feeder activity is unavailable</div>
+            <p class="td-error-panel-message">{{ report_error }}</p>
+        </section>
+        {% elif report %}
+        {% set t = report.totals %}
+        <div class="td-lf-admin-kpis">
+            <div class="td-lf-admin-kpi"><span>Leads claimed</span><b class="td-cyan">{{ t.claims }}</b><small>{{ t.skipped }} auto-skipped by the pre-dial check</small></div>
+            <div class="td-lf-admin-kpi"><span>Leads worked</span><b>{{ t.worked }}</b><small>claimed and not auto-skipped</small></div>
+            <div class="td-lf-admin-kpi"><span>Called (HubSpot)</span><b class="td-green">{{ t.called }}</b><small>{{ t.calls }} outbound call{{ '' if t.calls == 1 else 's' }} logged</small></div>
+            <div class="td-lf-admin-kpi"><span>Connected (HubSpot)</span><b class="td-magenta">{{ t.connected }}</b><small>leads with a Connected call</small></div>
+            <div class="td-lf-admin-kpi"><span>Sales (PlanetWeb)</span><b class="td-green">{{ t.sales }}</b><small>{{ t.reported_sales }} marked Sale by reps</small></div>
+            <div class="td-lf-admin-kpi"><span>Lead → sale</span><b>{{ pct(t.conversion) }}</b><small>sales ÷ leads worked</small></div>
+        </div>
+        {% if report.sales_error %}<p class="td-muted-inline">PlanetWeb couldn't be reached, so sales aren't counted ({{ report.sales_error }}).</p>{% endif %}
+
+        <div class="td-section-heading"><h2>Using Lead Feeder now</h2><span class="td-muted-inline">open in the last 5 minutes</span></div>
+        <p class="td-muted-inline">
+            {% for a in report.active %}{{ a.name }} ({{ a.last_seen_at|eastern_ts }}){{ ', ' if not loop.last }}{% else %}Nobody right now.{% endfor %}
+        </p>
+
+        <div class="td-section-heading"><h2>By rep</h2></div>
+        <div class="td-table-card"><div class="td-table-scroll">
+        <table class="td-table">
+            <thead><tr><th>Rep</th><th>Claimed</th><th>Auto-skipped</th><th>Worked</th><th>Called</th><th>Calls</th><th>Connected</th><th>Sales</th><th>Rep-marked Sale</th><th>Lead → sale</th></tr></thead>
+            <tbody>
+            {% for r in report.reps %}
+            <tr>
+                <td>{{ r.name or '—' }}{% if not r.mapped %} <span class="td-pill td-pill-review-needed" title="No HubSpot owner mapped to this user (Admin > HubSpot Integration); calls by ANY owner to their leads are counted">no HubSpot mapping</span>{% endif %}</td>
+                <td class="td-cyan">{{ r.claims }}</td><td>{{ r.skipped }}</td><td>{{ r.worked }}</td>
+                <td class="td-green">{{ r.called }}</td><td>{{ r.calls }}</td><td class="td-magenta">{{ r.connected }}</td>
+                <td class="td-green">{{ r.sales }}</td><td>{{ r.reported_sales }}</td><td>{{ pct(r.conversion) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="td-empty-row">No claims in this range.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div></div>
+
+        {% if report.outcomes %}
+        <p class="td-muted-inline">Outcomes picked:
+            {% for o, n in report.outcomes %}{{ o }} {{ n }}{{ ' · ' if not loop.last }}{% endfor %}
+            &middot; "Tab closed" means the rep closed the HubSpot tab; it is not counted as a call.
+        </p>
+        {% endif %}
+
+        <div class="td-section-heading"><h2>Active claims</h2><span class="td-muted-inline">reps on these leads right now (today, no outcome yet)</span></div>
+        <p class="td-muted-inline">
+            {% for c in report.active_claims %}{{ c.contact_name }} &mdash; {{ c.user_name }} since {{ c.claimed_at|eastern_ts }}{{ '; ' if not loop.last }}{% else %}None.{% endfor %}
+        </p>
+
+        <div class="td-section-heading"><h2>Claims</h2><span class="td-muted-inline">{{ report.claims|length }} in range</span></div>
+        <div class="td-table-card"><div class="td-table-scroll td-table-scroll--tall">
+        <table class="td-table">
+            <thead><tr><th>Claimed</th><th>Lead</th><th>Town</th><th>Rep</th><th>Priority</th><th>Outcome</th><th>HubSpot calls</th><th>Connected</th><th>Sale</th></tr></thead>
+            <tbody>
+            {% for c in report.claims %}
+            <tr>
+                <td>{{ c.claimed_at|eastern_ts }}</td>
+                <td><a class="td-metric-link" href="{{ hubspot_base|replace('__ID__', c.contact_id) }}" target="_blank" rel="noopener">{{ c.contact_name or c.contact_id }}</a></td>
+                <td>{{ c.town or '—' }}</td>
+                <td>{{ c.user_name or '—' }}</td>
+                <td>{% if c.meta %}P{{ c.meta.tier }} · {{ c.meta.score }}{% endif %}</td>
+                <td>{{ c.outcome }}{% if c.outcome_at %} <span class="td-muted-inline">{{ c.outcome_at|eastern_ts }}</span>{% endif %}</td>
+                <td class="td-green">{{ c.calls or '—' }}</td>
+                <td class="td-magenta">{{ c.connected_calls or '—' }}</td>
+                <td>{% if c.sale_order_id %}<a class="td-metric-link" href="{{ url_for('customer_profile_page', sale_id=c.sale_order_id) }}">#{{ c.sale_order_id }}</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="td-empty-row">No claims in this range.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div></div>
+
+        <div class="td-section-heading"><h2>Activity log</h2><span class="td-muted-inline">every claim, auto-skip, outcome and release (latest 300)</span></div>
+        <div class="td-table-card"><div class="td-table-scroll td-table-scroll--tall">
+        <table class="td-table">
+            <thead><tr><th>When</th><th>Who</th><th>Event</th><th>Lead</th><th>Detail</th></tr></thead>
+            <tbody>
+            {% for e in report.events %}
+            <tr><td>{{ e.at|eastern_ts }}</td><td>{{ e.user or '—' }}</td><td>{{ e.event }}</td><td>{{ e.contact or (e.contact_id if e.contact_id != '-' else '—') }}</td><td>{{ e.detail or '' }}</td></tr>
+            {% else %}
+            <tr><td colspan="5" class="td-empty-row">Nothing yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div></div>
+        {% endif %}
+    </section>
+
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Lead lists and ranking</h2>
+            <span class="td-muted-inline">CSV files need a HubSpot Record ID column (record_id, hubspot_id, contact_id or id). Uploading replaces the list.</span></div>
+        <div class="td-lf-admin-forms">
+            <form method="post" action="{{ url_for('admin_lead_feeder_lists') }}" enctype="multipart/form-data" class="td-lf-card">
+                <input type="hidden" name="kind" value="priority">
+                <h3 class="td-lf-h2">Call first list</h3>
+                <p class="td-muted-inline">{{ lists.priority if lists.priority is not none else '?' }} contacts. Pinned to the top of everyone's list in <b>rank</b> order. Columns: record_id, rank, reason.</p>
+                <input type="file" name="file" accept=".csv,text/csv">
+                <div class="td-lf-row">
+                    <button class="td-btn" type="submit" name="action" value="upload">Upload</button>
+                    <button class="td-btn td-btn-ghost" type="submit" name="action" value="clear">Clear</button>
+                </div>
+            </form>
+            <form method="post" action="{{ url_for('admin_lead_feeder_lists') }}" enctype="multipart/form-data" class="td-lf-card">
+                <input type="hidden" name="kind" value="sweep">
+                <h3 class="td-lf-h2">PAS sweep leads</h3>
+                <p class="td-muted-inline">{{ lists.sweep if lists.sweep is not none else '?' }} contacts. Columns: record_id plus any of hot, verified (YYYY-MM-DD), owner_name, owner_inactive, batch, phone, first_name, last_name, state, city, street_address, notes.</p>
+                <input type="file" name="file" accept=".csv,text/csv">
+                <div class="td-lf-row">
+                    <button class="td-btn" type="submit" name="action" value="upload">Upload</button>
+                    <button class="td-btn td-btn-ghost" type="submit" name="action" value="clear">Clear</button>
+                </div>
+            </form>
+            <form method="post" action="{{ url_for('admin_lead_feeder_lists') }}" class="td-lf-card">
+                <input type="hidden" name="action" value="weights">
+                <h3 class="td-lf-h2">Ranking weights</h3>
+                <p class="td-muted-inline">Buying-signal multipliers. Blank = default (shown). Clear every box to go back to the defaults.</p>
+                <div class="td-lf-weights">
+                    {% for key, default in default_weights.items() %}
+                    <label>{{ key }}<input class="td-select" type="text" name="{{ key }}" placeholder="{{ default }}" value="{{ (lists.weights or {}).get(key, '') }}"></label>
+                    {% endfor %}
+                </div>
+                <label class="td-lf-toggle">Note <input class="td-select" type="text" name="note" value="{{ lists.weights_note or '' }}"></label>
+                <div class="td-lf-row"><button class="td-btn" type="submit">Save weights</button></div>
+            </form>
+        </div>
+    </section>
+</div>
+</body>
+</html>

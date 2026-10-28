@@ -24,6 +24,8 @@ import import_service
 import bonus
 import install_escalation
 import knockers
+import lead_feeder_logic
+import lead_feeder_store
 import marketing_cleaning
 import marketing_data
 import marketing_metrics
@@ -569,6 +571,8 @@ def ensure_data_loaded():
         external_sales_store.start_scheduler()
         # Passings & Leads in-memory snapshot (passings_cache.py).
         passings_cache.start_scheduler()
+        # Lead Feeder shared pool from HubSpot every 3 min (lead_feeder_store.py).
+        lead_feeder_store.start_scheduler()
     if not _initial_load_done:
         load_all_data()
 
@@ -2554,16 +2558,253 @@ def _serialize_escalation_mark(mark, user):
     }
 
 
+# ================================================================
+# Lead Feeder (2026-10-28) -- the shared HubSpot SQL call list, moved
+# off claude.ai. Pool, claims and rules: lead_feeder_store.py /
+# lead_feeder_logic.py; page script: static/js/lead_feeder.js.
+# ================================================================
+
+def _lead_feeder_user():
+    """The logged-in user if they may use Lead Feeder, else None."""
+    user = auth.current_user()
+    return user if permissions.can_use_lead_feeder(user) else None
+
+
+def _iso_or_none(value):
+    return value.isoformat() if value else None
+
+
+def _lead_feeder_claims_json(claims, user):
+    rows = sorted(claims.values(), key=lambda c: c["claimed_at"], reverse=True)
+    return [{
+        "name": c["name"] or "Lead",
+        "by": "You" if c["user_id"] == user["id"] else (c["user_name"] or "A teammate"),
+        "mine": c["user_id"] == user["id"],
+        "outcome": c["outcome"],
+        "at": c["claimed_at"].astimezone(EASTERN_TZ).strftime("%-I:%M %p"),
+    } for c in rows]
+
+
 @app.route("/lead-feeder")
 @auth.login_required
 def lead_feeder_page():
-    """Lead Feeder (added 2026-10-28) -- main-nav page; placeholder until
-    its content is defined."""
+    user = _lead_feeder_user()
+    if user is None:
+        return render_template("unauthorized.html"), 403
+    lead_feeder_store.start_scheduler()
     return render_template(
         "lead_feeder.html",
         active_page="lead_feeder",
+        prefs=lead_feeder_store.get_prefs(user["id"]),
+        areas=lead_feeder_logic.AREAS,
+        cool_choices=lead_feeder_logic.COOL_CHOICES,
+        outcomes=lead_feeder_logic.OUTCOMES,
+        refresh_seconds=lead_feeder_store.REFRESH_SECONDS,
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+@app.route("/lead-feeder/api/state")
+@auth.login_required
+def lead_feeder_state():
+    """Everything the page shows, for this rep's saved filters: open
+    leads (top LIST_LIMIT), today's team claims, the rep's current lead,
+    pool status and Lead intelligence. Polled every few seconds."""
+    user = _lead_feeder_user()
+    if user is None:
+        return jsonify({"ok": False, "error": "Lead Feeder is for sales reps and admins."}), 403
+    lead_feeder_store.touch(user["id"])
+    prefs = lead_feeder_store.get_prefs(user["id"])
+    claims_ok, claims = lead_feeder_store.get_claims_today()
+    status = lead_feeder_store.pool_status()
+    leads = lead_feeder_store.open_leads(prefs, set(claims)) if status["loaded"] else []
+    current_id = next((c["contact_id"] for c in claims.values() if c["user_id"] == user["id"] and c["outcome"] == "Calling"), None)
+    current = None
+    if current_id:
+        current = lead_feeder_store.current_lead(user, current_id)
+        current = dict(current, hubspot_url=lead_feeder_store.hubspot_url(current_id))
+    kinds = {}
+    for lead in leads:
+        kind = lead_feeder_logic.lead_kind(lead["p"], datetime.now(EASTERN_TZ))
+        kinds[kind] = kinds.get(kind, 0) + 1
+    stats = lead_feeder_store._state["stats"] or {}
+    return jsonify({
+        "ok": True,
+        "prefs": prefs,
+        "pool": {
+            "loaded": status["loaded"], "configured": status["configured"], "error": status["error"],
+            "loaded_at": _iso_or_none(status["loaded_at"]),
+            "loaded_display": status["loaded_at"].astimezone(EASTERN_TZ).strftime("%-I:%M %p") if status["loaded_at"] else None,
+            "weights_at": (status["weights_info"] or {}).get("at"),
+            "kinds": kinds, "sweep": stats.get("sweep"), "priority": stats.get("priority"), "capped": stats.get("capped"),
+        },
+        "claims_ok": claims_ok,
+        "open_count": len(leads),
+        "leads": [lead_feeder_store.lead_row(lead) for lead in leads[:lead_feeder_store.LIST_LIMIT]],
+        "taken": _lead_feeder_claims_json(claims, user),
+        "current": current,
+        "intel": lead_feeder_store.intel_view(),
+    })
+
+
+@app.route("/lead-feeder/api/prefs", methods=["POST"])
+@auth.login_required
+def lead_feeder_save_prefs():
+    user = _lead_feeder_user()
+    if user is None:
+        return jsonify({"ok": False, "error": "Not allowed."}), 403
+    ok, error, prefs = lead_feeder_store.save_prefs(user["id"], request.get_json(silent=True) or {})
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 503
+    return jsonify({"ok": True, "prefs": prefs})
+
+
+@app.route("/lead-feeder/api/take", methods=["POST"])
+@auth.login_required
+def lead_feeder_take():
+    """Take a lead: {"contact_id": id} for one from the board, or {} for
+    the next one. The server picks, claims (race-safe) and re-checks it
+    against HubSpot -- the browser never decides eligibility."""
+    user = _lead_feeder_user()
+    if user is None:
+        return jsonify({"ok": False, "error": "Not allowed."}), 403
+    payload = request.get_json(silent=True) or {}
+    contact_id = payload.get("contact_id")
+    if contact_id is not None and not str(contact_id).isdigit():
+        return jsonify({"ok": False, "error": "Bad contact id."}), 400
+    prefs = lead_feeder_store.get_prefs(user["id"])
+    result = lead_feeder_store.take(user, prefs, contact_id)
+    lead = result.get("lead")
+    if lead:
+        lead = dict(lead, hubspot_url=lead_feeder_store.hubspot_url(lead["id"]))
+    return jsonify({"ok": result["ok"], "lead": lead, "messages": result.get("messages") or [],
+                    "error": result.get("error")})
+
+
+@app.route("/lead-feeder/api/outcome", methods=["POST"])
+@auth.login_required
+def lead_feeder_outcome():
+    user = _lead_feeder_user()
+    if user is None:
+        return jsonify({"ok": False, "error": "Not allowed."}), 403
+    payload = request.get_json(silent=True) or {}
+    ok, error = lead_feeder_store.set_outcome(str(payload.get("contact_id") or ""), user, payload.get("outcome"))
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/lead-feeder/api/planetweb/<contact_id>")
+@auth.login_required
+def lead_feeder_planetweb(contact_id):
+    """PlanetWeb place + orders at the address of a lead this rep holds."""
+    user = _lead_feeder_user()
+    if user is None:
+        return jsonify({"ok": False, "error": "Not allowed."}), 403
+    if lead_feeder_store.my_current(user) != str(contact_id):
+        return jsonify({"ok": False, "error": "That lead isn't yours right now."}), 403
+    lead = lead_feeder_store.current_lead(user, contact_id)
+    try:
+        billed = _billed_subscriber_uuids()
+    except Exception:
+        billed = None
+    result = lead_feeder_store.planetweb_lookup(lead, billed)
+    for order in result["orders"]:
+        order["profile_url"] = url_for("customer_profile_page", sale_id=order["sale_id"])
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/lead-feeder/export.csv")
+@auth.login_required
+def lead_feeder_export():
+    """The page's Export CSV: this rep's ranked open list."""
+    user = _lead_feeder_user()
+    if user is None:
+        return render_template("unauthorized.html"), 403
+    import csv
+    import io
+    prefs = lead_feeder_store.get_prefs(user["id"])
+    _ok, claims = lead_feeder_store.get_claims_today()
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["Rank", "Source", "Priority", "Score", "HubSpot ID", "Name", "Phone", "Town", "State", "SQL date",
+                     "Days since SQL", "Calls", "Last called", "Lead status", "Why"])
+    for i, lead in enumerate(lead_feeder_store.open_leads(prefs, set(claims)), start=1):
+        row, s = lead_feeder_store.lead_row(lead), lead["s"]
+        writer.writerow([i, row["source"], row["tier_label"], row["score"], row["id"], row["name"], row["phone"],
+                         row["city"], row["state"], row["sql_date"], "" if s["age"] is None else round(s["age"]),
+                         row["calls"], (row["last_called"] or "")[:10], row["lead_status"], "; ".join(row["why"])])
+    filename = f"planet-leads-{_today().isoformat()}.csv"
+    return Response(out.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.route("/admin/lead-feeder")
+@auth.admin_required
+def admin_lead_feeder():
+    """Team-wide Lead Feeder activity: who's on it now, claims, HubSpot
+    calls / connected calls and PlanetWeb sales per claim and per rep."""
+    lead_feeder_store.start_scheduler()
+    today = _today()
+    try:
+        start = date.fromisoformat(request.args.get("start") or today.isoformat())
+        end = date.fromisoformat(request.args.get("end") or start.isoformat())
+    except ValueError:
+        start = end = today
+    if end < start:
+        start, end = end, start
+    report, report_error = None, None
+    try:
+        report = lead_feeder_store.admin_report(start, end)
+    except Exception as exc:
+        report_error = db.sanitize_error(exc)
+    return render_template(
+        "admin/lead_feeder.html",
+        active_page="admin_lead_feeder",
+        report=report,
+        report_error=report_error,
+        start=start, end=end, today=today,
+        pool=lead_feeder_store.pool_status(),
+        lists=lead_feeder_store.list_counts(),
+        default_weights=lead_feeder_logic.DEFAULT_WEIGHTS,
+        hubspot_base=lead_feeder_store.hubspot_url("__ID__"),
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/admin/lead-feeder/lists", methods=["POST"])
+@auth.admin_required
+def admin_lead_feeder_lists():
+    """Upload (replace) or clear the Call first / PAS sweep list, or
+    save ranking weight overrides."""
+    user = auth.current_user()
+    action = request.form.get("action")
+    kind = request.form.get("kind")
+    if action == "weights":
+        weights = {k: request.form.get(k) for k in lead_feeder_logic.DEFAULT_WEIGHTS}
+        ok, error = lead_feeder_store.save_weights(weights, request.form.get("note"), user)
+        flash("Ranking weights saved. They apply on the next refresh." if ok else error, "ok" if ok else "error")
+    elif kind in ("priority", "sweep") and action == "clear":
+        lead_feeder_store.clear_list(kind, user)
+        flash("List cleared. It drops off on the next refresh.", "ok")
+    elif kind in ("priority", "sweep") and action == "upload":
+        upload = request.files.get("file")
+        text = upload.read().decode("utf-8-sig", errors="replace") if upload else ""
+        ok, message = lead_feeder_store.import_list(kind, text, user)
+        flash(message, "ok" if ok else "error")
+    else:
+        flash("Unknown action.", "error")
+    return redirect(url_for("admin_lead_feeder"))
+
+
+@app.route("/admin/lead-feeder/refresh", methods=["POST"])
+@auth.admin_required
+def admin_lead_feeder_refresh():
+    """Pull the shared pool from HubSpot now, in the background."""
+    lead_feeder_store._state["intel_at"] = None
+    threading.Thread(target=lead_feeder_store.refresh, daemon=True).start()
+    flash("Refreshing the lead pool from HubSpot. Reload in a minute.", "ok")
+    return redirect(url_for("admin_lead_feeder"))
 
 
 @app.route("/tools/install-escalation")
@@ -3833,6 +4074,7 @@ def admin_hubspot_save_key():
         return jsonify({"ok": False, "error": f"Could not save the key: {error}"}), 500
     print(f"[hubspot] Service key updated in Admin Portal by {auth.current_user()['email']}")
     hubspot_store.start_scheduler()
+    lead_feeder_store.start_scheduler()
     started, _ = hubspot_store.start_sync_in_background("manual")
     return jsonify({"ok": True, "warning": message, "sync_started": started})
 

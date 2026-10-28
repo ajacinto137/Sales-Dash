@@ -349,6 +349,76 @@ class HubSpotClient:
             contacts.append({"id": str(row["id"]), "name": name or None, "email": (props.get("email") or "").strip() or None})
         return sorted(contacts, key=lambda c: int(c["id"]))
 
+    # ---------------- Lead Feeder (2026-10-28) ----------------
+    # Generic read-only CRM search / batch read / associations, standing in
+    # for the claude.ai HubSpot connector tools the original Lead Feeder
+    # page called (search_crm_objects, get_crm_objects). See lead_feeder_store.py.
+
+    def search_objects(self, object_type, body):
+        """One POST /crm/v3/objects/{type}/search page, rate limited like
+        the call searches above."""
+        wait = SEARCH_MIN_INTERVAL_SECONDS - (time.monotonic() - self._last_search_at)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            return self._request("POST", f"/crm/v3/objects/{object_type}/search", body=body)
+        finally:
+            self._last_search_at = time.monotonic()
+
+    def search_all(self, object_type, filter_groups, properties, sorts=None, page_size=200):
+        """Every result of one search, following `after` cursors up to
+        search's 10,000-result cap. Returns (results, capped)."""
+        results, after = [], None
+        while True:
+            body = {"filterGroups": filter_groups, "properties": properties, "limit": page_size}
+            if sorts:
+                body["sorts"] = sorts
+            if after:
+                body["after"] = after
+            page = self.search_objects(object_type, body)
+            results.extend(page.get("results") or [])
+            after = ((page.get("paging") or {}).get("next") or {}).get("after")
+            if not after:
+                return results, False
+            if len(results) + page_size > SEARCH_RESULT_CAP:
+                return results, True
+
+    def count_objects(self, object_type, filter_groups):
+        """How many objects match -- search's `total`, one request."""
+        page = self.search_objects(object_type, {"filterGroups": filter_groups, "properties": ["hs_object_id"], "limit": 1})
+        return int(page.get("total") or 0)
+
+    def batch_read(self, object_type, ids, properties):
+        """({id: properties}, [missing ids]) -- 100 per request."""
+        found, missing = {}, []
+        ids = list(dict.fromkeys(str(i) for i in ids if str(i).strip()))
+        for start in range(0, len(ids), 100):
+            chunk = ids[start:start + 100]
+            page = self._request("POST", f"/crm/v3/objects/{object_type}/batch/read", body={
+                "inputs": [{"id": i} for i in chunk], "properties": properties,
+            })
+            for row in page.get("results") or []:
+                found[str(row["id"])] = row.get("properties") or {}
+            missing.extend(i for i in chunk if i not in found)
+        return found, missing
+
+    def associated_ids(self, from_type, object_id, to_type):
+        """Ids of every `to_type` object associated with one object (v4)."""
+        ids, after = [], None
+        while True:
+            params = {"limit": 500}
+            if after:
+                params["after"] = after
+            page = self._request("GET", f"/crm/v4/objects/{from_type}/{object_id}/associations/{to_type}", params=params)
+            ids.extend(str(r["toObjectId"]) for r in page.get("results") or [] if r.get("toObjectId"))
+            after = ((page.get("paging") or {}).get("next") or {}).get("after")
+            if not after:
+                return ids
+
+    def get_property(self, object_type, name):
+        """One property definition (label, options, ...)."""
+        return self._request("GET", f"/crm/v3/properties/{object_type}/{name}")
+
     def get_account_details(self):
         """{"portalId", "uiDomain", ...} -- for building HubSpot UI links."""
         return self._request("GET", "/account-info/v3/details")

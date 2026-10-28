@@ -2448,6 +2448,30 @@ integration tests need a real Postgres:
 `docker compose exec -e EXTERNAL_SALES_INTEGRATION_TEST_DB=external_sales_it dashboard python -m pytest tests/test_external_sales.py -v`
 (creates and drops its own database).
 
+## Lead Feeder
+
+Main nav **Lead Feeder** (`/lead-feeder`, added 2026-10-28) is the shared NJ/VA HubSpot SQL call list that reps used to run as a claude.ai artifact (`lead-feeder.html` by Reiss Little), now built into the dashboard. Active **Sales Rep** and **Admin** accounts only (`permissions.can_use_lead_feeder`). Code: `lead_feeder_logic.py` (the page's screening, signals and Priority scoring, ported line for line), `lead_feeder_store.py` (pool, claims, intelligence, PlanetWeb lookup, admin report), `static/js/lead_feeder.js`, `templates/lead_feeder.html`, `templates/admin/lead_feeder.html`. Tests: `tests/test_lead_feeder.py`.
+
+**How it runs.** One background thread (`lead_feeder_store.start_scheduler`) pulls the pool from HubSpot every 3 minutes with the dashboard's existing service key (Admin > HubSpot Integration) and re-measures Lead intelligence hourly. Each rep's filters (state, area, cool-down, toggles; saved per user in `lead_feeder_prefs`) are applied to that shared copy, so reps never hit HubSpot themselves and never connect anything. Taking a lead: the server picks the top lead for the rep's filters, claims it, re-reads the contact plus its 5 latest calls/notes from HubSpot (the page's pre-dial check), and returns the HubSpot record link (`?interaction=call`) for the reusable HubSpot tab.
+
+**Claims.** `lead_feeder_claims` has one row per contact per Eastern day, `UNIQUE (claim_date, contact_id)`, so exactly one rep wins a lead. Like the page, a claim keeps the lead off every list for the rest of the day and there is no expiry. A rep's open claim (`outcome = 'Calling'`) comes back after a browser refresh or on another device. Every claim, auto-skip, outcome, release and admin list change is appended to `lead_feeder_events`.
+
+**PlanetWeb** (replaces the Tampermonkey Planet Maps script): the lead's street + ZIP is matched to a PlanetWeb place in the Passings & Leads snapshot (availability, order status, Open in PAS), and to any existing order at that address via the global-search order index.
+
+**Admin > Lead Feeder** (`/admin/lead-feeder`): who's using it now, per-rep and per-claim activity, and the Call first / PAS sweep CSV uploads and ranking-weight overrides (the page's `priority`, `pas_sweep` and `learning/weights` collections). A claim is never counted as a call: **Called / Connected** come only from HubSpot's own call records (`hubspot_calls`) made by the claiming rep's mapped HubSpot owner to that contact on the claim's day; **Sales** are PlanetWeb orders with the contact's email or phone placed after the claim.
+
+**Differences from the claude.ai page**
+- "Today" and the cool-down use Eastern time, not the viewer's browser clock.
+- Closing the HubSpot tab still loads the next lead, but it is recorded as **Tab closed**, not "Called".
+- "Take the next lead" tries at most 25 leads per click (the page tried every lead) before asking the rep to press it again.
+- If HubSpot fails in the middle of a take, the claim is released instead of staying stuck as "Calling" for the day.
+- Lead intelligence: the page used HubSpot's SQL tool (`query_crm_data`, which has no REST API). The same counts now come from CRM search totals. Pick-up rate by quarter/hour comes from the dashboard's synced call table, which doesn't store HubSpot's `COMMUNICATOR` source label. So those two panels count every outbound call with an outcome, use every call in the last 30 days (the page used the latest 4,000), and are in Eastern time.
+- Planet Maps no longer moves by itself (no userscript): the PlanetWeb panel and the Open in PAS link replace it.
+- Leads' state/area filters, cool-down and toggles are saved per user in the database instead of in each browser.
+- Claims, sweep/call-first lists and weights from the claude.ai artifact's own database are **not** carried over; the dashboard can't read it. Ask Reiss to export them from the artifact (the sweep and call-first lists can then be uploaded as CSV). The old page should stop being used once reps switch, or two claim systems will run side by side for that day.
+
+**Deploying:** no new environment variables. Migration 21 (`lead_feeder_*` tables) runs automatically on first use. The HubSpot private app needs read access to contacts (already used), calls (already used) and, ideally, notes (`crm.objects.notes.read` or the legacy `sales-email-read`) and contact property definitions (`crm.schemas.contacts.read`). Without notes access the pre-dial check reads calls only; without schema access the "Your database" panel is skipped.
+
 ## What's intentionally not built yet
 
 Scheduled ETL, email/SMS reports, and CRM integration are all out of

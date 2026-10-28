@@ -46,8 +46,13 @@
              own door-knocking shifts (staffing_store.py). Login-gated;
              who may post/sign up is decided server-side. -->
         <a class="{{ 'td-topnav-active' if active_page == 'staffing' else '' }}" href="{{ url_for('staffing_page') }}">Staffing</a>
-        <!-- Lead Feeder (added 2026-10-28) -- login-gated like the pages above. -->
+        <!-- Lead Feeder (added 2026-10-28) -- the shared HubSpot call list
+             (lead_feeder_store.py). Active Sales Rep and Admin accounts
+             only; lead_feeder_page() enforces the same rule server-side
+             (permissions.can_use_lead_feeder). -->
+        {% if current_user and current_user.status == 'active' and current_user.role in ('Admin', 'Sales Rep') %}
         <a class="{{ 'td-topnav-active' if active_page == 'lead_feeder' else '' }}" href="{{ url_for('lead_feeder_page') }}">Lead Feeder</a>
+        {% endif %}
         <!-- Tools (added 2026-10-26) -- dropdown of rep work tools; opens
              on hover or keyboard focus, no JS. Add new tools as links in
              .td-topnav-menu-list. Login-gated like the pages above. -->

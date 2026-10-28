@@ -737,6 +737,83 @@ MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS ix_passing_checkouts_rep_name ON passing_checkouts (rep_name);
         """,
     ),
+    (
+        21,
+        "lead_feeder_* (Lead Feeder moved off claude.ai into the dashboard, 2026-10-28)",
+        """
+        -- One shared claim per HubSpot contact per Eastern day -- the
+        -- original page's served/{date}_{id} doc. The UNIQUE key is the
+        -- concurrency guard: INSERT ... ON CONFLICT DO NOTHING lets
+        -- exactly one rep win a lead. A claim keeps the lead off every
+        -- list for the rest of that day (no expiry; a new day starts
+        -- fresh, like the page). outcome is 'Calling' until the rep
+        -- picks one. See lead_feeder_store.py.
+        CREATE TABLE IF NOT EXISTS lead_feeder_claims (
+            id SERIAL PRIMARY KEY,
+            claim_date DATE NOT NULL,
+            contact_id TEXT NOT NULL,
+            user_id INTEGER REFERENCES users(id),
+            user_name TEXT,
+            claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            outcome TEXT NOT NULL DEFAULT 'Calling',
+            outcome_at TIMESTAMPTZ,
+            contact_name TEXT,
+            town TEXT,
+            contact_email TEXT,
+            contact_phone TEXT,
+            meta JSONB,
+            UNIQUE (claim_date, contact_id)
+        );
+        CREATE INDEX IF NOT EXISTS ix_lead_feeder_claims_user_date ON lead_feeder_claims (user_id, claim_date);
+
+        -- Append-only audit trail: every claim, auto-skip, outcome and
+        -- release, with who and when.
+        CREATE TABLE IF NOT EXISTS lead_feeder_events (
+            id SERIAL PRIMARY KEY,
+            contact_id TEXT NOT NULL,
+            user_id INTEGER REFERENCES users(id),
+            event TEXT NOT NULL,
+            detail TEXT,
+            hubspot_activity_id TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS ix_lead_feeder_events_created ON lead_feeder_events (created_at DESC);
+
+        -- Each rep's own filters (the page kept these in localStorage).
+        -- last_seen_at drives the admin "using Lead Feeder now" list.
+        CREATE TABLE IF NOT EXISTS lead_feeder_prefs (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id),
+            prefs JSONB NOT NULL DEFAULT '{}'::jsonb,
+            last_seen_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- The page's "priority" (Call first) and "pas_sweep" collections,
+        -- keyed by HubSpot Record ID. Loaded by an Admin (CSV upload).
+        CREATE TABLE IF NOT EXISTS lead_feeder_priority (
+            contact_id TEXT PRIMARY KEY,
+            rank INTEGER,
+            reason TEXT,
+            added_by_user_id INTEGER REFERENCES users(id),
+            added_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS lead_feeder_sweep (
+            contact_id TEXT PRIMARY KEY,
+            data JSONB NOT NULL,
+            added_by_user_id INTEGER REFERENCES users(id),
+            added_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- The page's learning/weights doc: optional ranking weight overrides.
+        CREATE TABLE IF NOT EXISTS lead_feeder_weights (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            weights JSONB NOT NULL,
+            note TEXT,
+            updated_by_user_id INTEGER REFERENCES users(id),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """,
+    ),
 ]
 
 _schema_ready = False

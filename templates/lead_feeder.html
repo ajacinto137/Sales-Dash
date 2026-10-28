@@ -7,22 +7,110 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
     <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/lead_feeder.js') }}" defer></script>
 </head>
 <body class="td-body">
 {% include "_topnav.html" %}
 
-{# Lead Feeder (main nav, added 2026-10-28) -- placeholder page. #}
+{# Lead Feeder (main nav, 2026-10-28) -- the shared NJ/VA SQL call list,
+   moved here from the claude.ai artifact each rep used to run. The server
+   holds the pool, the claims and every rule (lead_feeder_store.py /
+   lead_feeder_logic.py); static/js/lead_feeder.js only renders state and
+   posts takes/outcomes. Filters are saved per rep in appdb. #}
 
-<div class="td-page">
+<div class="td-page td-lf" id="lead-feeder"
+     data-state-url="{{ url_for('lead_feeder_state') }}"
+     data-prefs-url="{{ url_for('lead_feeder_save_prefs') }}"
+     data-take-url="{{ url_for('lead_feeder_take') }}"
+     data-outcome-url="{{ url_for('lead_feeder_outcome') }}"
+     data-planetweb-url="{{ url_for('lead_feeder_planetweb', contact_id='__ID__') }}"
+     data-refresh-seconds="{{ refresh_seconds }}">
 
-    <header class="td-header">
+    <header class="td-header td-lf-header">
         <div class="td-header-titles">
             <h1 class="td-title">Lead Feeder</h1>
+            <p class="td-muted-inline">
+                One shared list of NJ &amp; VA leads in the Sales Qualified Lead stage only (never customers,
+                non-ordering, MQLs or other stages) that Planet can service right now. When anyone on the team
+                takes a lead, it drops off everyone's list.
+            </p>
+        </div>
+        <div class="td-lf-stats" aria-live="polite">
+            <span>Open <b class="td-cyan" id="lf-open">–</b></span>
+            <span>Taken today <b class="td-magenta" id="lf-taken-count">0</b></span>
+            <span>Mine <b class="td-green" id="lf-mine-count">0</b></span>
         </div>
     </header>
 
-    <p class="td-empty">Coming soon.</p>
+    <section class="td-section td-lf-card td-lf-live" id="lf-mine" hidden></section>
 
+    <section class="td-section td-lf-card">
+        <div class="td-lf-toolbar">
+            <div>
+                <h2 class="td-lf-h2">Open leads</h2>
+                <small class="td-lf-hint" id="lf-fresh">Loading…</small>
+            </div>
+            <div class="td-lf-actions">
+                <button class="td-btn td-btn-primary" type="button" id="lf-next" disabled>Take the next lead</button>
+                <a class="td-btn td-btn-ghost" href="{{ url_for('lead_feeder_export') }}" id="lf-csv" title="Download the ranked list as a spreadsheet">Export CSV</a>
+            </div>
+        </div>
+        <div class="td-lf-filters">
+            <label class="td-lf-toggle" title="Only show leads in one state. Just for you; your teammates keep their own setting.">State
+                <select class="td-select" data-pref="state">
+                    <option value="all" {{ 'selected' if prefs.state == 'all' }}>NJ + VA</option>
+                    <option value="VA" {{ 'selected' if prefs.state == 'VA' }}>Virginia only</option>
+                    <option value="NJ" {{ 'selected' if prefs.state == 'NJ' }}>New Jersey only</option>
+                </select>
+            </label>
+            <label class="td-lf-toggle" title="Hide anyone the team has called recently so you get fresh people. Just for you.">Skip if called in last
+                <select class="td-select" data-pref="cool_days">
+                    {% for d in cool_choices %}
+                    <option value="{{ d }}" {{ 'selected' if prefs.cool_days == d }}>{{ 'today' if d == 1 else d ~ ' days' }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="td-lf-toggle" title="Only show leads in one area. Just for you.">Area
+                <select class="td-select" data-pref="area">
+                    <option value="all" {{ 'selected' if prefs.area == 'all' }}>All towns</option>
+                    {% for key, area in areas.items() %}
+                    <option value="{{ key }}" {{ 'selected' if prefs.area == key }}>{{ area.label }}, {{ area.state }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="td-lf-toggle" title="Owned SQLs nobody has called in 30+ days. They belong to another rep, so check with your manager before working them. Just for you.">
+                <input type="checkbox" data-pref="quiet_on" {{ 'checked' if prefs.quiet_on }}> Include owned leads gone quiet</label>
+            <label class="td-lf-toggle" title="Leads from the PAS Planet Maps sweeps: checked Available Now with 0 orders in PAS. Just for you.">
+                <input type="checkbox" data-pref="sweep_on" {{ 'checked' if prefs.sweep_on }}> PAS sweep leads</label>
+            <label class="td-lf-toggle" title="Also show sweep leads owned by an active rep. Check with your manager before working them. Just for you.">
+                <input type="checkbox" data-pref="sweep_active_on" {{ 'checked' if prefs.sweep_active_on }}> Include sweep leads owned by active reps</label>
+            <label class="td-lf-toggle" title="Also show sweep leads the sweep marked 'check manually'. Just for you.">
+                <input type="checkbox" data-pref="sweep_manual_on" {{ 'checked' if prefs.sweep_manual_on }}> Include check-manually</label>
+            <label class="td-lf-toggle" title="Each lead opens in one reusable HubSpot tab, ready to call. Close that tab when you're done and the next lead opens by itself.">
+                <input type="checkbox" data-pref="auto_hs" {{ 'checked' if prefs.auto_hs }}> Auto-open in HubSpot · close tab = next lead</label>
+            <label class="td-lf-toggle" title="Show what PlanetWeb has at the lead's address (availability, orders, PAS link) as soon as you take it.">
+                <input type="checkbox" data-pref="auto_maps" {{ 'checked' if prefs.auto_maps }}> PlanetWeb lookup</label>
+        </div>
+        <small class="td-lf-hint" id="lf-mix"></small>
+        <small class="td-lf-hint" id="lf-time" hidden></small>
+        <small class="td-lf-hint" id="lf-rank-hint" hidden>Ranked by Priority: how recently they became an SQL and how many times they've been called, weighted by what actually turned into sales in HubSpot. See <b>Lead intelligence</b> below.</small>
+        <div class="td-lf-msg" id="lf-msg">Loading the shared lead list…</div>
+        <ul class="td-lf-board" id="lf-board" hidden></ul>
+    </section>
+
+    <section class="td-section td-lf-card">
+        <details class="td-lf-ins" id="lf-ins">
+            <summary><h2 class="td-lf-h2">Lead intelligence</h2><small class="td-lf-hint" id="lf-ins-fresh">Measured from the whole HubSpot database</small></summary>
+            <div id="lf-ins-body"><p class="td-lf-hint">Not measured yet.</p></div>
+        </details>
+    </section>
+
+    <section class="td-section td-lf-card" id="lf-taken-card" hidden>
+        <div class="td-lf-toolbar"><h2 class="td-lf-h2">Taken today</h2><small class="td-lf-hint">Live across the team</small></div>
+        <ul id="lf-taken"></ul>
+    </section>
 </div>
+
+<script type="application/json" id="lf-outcomes">{{ outcomes|tojson }}</script>
 </body>
 </html>
