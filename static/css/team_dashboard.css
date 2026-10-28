@@ -3768,3 +3768,7 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
    headers get theirs from .td-sort-link). */
 .td-town-table thead th { padding: 12px 16px; }
 .td-town-table tfoot td { padding: 14px 16px; text-align: center; border-top: 1px solid var(--td-border); font-weight: 700; }
+
+/* Door Knockers Install Rate KPI card links to /knockers (2026-10-27). */
+.td-kpi-link { text-decoration: none; }
+.td-kpi-link:hover { text-decoration: underline; }

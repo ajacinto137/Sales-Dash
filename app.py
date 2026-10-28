@@ -1182,6 +1182,7 @@ def dashboard_page():
         channel_state_breakdown=channel_state_breakdown,
         town_breakdown=town_breakdown,
         monthly_status_views=monthly_status_views,
+        knocker_all_time_install_rate=knockers.status_summary(knocker_df)["install_rate"] if knocker_df is not None else None,
         sales_volume_views=sales_volume_views,
         volume_view=volume_view,
         team_view_options=team_view_options,

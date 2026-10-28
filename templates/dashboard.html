@@ -101,10 +101,10 @@
             <span class="td-kpi-row-hint" data-kpi-hint="total" hidden>Team + Door Knockers, each order counted once</span>
         </div>
         {% endif %}
-        <div data-kpi-panel="team">{{ kpi_bar(monthly_forecast, total_daily_sales, daily_averages) }}</div>
+        <div data-kpi-panel="team">{{ kpi_bar(monthly_forecast, total_daily_sales, daily_averages, knocker_install_rate=knocker_all_time_install_rate) }}</div>
         {% if knocker_kpis %}
-        <div data-kpi-panel="knockers" hidden>{{ kpi_bar(knocker_kpis.forecast, knocker_kpis.daily, knocker_kpis.averages) }}</div>
-        <div data-kpi-panel="total" hidden>{{ kpi_bar(total_kpis.forecast, total_kpis.daily, total_kpis.averages) }}</div>
+        <div data-kpi-panel="knockers" hidden>{{ kpi_bar(knocker_kpis.forecast, knocker_kpis.daily, knocker_kpis.averages, knocker_install_rate=knocker_all_time_install_rate) }}</div>
+        <div data-kpi-panel="total" hidden>{{ kpi_bar(total_kpis.forecast, total_kpis.daily, total_kpis.averages, knocker_install_rate=knocker_all_time_install_rate) }}</div>
         {% endif %}
     </div>
 
@@ -216,67 +216,6 @@
         </div>
         {% endfor %}
     </section>
-
-    <!-- ================= Monthly Sales by Status =================
-         Canonical name: "Monthly Sales by Status" (added 2026-10-27). One
-         stacked bar per sale month: Installed + Pending + Needs Attention
-         + Cancels = that month's sales (printed on top). All-time,
-         independent of the period filter; Team/state toggle. Same chart
-         as the Door Knockers page. Click a segment for those accounts.
-         "Internal vs Door Knockers" tab: the two side by side per month
-         (knocker bars faded), never combined into one bar. -->
-    {% if monthly_status_views %}
-    <section class="td-section">
-        <div class="td-section-heading">
-            <h2>Monthly Sales by Status</h2>
-            <span class="td-muted-inline">Sales grouped by the month they were made &middot; independent of the period filter</span>
-        </div>
-        <div class="td-chart-card">
-            <div class="td-chart-card-head">
-                <div>
-                    <h3>Sales by Month</h3>
-                    <span class="td-muted-inline">Each bar = that month's sales, split by where those accounts stand today &middot; click a segment to see the accounts</span>
-                </div>
-                <div class="td-chart-toggle" id="team-monthly-status-toggle">
-                    {% for v in monthly_status_views %}
-                    <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if loop.first else '' }}" data-chart-toggle="{{ v.key }}">{{ v.label }}</button>
-                    {% endfor %}
-                </div>
-            </div>
-            {% for v in monthly_status_views %}
-            <div class="td-chart-canvas-wrap td-kn-month-status-chart" data-chart-panel="{{ v.key }}"{% if not loop.first %} style="display: none;"{% endif %}>
-                {% if v.compare %}
-                <canvas data-chart-type="statusCompare" data-rows='{{ v.rows|tojson }}' aria-label="Internal and door-knocker sales per month side by side, each stacked by installed, pending, needs attention and cancels; the numbers are in the table below"></canvas>
-                {% else %}
-                <canvas data-chart-type="monthlyStatus" data-rows='{{ v.rows|tojson }}' aria-label="{{ v.label }} sales per month, stacked by installed, pending, needs attention and cancels; the numbers are in the table below"></canvas>
-                {% endif %}
-            </div>
-            {% endfor %}
-            <details class="td-kn-rate-table">
-                <summary>Show the numbers by month</summary>
-                {% for v in monthly_status_views if not v.compare %}
-                <h4 class="td-kn-month-status-sub">{{ v.label }}</h4>
-                <div class="td-table-scroll">
-                    <table data-sortable class="td-table">
-                        <thead><tr><th>Sale Month</th><th>Sales</th><th>Installed</th><th>Pending</th><th>Needs Attention</th><th>Cancels</th><th>Install Rate</th></tr></thead>
-                        <tbody>
-                        {% for r in v.rows if r.sales %}
-                        <tr>
-                            <td class="td-rep-cell" data-sort-value="{{ '%04d-%02d'|format(r.year, r.month) }}">{{ r.label }}</td>
-                            {% for key, n, color in [('all', r.sales, 'td-gradient-text'), ('installed', r.installed, 'td-green'), ('pending', r.pending, 'td-yellow'), ('needs_attention', r.needs_attention, 'td-magenta'), ('cancels', r.cancels, 'td-orange')] %}
-                            <td>{% if n %}<a class="td-metric-link {{ color }}" href="{{ r.url }}&status={{ key }}">{{ "{:,}".format(n) }}</a>{% else %}<span class="td-installs-zero">0</span>{% endif %}</td>
-                            {% endfor %}
-                            <td class="td-green">{{ "%.1f"|format((1 - r.needs_attention / r.sales) * 100) }}%</td>
-                        </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% endfor %}
-            </details>
-        </div>
-    </section>
-    {% endif %}
 
     <!-- ================= Channel & Time-of-Day Performance =================
          Canonical name: "Channel & Time-of-Day Performance". Merged
@@ -887,6 +826,67 @@
         <p class="td-empty">No sales recorded for this period.</p>
         {% endif %}
     </section>
+
+    <!-- ================= Monthly Sales by Status =================
+         Canonical name: "Monthly Sales by Status" (added 2026-10-27). One
+         stacked bar per sale month: Installed + Pending + Needs Attention
+         + Cancels = that month's sales (printed on top). All-time,
+         independent of the period filter; Team/state toggle. Same chart
+         as the Door Knockers page. Last section on the page (moved 2026-10-27). Click a segment for those accounts.
+         "Internal vs Door Knockers" tab: the two side by side per month
+         (knocker bars faded), never combined into one bar. -->
+    {% if monthly_status_views %}
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Monthly Sales by Status</h2>
+            <span class="td-muted-inline">Sales grouped by the month they were made &middot; independent of the period filter</span>
+        </div>
+        <div class="td-chart-card">
+            <div class="td-chart-card-head">
+                <div>
+                    <h3>Sales by Month</h3>
+                    <span class="td-muted-inline">Each bar = that month's sales, split by where those accounts stand today &middot; click a segment to see the accounts</span>
+                </div>
+                <div class="td-chart-toggle" id="team-monthly-status-toggle">
+                    {% for v in monthly_status_views %}
+                    <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if loop.first else '' }}" data-chart-toggle="{{ v.key }}">{{ v.label }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% for v in monthly_status_views %}
+            <div class="td-chart-canvas-wrap td-kn-month-status-chart" data-chart-panel="{{ v.key }}"{% if not loop.first %} style="display: none;"{% endif %}>
+                {% if v.compare %}
+                <canvas data-chart-type="statusCompare" data-rows='{{ v.rows|tojson }}' aria-label="Internal and door-knocker sales per month side by side, each stacked by installed, pending, needs attention and cancels; the numbers are in the table below"></canvas>
+                {% else %}
+                <canvas data-chart-type="monthlyStatus" data-rows='{{ v.rows|tojson }}' aria-label="{{ v.label }} sales per month, stacked by installed, pending, needs attention and cancels; the numbers are in the table below"></canvas>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <details class="td-kn-rate-table">
+                <summary>Show the numbers by month</summary>
+                {% for v in monthly_status_views if not v.compare %}
+                <h4 class="td-kn-month-status-sub">{{ v.label }}</h4>
+                <div class="td-table-scroll">
+                    <table data-sortable class="td-table">
+                        <thead><tr><th>Sale Month</th><th>Sales</th><th>Installed</th><th>Pending</th><th>Needs Attention</th><th>Cancels</th><th>Install Rate</th></tr></thead>
+                        <tbody>
+                        {% for r in v.rows if r.sales %}
+                        <tr>
+                            <td class="td-rep-cell" data-sort-value="{{ '%04d-%02d'|format(r.year, r.month) }}">{{ r.label }}</td>
+                            {% for key, n, color in [('all', r.sales, 'td-gradient-text'), ('installed', r.installed, 'td-green'), ('pending', r.pending, 'td-yellow'), ('needs_attention', r.needs_attention, 'td-magenta'), ('cancels', r.cancels, 'td-orange')] %}
+                            <td>{% if n %}<a class="td-metric-link {{ color }}" href="{{ r.url }}&status={{ key }}">{{ "{:,}".format(n) }}</a>{% else %}<span class="td-installs-zero">0</span>{% endif %}</td>
+                            {% endfor %}
+                            <td class="td-green">{{ "%.1f"|format((1 - r.needs_attention / r.sales) * 100) }}%</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+            </details>
+        </div>
+    </section>
+    {% endif %}
 
 </div>
 </body>

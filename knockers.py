@@ -86,6 +86,7 @@ FORMULAS = {
     "sales": "Sales = every door-knocker order, by sale date\n= Installed + Pending + Needs Attention + Cancelled + Service Cancelled",
     "installed": "Installed = sales with a Vision install date and no service cancellation",
     "install_rate": "Install Rate = Installed ÷ (Sales − Pending)",
+    "knocker_all_time_install_rate": "Door Knockers All Time Install Rate = Installed ÷ (Sales − Pending), every door-knocker sale ever\n= Installed ÷ (Installed + Needs Attention + Cancelled + Service Cancelled) -- Needs Attention counts as cancelled",
     "all_time_install_rate": "All Time Install Rate = Installed ÷ (Sales − Pending), counting every sale this knocker has ever made (ignores the period filter)",
     "rep_all_time_install_rate": "All Time Install Rate = 1 − (Needs Attention ÷ Sales), counting every sale this rep has ever made (ignores the period filter)",
     "pending": "Pending = not installed or cancelled, install appointment today or later",
