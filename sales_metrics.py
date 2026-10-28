@@ -1322,6 +1322,26 @@ def calculate_town_breakdown(df):
     return {"rows": rows, "total": summarize(keyed), "states": sorted({r["state"] for r in rows if r["state"]})}
 
 
+# Sales by Town's source dropdown (2026-10-28). Combined = Internal + Door
+# Knockers, each order once (a knocker order a rep entered is in both;
+# the internal copy wins).
+TOWN_SOURCES = [("internal", "Internal"), ("knockers", "Door Knockers"), ("combined", "Combined")]
+TOWN_SOURCE_KEYS = {key for key, _ in TOWN_SOURCES}
+
+
+def town_source_df(source, normalized, knocker_df):
+    """The dataset behind one Sales by Town source, or None when it needs
+    the knocker data and that couldn't be loaded."""
+    if source == "internal":
+        return normalized
+    if knocker_df is None:
+        return None
+    if source == "knockers":
+        return knocker_df
+    frames = [f for f in (normalized, knocker_df) if f is not None and not f.empty]
+    return pd.concat(frames, ignore_index=True).drop_duplicates("sale_id") if frames else knocker_df
+
+
 def get_town_account_view(df, town, state, metric, period, start, end):
     """Team-wide Bulk Account View for one Sales by Town count: the
     town's accounts in the period, narrowed by the clicked column's

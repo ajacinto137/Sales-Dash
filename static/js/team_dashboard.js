@@ -235,6 +235,17 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
+    // Sales by Town's Internal / Door Knockers / Combined dropdown
+    // (2026-10-28): shows that source's block (each has its own state toggle).
+    document.querySelectorAll("[data-town-source-select]").forEach(function (select) {
+        var section = select.closest("section");
+        select.addEventListener("change", function () {
+            section.querySelectorAll("[data-town-source-panel]").forEach(function (panel) {
+                panel.style.display = panel.getAttribute("data-town-source-panel") === select.value ? "" : "none";
+            });
+        });
+    });
+
     // Bulk Account View's Table mode: click a column header to sort by it
     // (client-side -- every row is already on the page, no reload needed).
     // The table is a CSS Grid (see team_dashboard.css), not a <table> --

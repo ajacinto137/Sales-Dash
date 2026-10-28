@@ -51,3 +51,15 @@ def test_drill_down_matches_the_count():
         assert len(sm.get_town_account_view(DF, "Unknown", "NY", "sales", "this_month", None, None)[1]) == 1
         assert sm.get_town_account_view(DF, "Newton", "NJ", "bogus", "this_month", None, None)[1] == []
         assert sm.get_town_account_view(DF, "Newton", "NJ", "sales", "last_month", None, None)[1] == []
+
+
+def test_town_sources_combined_counts_shared_orders_once():
+    internal = DF.assign(sale_id=range(1, 7))
+    knockers = DF.iloc[:2].assign(sale_id=[2, 99], sales_channel="Door to Door")
+    assert sm.town_source_df("internal", internal, None) is internal
+    assert sm.town_source_df("knockers", internal, None) is None
+    assert sm.town_source_df("knockers", internal, knockers) is knockers
+    combined = sm.town_source_df("combined", internal, knockers)
+    assert sorted(combined["sale_id"]) == [1, 2, 3, 4, 5, 6, 99]
+    # The internal copy of a shared order wins.
+    assert combined[combined["sale_id"] == 2]["sales_channel"].iloc[0] == "Inbound Call"

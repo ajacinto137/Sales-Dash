@@ -206,7 +206,7 @@
         <div class="td-section-heading">
             <h2>Knocker Leaderboard</h2>
             <span class="td-muted-inline">{{ active_codes }} referral code{{ '' if active_codes == 1 else 's' }} with sales &middot; click a code for its profile, a number for its accounts</span>
-            <form class="td-kn-search" method="get" action="{{ url_for('knockers_page') }}">
+            <form class="td-kn-search" id="kn-search-form" method="get" action="{{ url_for('knockers_page') }}">
                 <input type="hidden" name="period" value="{{ period }}">
                 <input type="hidden" name="start" value="{{ custom_start }}">
                 <input type="hidden" name="end" value="{{ custom_end }}">
@@ -218,6 +218,12 @@
                     <span class="td-active-dot"></span>Active only ({{ active_count }})
                 </label>
                 <input class="td-date-input" type="search" name="search" value="{{ search }}" placeholder="Find a code…" aria-label="Find a referral code">
+                {# Picked codes hidden right now (e.g. by Active only) stay picked. #}
+                {% set shown_codes = rows|map(attribute='code')|list %}
+                {% for code in picked if code not in shown_codes %}<input type="hidden" name="pick" value="{{ code }}">{% endfor %}
+                {% if picked %}
+                <a class="td-kn-clear-picks" href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, cof=cof_view, active='1' if active_only else none, sort=sort, dir=sort_dir, _anchor='knocker-leaderboard') }}">Clear {{ picked|length }} selected</a>
+                {% endif %}
             </form>
         </div>
         {# Rates live in a second table to the right (2026-10-26, by
@@ -232,6 +238,7 @@
                 {% for name, value in [('period', period), ('start', custom_start), ('end', custom_end), ('search', search), ('sort', sort), ('dir', sort_dir), ('active', '1' if active_only else '')] %}
                 <input type="hidden" name="{{ name }}" value="{{ value }}">
                 {% endfor %}
+                {% for code in picked %}<input type="hidden" name="pick" value="{{ code }}">{% endfor %}
                 <select class="td-kn-cof-select" name="cof" data-autosubmit aria-label="Card on File rate to show">
                     <option value="blitz"{{ ' selected' if cof_view == 'blitz' }}>Current Blitz</option>
                     <option value="all_time"{{ ' selected' if cof_view == 'all_time' }}>All Time</option>
@@ -239,7 +246,7 @@
             </form>
             {% endif %}
             <a class="td-sort-link{{ ' td-sort-active' if col.active else '' }}"
-               href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, cof=cof_view, active='1' if active_only else none, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
+               href="{{ url_for('knockers_page', period=period, start=custom_start, end=custom_end, search=search, cof=cof_view, active='1' if active_only else none, pick=picked, sort=col.key, dir=col.next_dir, _anchor='knocker-leaderboard') }}">
                 {{ col.label }}{% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
             </a>
             {% if col.key == 'install_rate' %}<span class="td-cp-sub">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }}</span>{% endif %}
@@ -257,8 +264,9 @@
                     </thead>
                     <tbody>
                         {% for row in rows %}
-                        <tr>
-                            <td class="td-rank">{{ row.rank }}</td>
+                        <tr{% if row.code in picked %} class="td-kn-picked"{% endif %}>
+                            {# Checked rows stay in the table through searches (2026-10-28). #}
+                            <td class="td-rank"><input type="checkbox" class="td-kn-pick" name="pick" value="{{ row.code }}" form="kn-search-form"{{ ' checked' if row.code in picked }} aria-label="Keep {{ row.code }} in the table">{{ row.rank }}</td>
                             <td class="td-rep-cell">{% if row.active %}<span class="td-active-dot" title="Rep active · sold in the last 24 hours"></span>{% endif %}<a class="td-rep-link" href="{{ url_for('knocker_profile', code=row.code, period=period, start=custom_start, end=custom_end) }}">{{ row.code }}</a></td>
                             {% for key, status_key, color in [('sales', 'all', 'td-text-primary'), ('installed', 'installed', 'td-green')] %}
                             <td class="{{ color }}"><a class="td-metric-link" href="{{ url_for('knocker_accounts', code=row.code, status=status_key, **acct_args) }}">{{ row[key] }}</a></td>
@@ -283,7 +291,7 @@
                     </thead>
                     <tbody>
                         {% for row in rows %}
-                        <tr>
+                        <tr{% if row.code in picked %} class="td-kn-picked"{% endif %}>
                             <td class="td-cyan"{% if row.cof_note %} title="{{ row.cof_note }}"{% endif %}>{% if row.cof_url and row.card_on_file_rate is not none %}<a class="td-metric-link" href="{{ row.cof_url }}">{{ "%.1f"|format(row.card_on_file_rate) ~ '%' }}</a>{% else %}—{% endif %}</td>
                             <td class="td-green">{{ "%.1f"|format(row.install_rate) ~ '%' if row.install_rate is not none else '—' }}</td>
                             <td class="td-green">{{ "%.1f"|format(row.all_time_install_rate) ~ '%' if row.all_time_install_rate is not none else '—' }}</td>

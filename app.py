@@ -57,6 +57,9 @@ from sales_metrics import (
     calculate_channel_breakdown,
     calculate_channel_state_breakdown,
     calculate_town_breakdown,
+    TOWN_SOURCES,
+    TOWN_SOURCE_KEYS,
+    town_source_df,
     get_town_account_view,
     calculate_monthly_sales_by_status,
     MONTHLY_SALES_STATUSES,
@@ -986,11 +989,21 @@ def dashboard_page():
     hourly_breakdown = calculate_hourly_breakdown(period_df)
     # Channel Breakdown by State (added 2026-10-12) -- same period_df.
     channel_state_breakdown = calculate_channel_state_breakdown(period_df)
-    # Sales by Town (added 2026-10-27) -- same period_df. "All" plus one
-    # breakdown per state, so each state's view has its own totals/shares.
-    town_breakdown = {"All": calculate_town_breakdown(period_df)}
-    for state_code in town_breakdown["All"]["states"]:
-        town_breakdown[state_code] = calculate_town_breakdown(_state_filtered(period_df, state_code))
+    # Sales by Town (added 2026-10-27) -- same period. "All" plus one
+    # breakdown per state, so each state's view has its own totals/shares,
+    # per Internal / Door Knockers / Combined source (dropdown added
+    # 2026-10-28, by request; knocker sources skipped if appdb is down).
+    knocker_df, _knocker_error = _load_knockers_or_error()
+    town_breakdown = {}
+    for source, _label in TOWN_SOURCES:
+        source_df = town_source_df(source, normalized, knocker_df)
+        if source_df is None:
+            continue
+        source_period_df = filter_by_period(source_df, period, custom_start, custom_end)
+        views = {"All": calculate_town_breakdown(source_period_df)}
+        for state_code in views["All"]["states"]:
+            views[state_code] = calculate_town_breakdown(_state_filtered(source_period_df, state_code))
+        town_breakdown[source] = views
 
     # Monthly Sales by Status (added 2026-10-27) -- all-time stacked bars,
     # one panel per state view that has sales. Each row carries the
@@ -1077,8 +1090,8 @@ def dashboard_page():
         row["calls_per_sale"] = row["calls_today"] / row["sales_today"] if row["sales_today"] else None
 
     # Door Knockers KPI row (added 2026-10-23) -- same five numbers from
-    # the knocker dataset; omitted if appdb is unreachable.
-    knocker_df, _knocker_error = _load_knockers_or_error()
+    # the knocker dataset (loaded above for Sales by Town); omitted if
+    # appdb is unreachable.
     # Monthly Sales by Status's "Internal vs Door Knockers" tab (added
     # 2026-10-27, by request): per month, an internal stack and a knocker
     # stack side by side -- never summed. Team-wide, all-time.
@@ -1186,6 +1199,7 @@ def dashboard_page():
         hourly_breakdown=hourly_breakdown,
         channel_state_breakdown=channel_state_breakdown,
         town_breakdown=town_breakdown,
+        town_sources=TOWN_SOURCES,
         monthly_status_views=monthly_status_views,
         sales_volume_views=sales_volume_views,
         volume_view=volume_view,
@@ -1801,10 +1815,21 @@ def all_sales_view():
     elif view == "town":
         # Sales by Town count click-through (added 2026-10-27) -- same
         # period-filtered dataset as the section's own counts.
+        # ?source= follows the section's Internal / Door Knockers /
+        # Combined dropdown (2026-10-28).
+        source = request.args.get("source", "internal")
+        if source not in TOWN_SOURCE_KEYS:
+            source = "internal"
+        knocker_df = _load_knockers_or_error()[0] if source != "internal" else None
+        source_df = town_source_df(source, normalized, knocker_df)
+        if source_df is None:
+            abort(503)
         view_title, accounts = get_town_account_view(
-            normalized, request.args.get("town", ""), request.args.get("state", ""),
+            source_df, request.args.get("town", ""), request.args.get("state", ""),
             request.args.get("metric", "sales"), period, custom_start, custom_end,
         )
+        if source != "internal":
+            view_title = f"{view_title} ({dict(TOWN_SOURCES)[source]})"
         all_time = False
     elif view == "month_status":
         # Monthly Sales by Status segment click (added 2026-10-27) --
@@ -3051,8 +3076,11 @@ def knockers_page():
     active_only = request.args.get("active") == "1"
     if active_only:
         rows = [r for r in rows if r["active"]]
+    # Checked knockers (?pick=, 2026-10-28, by request) stay in the table
+    # whatever the search says.
+    picked = list(dict.fromkeys(p.strip().lower() for p in request.args.getlist("pick") if p.strip()))
     if search:
-        rows = [r for r in rows if search in r["code"]]
+        rows = [r for r in rows if search in r["code"] or r["code"] in picked]
     sort = request.args.get("sort", "sales")
     sort_dir = request.args.get("dir", "desc")
     if sort not in knockers.KNOCKER_SORT_KEYS:
@@ -3088,6 +3116,7 @@ def knockers_page():
 
     return render_template(
         "knockers.html",
+        picked=picked,
         active_page="knockers",
         load_error=load_error,
         period=period, custom_start=custom_start, custom_end=custom_end, search=search,

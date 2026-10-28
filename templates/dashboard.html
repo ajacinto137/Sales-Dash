@@ -754,27 +754,39 @@
          of the page, since 2026-10-27), with the same Installed / Pending /
          Needs Attention / Install Rate definitions. All / per-state toggle
          reuses the data-bulk-view switch; each view has its own Total row.
-         Every count opens a team-wide Bulk Account View (?view=town). -->
-    <section class="td-section" data-bulk-view>
+         Every count opens a team-wide Bulk Account View (?view=town).
+         Internal / Door Knockers / Combined dropdown (2026-10-28): one
+         block per source, each with its own All / per-state toggle;
+         Combined counts an order in both datasets once. -->
+    <section class="td-section">
         <div class="td-section-heading">
             <h2>Sales by Town</h2>
             <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }} &middot; city on the order</span>
-        </div>
-
-        {% if town_breakdown.All.rows %}
-        <div class="td-bulk-view-toggle-row">
-            <div class="td-chart-toggle">
-                {% for key in town_breakdown %}
-                <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if loop.first else '' }}" data-bulk-view-btn="town-{{ key }}">{{ key }}</button>
+            {% if town_breakdown|length > 1 %}
+            <select class="td-select td-town-source-select" data-town-source-select aria-label="Sales source">
+                {% for key, label in town_sources if key in town_breakdown %}
+                <option value="{{ key }}">{{ label }}</option>
                 {% endfor %}
-            </div>
+            </select>
+            {% endif %}
         </div>
 
         {# Styled like the Individual Rep Leaderboard (2026-10-27, by
            request): plain cyan rank, centered equal-width columns, each
            metric column in its leaderboard color, green Install Rate. #}
         {% set town_cols = [('sales', 'Sales', 'td-text-primary'), ('installs', 'Installed', 'td-green'), ('pending', 'Pending', 'td-yellow'), ('needs_attention', 'Needs Attention', 'td-magenta'), ('outbound', 'Outbound', 'td-cyan'), ('inbound', 'Inbound', 'td-purple')] %}
-        {% for key, tb in town_breakdown.items() %}
+        {% for source, town_views in town_breakdown.items() %}
+        <div data-bulk-view data-town-source-panel="{{ source }}"{% if not loop.first %} style="display: none;"{% endif %}>
+        {% if town_views.All.rows %}
+        <div class="td-bulk-view-toggle-row">
+            <div class="td-chart-toggle">
+                {% for key in town_views %}
+                <button type="button" class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if loop.first else '' }}" data-bulk-view-btn="town-{{ key }}">{{ key }}</button>
+                {% endfor %}
+            </div>
+        </div>
+
+        {% for key, tb in town_views.items() %}
         <div class="td-table-card" data-bulk-view-panel="town-{{ key }}"{% if not loop.first %} style="display: none;"{% endif %}>
             <div class="td-table-scroll td-town-scroll">
                 <table class="td-table td-town-table" data-sortable>
@@ -800,7 +812,7 @@
                             {% for metric, _, color in town_cols %}
                             <td class="{{ color }}" data-sort-value="{{ row[metric] }}">
                                 {% if row[metric] %}
-                                <a class="td-metric-link" href="{{ url_for('all_sales_view', view='town', town=row.town, state=row.state, metric=metric, period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(row[metric]) }}</a>
+                                <a class="td-metric-link" href="{{ url_for('all_sales_view', view='town', town=row.town, state=row.state, metric=metric, source=source, period=period, start=custom_start, end=custom_end) }}">{{ "{:,}".format(row[metric]) }}</a>
                                 {% else %}0{% endif %}
                             </td>
                             {% endfor %}
@@ -826,6 +838,8 @@
         {% else %}
         <p class="td-empty">No sales recorded for this period.</p>
         {% endif %}
+        </div>
+        {% endfor %}
     </section>
 
     <!-- ================= Monthly Sales by Status =================

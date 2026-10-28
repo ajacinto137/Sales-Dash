@@ -1303,6 +1303,12 @@ a.td-record-rep:hover {
    apply everywhere the component is used -- see README.md
    "Reusable Views". */
 
+/* Sales by Town's Internal / Door Knockers / Combined dropdown (2026-10-28). */
+.td-town-source-select {
+    margin-left: auto;
+    align-self: center;
+}
+
 .td-bulk-view-toggle-row {
     display: flex;
     justify-content: flex-end;
@@ -3876,3 +3882,22 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-lf-admin-forms form { display: grid; gap: 8px; align-content: start; }
 .td-lf-weights { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 .td-lf-weights label { display: grid; gap: 3px; font-size: 12px; color: var(--td-text-secondary); }
+
+/* Knocker Leaderboard row checkboxes (2026-10-28): checked rows stay
+   through searches. */
+.td-kn-pick {
+    margin: 0 8px 0 0;
+    vertical-align: middle;
+    accent-color: var(--td-cyan);
+    cursor: pointer;
+}
+
+.td-kn-picked td {
+    background: var(--td-cyan-bg);
+}
+
+.td-kn-clear-picks {
+    align-self: center;
+    font-size: 12.5px;
+    color: var(--td-text-secondary);
+}
