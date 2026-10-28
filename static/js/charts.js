@@ -231,6 +231,14 @@ const BLITZ_STATUSES = [
     ["service_cancelled", "Service Cancelled"],
 ];
 
+// Monthly Sales by Status merges order + service cancels into one segment.
+const MONTHLY_STATUSES = [
+    ["installed", "Installed"],
+    ["pending", "Pending"],
+    ["needs_attention", "Needs Attention"],
+    ["cancels", "Cancels"],
+];
+
 // Sales per calendar day across one blitz. Click a bar -> that day's accounts.
 function createBlitzDailyChart(canvasEl, tokens) {
     const days = JSON.parse(canvasEl.dataset.days || "[]");
@@ -279,7 +287,7 @@ function createBlitzDailyChart(canvasEl, tokens) {
 // or one row for a single blitz). Click a segment -> those accounts.
 // Same stacked statuses as upright monthly columns (Door Knockers
 // "Monthly Sales by Status", added 2026-10-27): one bar per sale month,
-// the five statuses stack to that month's sales, total printed on top.
+// MONTHLY_STATUSES stack to that month's sales, total printed on top.
 function createMonthlyStatusChart(canvasEl, tokens) {
     return createStatusStackedChart(canvasEl, tokens, true);
 }
@@ -306,6 +314,7 @@ function stackTotalsPlugin(rows, color) {
 
 function createStatusStackedChart(canvasEl, tokens, vertical) {
     const rows = JSON.parse(canvasEl.dataset.rows || "[]");
+    const statuses = vertical ? MONTHLY_STATUSES : BLITZ_STATUSES;
     const countAxis = { ...baseScaleOptions(tokens), stacked: true, beginAtZero: true, ticks: { ...baseScaleOptions(tokens).ticks, precision: 0 } };
     const labelAxis = { ...baseScaleOptions(tokens), stacked: true, grid: { display: false } };
     if (vertical) countAxis.grace = "8%";
@@ -314,11 +323,11 @@ function createStatusStackedChart(canvasEl, tokens, vertical) {
         type: "bar",
         data: {
             labels: rows.map((r) => r.name),
-            datasets: BLITZ_STATUSES.map(([key, label]) => ({
+            datasets: statuses.map(([key, label]) => ({
                 label,
                 key,
                 data: rows.map((r) => r[key]),
-                backgroundColor: tokens.statusColors[key],
+                backgroundColor: tokens.statusColors[key === "cancels" ? "cancelled" : key],
                 borderColor: tokens.panel,
                 borderWidth: vertical ? { top: 2 } : { right: 2 },
                 borderSkipped: false,
@@ -335,7 +344,7 @@ function createStatusStackedChart(canvasEl, tokens, vertical) {
             onClick: (_evt, elements) => {
                 if (!elements.length) return;
                 const row = rows[elements[0].index];
-                const key = BLITZ_STATUSES[elements[0].datasetIndex][0];
+                const key = statuses[elements[0].datasetIndex][0];
                 if (row.url) window.location.href = `${row.url}&status=${key}`;
             },
             onHover: (evt, elements) => {

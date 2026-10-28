@@ -2760,10 +2760,10 @@ def knockers_page():
         wtd_trend_views={key: calculate_week_to_date_comparison(v) for key, v in state_views.items()},
         rate_views=rate_views,
         # Monthly Sales by Status (2026-10-27, by request): the same monthly
-        # rows as stacked bars -- each bar's five statuses add up to that
-        # month's sales. Clicking a segment opens that month's accounts.
+        # rows as stacked bars -- Installed + Pending + Needs Attention +
+        # Cancels (order + service cancels together) = that month's sales. Clicking a segment opens that month's accounts.
         monthly_status_views=[{"key": key, "label": label, "rows": [{
-            **r, "name": r["label"],
+            **r, "name": r["label"], "cancels": r["cancelled"] + r["service_cancelled"],
             "url": url_for("knocker_accounts", period="custom", start=r["start"], end=r["end"], state=code),
         } for r in knockers.monthly_rates(_state_filtered(df, code), start=first_sale_month)]}
             for key, label, code in KNOCKER_RATE_VIEWS],

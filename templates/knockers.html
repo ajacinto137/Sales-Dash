@@ -78,8 +78,8 @@
 
     {# ---------- Monthly Sales by Status (by sale month, added 2026-10-27) ----------
        One stacked bar per sale month: Installed + Pending + Needs Attention
-       + Cancelled + Service Cancelled = that month's sales (the number on
-       top). Team/NJ/NY/VA toggle; click a segment for those accounts. #}
+       + Cancels (order cancels + service cancels, merged by request) = that
+       month's sales (the number on top). Team/NJ/NY/VA toggle; click a segment for those accounts. #}
     <section class="td-section" id="knocker-monthly-status">
         <div class="td-section-heading">
             <h2>Monthly Sales by Status</h2>
@@ -102,7 +102,7 @@
                 {% if v.rows|sum(attribute='sales') == 0 %}
                 <p class="td-empty">No door-knocker sales{{ ' in ' ~ v.label if v.key != 'team' else '' }} yet.</p>
                 {% else %}
-                <canvas data-chart-type="monthlyStatus" data-rows='{{ v.rows|tojson }}' aria-label="{{ v.label }} door-knocker sales per month, stacked by installed, pending, needs attention, cancelled and service cancelled; the numbers are in the table below"></canvas>
+                <canvas data-chart-type="monthlyStatus" data-rows='{{ v.rows|tojson }}' aria-label="{{ v.label }} door-knocker sales per month, stacked by installed, pending, needs attention and cancels; the numbers are in the table below"></canvas>
                 {% endif %}
             </div>
             {% endfor %}
@@ -112,12 +112,12 @@
                 <h4 class="td-kn-month-status-sub">{{ v.label }}</h4>
                 <div class="td-table-scroll">
                     <table data-sortable class="td-table">
-                        <thead><tr><th>Sale Month</th>{% for key, label, _ in [('all', 'Sales', ''), ('installed', 'Installed', ''), ('pending', 'Pending', ''), ('needs_attention', 'Needs Attention', ''), ('cancelled', 'Cancelled', ''), ('service_cancelled', 'Service Cancelled', '')] %}<th data-formula="{{ formulas['sales' if key == 'all' else key] }}">{{ label }}</th>{% endfor %}<th data-formula="{{ formulas.install_rate }}">Install Rate</th></tr></thead>
+                        <thead><tr><th>Sale Month</th>{% for key, label, _ in [('all', 'Sales', ''), ('installed', 'Installed', ''), ('pending', 'Pending', ''), ('needs_attention', 'Needs Attention', ''), ('cancels', 'Cancels', '')] %}<th data-formula="{{ formulas['sales' if key == 'all' else key] }}">{{ label }}</th>{% endfor %}<th data-formula="{{ formulas.install_rate }}">Install Rate</th></tr></thead>
                         <tbody>
                         {% for r in v.rows if r.sales %}
                         <tr>
                             <td class="td-rep-cell" data-sort-value="{{ r.start }}">{{ r.label }}</td>
-                            {% for key, color in [('all', ''), ('installed', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta'), ('cancelled', 'td-orange'), ('service_cancelled', 'td-purple')] %}
+                            {% for key, color in [('all', ''), ('installed', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta'), ('cancels', 'td-orange')] %}
                             {% set n = r.sales if key == 'all' else r[key] %}
                             <td>{% if n %}<a class="td-metric-link {{ color or 'td-gradient-text' }}" href="{{ r.url }}&status={{ key }}">{{ "{:,}".format(n) }}</a>{% else %}<span class="td-installs-zero">0</span>{% endif %}</td>
                             {% endfor %}

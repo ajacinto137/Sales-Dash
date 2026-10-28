@@ -50,10 +50,13 @@ STATUS_KEYS = {
     "cancelled": "Cancelled",
     "service_cancelled": "Service Cancelled",
 }
-# Account-list filters: the five statuses plus everything and card on file.
+# Account-list filters: the five statuses, both cancels, everything and card on file.
 ACCOUNT_FILTERS = {
     "all": ("All Sales", lambda df: df),
     **{key: (label, (lambda label: lambda df: df[df["status"] == label])(label)) for key, label in STATUS_KEYS.items()},
+    # Both kinds of cancel together -- Monthly Sales by Status's one
+    # "Cancels" segment (2026-10-27, by request).
+    "cancels": ("Cancels", lambda df: df[df["status"].isin(["Cancelled", "Service Cancelled"])]),
     "card_on_file": ("Card on File", lambda df: df[df["card_on_file"]]),
     "no_card_on_file": ("No Card on File", lambda df: df[~df["card_on_file"]]),
 }
@@ -86,6 +89,7 @@ FORMULAS = {
     "needs_attention": "Needs Attention = not installed or cancelled, no install appointment or a past one",
     "cancelled": "Cancelled = order cancelled before it was installed",
     "service_cancelled": "Service Cancelled = installed, then the customer cancelled service",
+    "cancels": "Cancels = Cancelled (before install) + Service Cancelled (after install)",
     "service_cancel_rate": "Service Cancel Rate = Service Cancelled ÷ (Installed + Service Cancelled)",
     "card_on_file": "Card on File = sales paid by card or ACH (not check or skip)",
     "card_on_file_rate": "Card on File % = Card on File ÷ Sales",
