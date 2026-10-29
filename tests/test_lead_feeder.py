@@ -490,3 +490,25 @@ def test_planetweb_lookup_matches_house_number_and_unit(monkeypatch):
     assert S.planetweb_lookup({"street": "40 Oak Ave", "zip": "07101"})["place"]["place_id"] == 8
     assert S.planetweb_lookup({"street": "40 Oak Ave Unit 3", "zip": "07101"})["place"]["place_id"] == 8
     assert S.planetweb_lookup({"street": "99 Main St", "zip": "07101"})["place"] is None
+
+
+def test_every_library_obeys_the_household_rules(monkeypatch):
+    """A library's recipe can't bring back a lead the order-at-address
+    check dropped, and the not-current family lead stays, at P2."""
+    import lead_feeder_store as store
+    monkeypatch.setitem(L.LIBRARIES, "everyone", {"name": "Everyone", "description": "", "includes": [],
+                                                   "excludes": [], "match": lambda p, now: True})
+    scheduled, current, family, clean = lead(), lead(), lead(hs_v2_date_entered_salesqualifiedlead="2026-03-01T14:00:00Z"), lead()
+    scheduled["__household"] = L.household_check(
+        scheduled, [order(name="Ann Smith", last_name="Smith", install_date=date(2026, 11, 4))], set(), TODAY)
+    current["__household"] = L.household_check(current, [order()], {"abc"}, TODAY)
+    family["__household"] = L.household_check(family, [order(subscriber_uuid="")], {"abc"}, TODAY)
+    entries = [{"id": cid, "variants": [{"p": p, "s": L.score_lead(p, NOW, None)}]}
+               for cid, p in (("1", scheduled), ("2", current), ("3", family), ("4", clean))]
+    store._state.update(entries=entries, version=4321, loaded_at=1.0)
+    store._list_cache.clear()
+    assert "Nov 4, 2026" in scheduled["__household"]["why"]
+    for library in L.LIBRARIES:
+        leads = {x["id"]: x for x in store.open_leads(L.clean_prefs({"library": library}), set(), NOW)}
+        assert set(leads) == {"3", "4"}, library
+        assert leads["3"]["s"]["tier"] == 2 and "notInstalled" in L.sig_list(leads["3"]["p"])

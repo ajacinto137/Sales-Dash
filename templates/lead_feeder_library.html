@@ -17,16 +17,7 @@
 {% set lib = library %}
 
 <div class="td-page td-lf">
-    <header class="td-header td-lf-header">
-        <div class="td-header-titles">
-            <p class="td-lf-crumb"><a href="{{ url_for('lead_feeder_libraries') }}">Lead Feeder</a> · Library</p>
-            <h1 class="td-title">{{ lib.name }}</h1>
-            <p class="td-muted-inline">{{ lib.description }}</p>
-        </div>
-        <form method="post" action="{{ url_for('lead_feeder_start_library', library_id=lib.id) }}">
-            <button class="td-btn td-btn-primary" type="submit">Start calling</button>
-        </form>
-    </header>
+    <p class="td-lf-crumb"><a href="{{ url_for('lead_feeder_libraries') }}">Lead Feeder</a> · Library</p>
 
     {% if not pool.loaded %}
     <div class="td-lf-msg {{ 'td-lf-msg-bad' if pool.error }}">
@@ -34,7 +25,18 @@
     </div>
     {% endif %}
 
-    <section class="td-section td-lf-card">
+    {# One card per library: name, Start calling, numbers, criteria and the
+       order-at-address rules together (by request, 2026-10-28). #}
+    <section class="td-section td-lf-card td-lf-libcard">
+        <div class="td-lf-toolbar">
+            <div>
+                <h1 class="td-title">{{ lib.name }}</h1>
+                <p class="td-muted-inline">{{ lib.description }}</p>
+            </div>
+            <form method="post" action="{{ url_for('lead_feeder_start_library', library_id=lib.id) }}">
+                <button class="td-btn td-btn-primary" type="submit">Start calling</button>
+            </form>
+        </div>
         {% include "_lead_feeder_library_numbers.html" %}
         <p class="td-lf-hint">
             Open leads: {{ '–' if lib.nj is none else '{:,}'.format(lib.nj) }} NJ ·
@@ -44,18 +46,21 @@
             {% if lib.conversion_30 is not none %}Last {{ results_days }} days: {{ '{:,}'.format(lib.worked_30) }} leads worked, {{ '{:.1f}%'.format(lib.conversion_30 * 100) }} turned into a sale.{% endif %}
             {% if lib.results_error %}<span class="td-lf-warn-text">Sales couldn't be checked right now ({{ lib.results_error }}).</span>{% endif %}
         </p>
+        <div class="td-lf-criteria">
+            <div>
+                <h2 class="td-lf-h2">Who's in this library</h2>
+                <ul>{% for line in lib.includes %}<li>{{ line }}</li>{% endfor %}</ul>
+            </div>
+            <div>
+                <h2 class="td-lf-h2">Who's left out</h2>
+                <ul>{% for line in lib.excludes %}<li>{{ line }}</li>{% endfor %}</ul>
+            </div>
+            <div>
+                <h2 class="td-lf-h2">Orders at the address</h2>
+                <ul>{% for line in household_rules %}<li>{{ line }}</li>{% endfor %}</ul>
+            </div>
+        </div>
     </section>
-
-    <div class="td-lf-criteria">
-        <section class="td-section td-lf-card">
-            <h2 class="td-lf-h2">Who's in this library</h2>
-            <ul>{% for line in lib.includes %}<li>{{ line }}</li>{% endfor %}</ul>
-        </section>
-        <section class="td-section td-lf-card">
-            <h2 class="td-lf-h2">Who's left out</h2>
-            <ul>{% for line in lib.excludes %}<li>{{ line }}</li>{% endfor %}</ul>
-        </section>
-    </div>
 </div>
 </body>
 </html>

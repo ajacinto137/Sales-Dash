@@ -3885,7 +3885,9 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-lf-libnum dt { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--td-text-muted); font-weight: 600; }
 .td-lf-libnum dd { margin: 2px 0 0; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .td-lf-libnum-big dd { font-size: 28px; }
-.td-lf-criteria { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.td-lf-libcard { gap: 16px; }
+.td-lf-criteria { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 24px; border-top: 1px solid var(--td-border-soft); padding-top: 16px; }
+.td-lf-criteria > div { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .td-lf-criteria ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: var(--td-text-primary); }
 /* Admin > Lead Feeder */
 .td-lf-admin-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }

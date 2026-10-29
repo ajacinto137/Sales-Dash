@@ -65,6 +65,21 @@ COOL_CHOICES = [1, 2, 3, 5, 7, 14]
 # library for the day. "includes" / "excludes" are the plain-English
 # criteria shown on the library's intro page -- keep them in step with
 # the rules. New recipes are added here, in code.
+#
+# RULE (by request, 2026-10-28): every library obeys the household check
+# (household_check() below) -- an install scheduled today or later at the
+# address, or a same-last-name order that's current in Vision, drops the
+# lead; a same-last-name order that isn't current keeps it, moved up to P2
+# and tagged "Family order not installed". prescreen() / sweep_reason()
+# apply it to the shared pool before any library's `match` runs, so a
+# recipe can only narrow what's left, never bring a dropped lead back.
+# HOUSEHOLD_RULES is how every library's intro page states it.
+HOUSEHOLD_RULES = [
+    "Dropped: anyone with an install scheduled at their address today or later",
+    "Dropped: someone with the same last name at the address is a current Planet customer in Vision",
+    "Kept and moved up to P2: someone with the same last name ordered at the address but isn't current "
+    "in Vision (tagged Family order not installed)",
+]
 LIBRARIES = {
     "reiss": {
         "name": "Reiss's List",
@@ -75,7 +90,7 @@ LIBRARIES = {
             "Anyone an admin loaded on the Call first or PAS sweep lists",
         ],
         "excludes": [
-            "Customers, Do Not Contact, and anyone with a scheduled or current order at their address",
+            "Customers and Do Not Contact",
             "Lead statuses like OBJ Cable, Optimum, Starlink, Mobile Hotspot, Not Serviceable or Moving",
             "Notes saying DNC, not interested, moved, wrong number or deceased",
             "Fake or business-looking names, bad phone numbers, and email or SMS opt-outs",

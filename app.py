@@ -2678,6 +2678,7 @@ def lead_feeder_library(library_id):
         "lead_feeder_library.html",
         active_page="lead_feeder",
         library=library,
+        household_rules=lead_feeder_logic.HOUSEHOLD_RULES,
         current=prefs["library"],
         pool=lead_feeder_store.pool_status(),
         results_days=lead_feeder_store.RESULTS_DAYS,
