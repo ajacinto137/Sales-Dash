@@ -16,6 +16,7 @@
 
   let state = null, busy = false, hsWin = null, hsWinFor = null, pollTimer = null, toastTimer = null;
   let planetwebFor = null;
+  let pasFor = null, pasUrl = null;   // PAS page of the current lead's address, once looked up
 
   async function api(url, body) {
     const res = await fetch(url, body === undefined ? {credentials: "same-origin"} : {
@@ -210,6 +211,7 @@
       <div class="td-lf-row">
         <a class="td-btn td-btn-primary" href="${esc(c.tel)}">Call from my phone</a>
         <a class="td-btn" href="${esc(c.hubspot_url)}" target="${HS_WIN}" id="lf-open-hs">Open in HubSpot</a>
+        <button class="td-btn" type="button" id="lf-open-pas" title="Open this address's place in PAS">Open in PAS &#8599;</button>
         <button class="td-btn" type="button" data-copy="${esc(c.phone)}">Copy number</button>
         <button class="td-btn" type="button" data-copy="${esc(c.address)}">Copy address</button>
       </div>
@@ -234,7 +236,21 @@
     });
     el.querySelectorAll("[data-out]").forEach(b => b.onclick = () => finish(b.dataset.out));
     const pwBtn = $("lf-pw-btn"); if (pwBtn) pwBtn.onclick = () => loadPlanetweb(c);
+    $("lf-open-pas").onclick = () => openPas(c);
     if (state.prefs.auto_maps) loadPlanetweb(c);
+  }
+
+  // Open in PAS: the place comes from the PlanetWeb lookup, so if it hasn't
+  // run yet, open the tab on the click (so it isn't popup-blocked) and point
+  // it at PAS once the lookup finds the place.
+  async function openPas(c) {
+    if (pasFor === c.id && pasUrl) { window.open(pasUrl, "planetPas"); return; }
+    let w = null;
+    try { w = window.open("", "planetPas"); if (w) w.document.body.innerHTML = '<p style="font:16px system-ui;padding:24px;color:#555">Finding this address in PAS…</p>'; } catch (e) {}
+    const r = await loadPlanetweb(c);
+    if (pasFor === c.id && pasUrl) { try { w ? (w.location.href = pasUrl) : window.open(pasUrl, "planetPas"); } catch (e) {} return; }
+    closeWin(w);
+    toast(r && !r.ok ? (r.error || "PlanetWeb lookup failed.") : "No PAS place matches this address.", true);
   }
 
   async function loadPlanetweb(c) {
@@ -242,8 +258,9 @@
     planetwebFor = c.id;
     el.innerHTML = `<span class="td-lf-spin"></span> Looking up this address in PlanetWeb…`;
     const r = await api(root.dataset.planetwebUrl.replace("__ID__", encodeURIComponent(c.id)));
-    if (planetwebFor !== c.id || !$("lf-pw")) return;
-    if (!r.ok) { el.innerHTML = `<span class="td-lf-hint">PlanetWeb lookup failed: ${esc(r.error || "unknown error")}</span>`; return; }
+    if (planetwebFor !== c.id || !$("lf-pw")) return r;
+    pasFor = c.id; pasUrl = r.ok && r.place ? r.place.pas_url : null;
+    if (!r.ok) { el.innerHTML = `<span class="td-lf-hint">PlanetWeb lookup failed: ${esc(r.error || "unknown error")}</span>`; return r; }
     const parts = [`<div class="td-lf-label">PlanetWeb at this address</div>`];
     if (r.place) {
       const p = r.place;
@@ -257,6 +274,7 @@
     }
     if (r.orders.length) parts.push(`<div class="td-lf-hint"><b class="td-lf-warn-text">Existing order${r.orders.length > 1 ? "s" : ""} at this address:</b> ${r.orders.map(o => `<a href="${esc(o.profile_url)}" target="_blank" rel="noopener">${esc(o.name)} · ${esc(o.order_date)}</a>`).join(", ")}</div>`);
     el.innerHTML = parts.join("");
+    return r;
   }
 
   function render() {
