@@ -525,11 +525,13 @@ def _ranked_for(prefs, now):
     cached = _list_cache.get(key)
     if cached is not None:
         return cached
+    library = L.library_of(prefs)
     leads = []
     for entry in _state["entries"]:
         for variant in entry["variants"]:
             p = variant["p"]
-            if L.prescreen(p, now, prefs) and L.in_state(p, prefs["state"]) and L.in_area(p, prefs["area"]):
+            if (L.prescreen(p, now, prefs) and L.in_state(p, prefs["state"]) and L.in_area(p, prefs["area"])
+                    and L.in_library(p, library, now)):
                 leads.append({"id": entry["id"], "p": p, "s": variant["s"]})
                 break
     leads.sort(key=L.rank_key)
@@ -586,13 +588,14 @@ def lead_row(lead, now=None):
 # Claims (shared, one per contact per Eastern day)
 # ================================================================
 
-_CLAIM_COLUMNS = "contact_id, user_id, user_name, claimed_at, outcome, outcome_at, contact_name, town"
+_CLAIM_COLUMNS = "contact_id, user_id, user_name, claimed_at, outcome, outcome_at, contact_name, town, library_id"
 
 
 def _claim_dict(row):
-    contact_id, user_id, user_name, claimed_at, outcome, outcome_at, name, town = row
+    contact_id, user_id, user_name, claimed_at, outcome, outcome_at, name, town, library_id = row
     return {"contact_id": contact_id, "user_id": user_id, "user_name": user_name, "claimed_at": claimed_at,
-            "outcome": outcome, "outcome_at": outcome_at, "name": name, "town": town}
+            "outcome": outcome, "outcome_at": outcome_at, "name": name, "town": town,
+            "library_id": library_id or L.DEFAULT_LIBRARY}
 
 
 def get_claims_today():
@@ -616,22 +619,24 @@ def _event(cur, contact_id, user_id, event, detail=None):
                 (contact_id, user_id, event, detail))
 
 
-def try_claim(contact_id, user, p, s, now=None):
+def try_claim(contact_id, user, p, s, now=None, library=None):
     """True if THIS user now holds the lead. Race-safe: the UNIQUE
-    (claim_date, contact_id) key lets exactly one INSERT win."""
+    (claim_date, contact_id) key lets exactly one INSERT win -- across
+    every library, so a taken lead is locked in all of them today."""
     now = now or _now()
     conn = _connect()
     try:
         with conn, conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO lead_feeder_claims
-                    (claim_date, contact_id, user_id, user_name, contact_name, town, contact_email, contact_phone, meta)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (claim_date, contact_id, user_id, user_name, contact_name, town, contact_email, contact_phone, meta,
+                     library_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (claim_date, contact_id) DO NOTHING
                 RETURNING id
             """, (L.day_start(now).date(), str(contact_id), user["id"], _display_name(user), L.full_name(p),
                   p.get("city") or "", (p.get("email") or "").strip().lower() or None, L.digits(p.get("phone")) or None,
-                  json.dumps(L.lead_meta(p, s, now))))
+                  json.dumps(L.lead_meta(p, s, now)), library or L.DEFAULT_LIBRARY))
             won = cur.fetchone() is not None
             if won:
                 _event(cur, str(contact_id), user["id"], "claimed")
@@ -773,7 +778,7 @@ def take(user, prefs, contact_id=None):
         p = lead["p"]
         name = L.full_name(p)
         try:
-            if not try_claim(lead["id"], user, p, lead["s"], now):
+            if not try_claim(lead["id"], user, p, lead["s"], now, L.library_of(prefs)):
                 messages.append(f"{name} was just taken by a teammate.")
                 continue
         except Exception as exc:
@@ -1165,7 +1170,7 @@ def admin_report(start_date, end_date):
                       ON m.dashboard_user_id = u.id OR (u.sales_rep_id IS NOT NULL AND m.sales_rep_id = u.sales_rep_id)
                 )
                 SELECT c.id, c.claim_date, c.contact_id, c.user_id, c.user_name, c.claimed_at, c.outcome, c.outcome_at,
-                       c.contact_name, c.town, c.contact_email, c.contact_phone, c.meta,
+                       c.contact_name, c.town, c.contact_email, c.contact_phone, c.meta, c.library_id,
                        EXISTS (SELECT 1 FROM owners o WHERE o.user_id = c.user_id) AS mapped,
                        calls.n, calls.connected, calls.last_call
                 FROM lead_feeder_claims c
@@ -1253,3 +1258,97 @@ def admin_report(start_date, end_date):
         "active_claims": [c for c in claims if c["outcome"] == "Calling" and c["claim_date"] == _today()],
         "outcomes": sorted(outcomes.items(), key=lambda kv: -kv[1]), "sales_error": sales_error,
     }
+
+
+# ================================================================
+# Lead libraries (2026-10-28): the picker cards and intro page numbers
+# ================================================================
+
+RESULTS_SECONDS = 10 * 60     # how long each library's 30-day results are reused
+RESULTS_DAYS = 30
+_results_cache = {"at": None, "data": None, "error": None}
+_results_lock = threading.Lock()
+
+
+def _library_results():
+    """({library_id: {"worked", "called", "connected", "sales"}}, error)
+    over the last RESULTS_DAYS days, from admin_report()'s per-claim
+    HubSpot calls and PlanetWeb sales (auto-skipped claims never reached
+    a rep, so they don't count). data is None when appdb is down; "sales"
+    is None when PlanetWeb is. Cached RESULTS_SECONDS."""
+    with _results_lock:
+        if _results_cache["at"] and time.time() - _results_cache["at"] < RESULTS_SECONDS:
+            return _results_cache["data"], _results_cache["error"]
+        today = _today()
+        data, error = {}, None
+        try:
+            report = admin_report(today - timedelta(days=RESULTS_DAYS - 1), today)
+            error = report["sales_error"]
+            for c in report["claims"]:
+                if c["outcome"] == "Auto-skipped":
+                    continue
+                r = data.setdefault(c["library_id"] or L.DEFAULT_LIBRARY,
+                                    {"worked": 0, "called": 0, "connected": 0, "sales": 0})
+                r["worked"] += 1
+                r["called"] += c["called"]
+                r["connected"] += 1 if c["connected_calls"] else 0
+                r["sales"] += 1 if c.get("sale_order_id") else 0
+            if error:
+                for r in data.values():
+                    r["sales"] = None
+        except Exception as exc:
+            data, error = None, db.sanitize_error(exc)
+            _log(f"Couldn't measure library results: {error}")
+        _results_cache.update(at=time.time(), data=data, error=error)
+        return data, error
+
+
+def _active_by_library():
+    """{library_id: reps on Lead Feeder in the last ACTIVE_SECONDS}."""
+    try:
+        conn = _connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT coalesce(prefs->>'library', %s), count(*) FROM lead_feeder_prefs
+                    WHERE last_seen_at >= now() - %s * interval '1 second' GROUP BY 1
+                """, (L.DEFAULT_LIBRARY, ACTIVE_SECONDS))
+                return dict(cur.fetchall())
+        finally:
+            conn.close()
+    except Exception as exc:
+        _log(f"Couldn't read who's active: {db.sanitize_error(exc)}")
+        return {}
+
+
+def library_summaries(prefs, claims, now=None):
+    """One summary per library for this rep: open leads with their own
+    filters (+ P1/P2, NJ/VA, never called), today's team claims in it,
+    and its 30-day connect rate / sales / conversion. None = unknown."""
+    now = now or _now()
+    loaded = _state["loaded_at"] is not None
+    results, results_error = _library_results()
+    active = _active_by_library()
+    out = []
+    for lid, lib in L.LIBRARIES.items():
+        leads = open_leads(dict(prefs, library=lid), set(claims), now) if loaded else []
+        today = [c for c in claims.values() if c["library_id"] == lid and c["outcome"] != "Auto-skipped"]
+        r = None if results is None else results.get(lid, {"worked": 0, "called": 0, "connected": 0, "sales": 0})
+        out.append({
+            "id": lid, "name": lib["name"], "description": lib["description"],
+            "includes": lib["includes"], "excludes": lib["excludes"],
+            "open": len(leads) if loaded else None,
+            "hot": sum(1 for lead in leads if lead["s"]["tier"] <= 2) if loaded else None,
+            "nj": sum(1 for lead in leads if L.in_state(lead["p"], "NJ")) if loaded else None,
+            "va": sum(1 for lead in leads if L.in_state(lead["p"], "VA")) if loaded else None,
+            "never_called": sum(1 for lead in leads if L.calls_of(lead["p"]) == 0) if loaded else None,
+            "called_today": len(today),
+            "reps_today": len({c["user_id"] for c in today}),
+            "active_now": active.get(lid, 0),
+            "worked_30": r["worked"] if r else None,
+            "sales_30": r["sales"] if r else None,
+            "connect_30": r["connected"] / r["called"] if r and r["called"] else None,
+            "conversion_30": r["sales"] / r["worked"] if r and r["worked"] and r["sales"] is not None else None,
+            "results_error": results_error,
+        })
+    return out

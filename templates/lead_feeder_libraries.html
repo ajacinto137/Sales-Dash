@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lead Libraries — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Lead libraries (2026-10-28) -- Lead Feeder's first screen: one card per
+   library (lead_feeder_logic.LIBRARIES), each a live recipe over the
+   shared HubSpot pool. Clicking a card opens its intro page. #}
+
+<div class="td-page td-lf">
+    <header class="td-header td-lf-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Lead Feeder</h1>
+            <p class="td-muted-inline">
+                Pick a lead library to work. Each one updates on its own as leads come and go in HubSpot.
+                A lead someone takes is locked in every library for the rest of the day.
+            </p>
+        </div>
+    </header>
+
+    {% if not pool.loaded %}
+    <div class="td-lf-msg {{ 'td-lf-msg-bad' if pool.error }}">
+        {{ pool.error or 'Loading the shared lead list from HubSpot… lead counts show up in a minute.' }}
+    </div>
+    {% endif %}
+
+    <div class="td-lf-libs">
+        {% for lib in libraries %}
+        <a class="td-lf-lib {{ 'td-lf-lib-current' if lib.id == current }}" href="{{ url_for('lead_feeder_library', library_id=lib.id) }}">
+            <div class="td-lf-lib-head">
+                <h2 class="td-lf-h2">{{ lib.name }}</h2>
+                {% if lib.id == current %}<span class="td-lf-chip td-lf-ok">Last used</span>{% endif %}
+                {% if lib.active_now %}<span class="td-lf-chip">{{ lib.active_now }} on it now</span>{% endif %}
+            </div>
+            <p class="td-lf-hint">{{ lib.description }}</p>
+            {% include "_lead_feeder_library_numbers.html" %}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+</body>
+</html>

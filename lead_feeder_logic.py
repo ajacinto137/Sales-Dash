@@ -57,8 +57,50 @@ AREAS = {
 }
 COOL_CHOICES = [1, 2, 3, 5, 7, 14]
 
+# ---------- lead libraries (2026-10-28) ----------
+# A library is a live recipe over the shared pool: `match(p, now)` picks
+# which pooled leads belong to it (None = every lead the pool's rules let
+# in). Reps pick a library first; their board, Take the next lead and
+# claims are scoped to it, and a claim still locks the lead in EVERY
+# library for the day. "includes" / "excludes" are the plain-English
+# criteria shown on the library's intro page -- keep them in step with
+# the rules. New recipes are added here, in code.
+LIBRARIES = {
+    "reiss": {
+        "name": "Reiss's List",
+        "description": "Open NJ & VA sales-qualified leads nobody is working, ranked by how likely they are to buy right now.",
+        "includes": [
+            "NJ and VA HubSpot contacts in the Sales Qualified Lead stage, at an address Planet can service now",
+            "Nobody owns them, or they have an owner but nobody has contacted them in 30+ days",
+            "Anyone an admin loaded on the Call first or PAS sweep lists",
+        ],
+        "excludes": [
+            "Customers, Do Not Contact, and anyone with a scheduled or current order at their address",
+            "Lead statuses like OBJ Cable, Optimum, Starlink, Mobile Hotspot, Not Serviceable or Moving",
+            "Notes saying DNC, not interested, moved, wrong number or deceased",
+            "Fake or business-looking names, bad phone numbers, and email or SMS opt-outs",
+            "Anyone called within your Skip if called in last window",
+        ],
+        "match": None,
+    },
+}
+DEFAULT_LIBRARY = "reiss"
+
+
+def library_of(prefs):
+    """The library id these prefs work in (Reiss's List until one is picked)."""
+    lib = (prefs or {}).get("library")
+    return lib if lib in LIBRARIES else DEFAULT_LIBRARY
+
+
+def in_library(p, library_id, now):
+    match = LIBRARIES.get(library_id, LIBRARIES[DEFAULT_LIBRARY])["match"]
+    return match is None or bool(match(p, now))
+
+
 # Every per-rep setting the page kept in localStorage, with the page's defaults.
 DEFAULT_PREFS = {
+    "library": None,             # last library picked (None = show the library picker)
     "state": "all", "area": "all", "cool_days": 3,
     "quiet_on": True,            # lf_quiet2 defaulted to on
     "sweep_on": True, "sweep_active_on": False, "sweep_manual_on": False,
@@ -193,6 +235,8 @@ def clean_prefs(raw):
     for anything missing). An area pins its state, like the page did."""
     prefs = dict(DEFAULT_PREFS)
     raw = raw or {}
+    if raw.get("library") in LIBRARIES:
+        prefs["library"] = raw["library"]
     if raw.get("state") in STATE_VALS:
         prefs["state"] = raw["state"]
     if raw.get("area") in AREAS or raw.get("area") == "all":

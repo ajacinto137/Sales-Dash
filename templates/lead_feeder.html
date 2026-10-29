@@ -16,7 +16,9 @@
    moved here from the claude.ai artifact each rep used to run. The server
    holds the pool, the claims and every rule (lead_feeder_store.py /
    lead_feeder_logic.py); static/js/lead_feeder.js only renders state and
-   posts takes/outcomes. Filters are saved per rep in appdb. #}
+   posts takes/outcomes. Filters are saved per rep in appdb. Since
+   2026-10-28 the board is scoped to the rep's picked lead library
+   (lead_feeder_libraries.html / lead_feeder_library.html). #}
 
 <div class="td-page td-lf" id="lead-feeder"
      data-state-url="{{ url_for('lead_feeder_state') }}"
@@ -28,13 +30,15 @@
 
     <header class="td-header td-lf-header">
         <div class="td-header-titles">
-            <h1 class="td-title">Lead Feeder</h1>
+            <p class="td-lf-crumb"><a href="{{ url_for('lead_feeder_libraries') }}">Lead Feeder</a> · Library</p>
+            <h1 class="td-title">{{ library.name }}</h1>
             <p class="td-muted-inline">
-                One shared list of NJ &amp; VA leads in the Sales Qualified Lead stage only (never customers,
-                non-ordering, MQLs or other stages) that Planet can service right now. When anyone on the team
-                takes a lead, it drops off everyone's list.
+                {{ library.description }} When anyone on the team takes a lead, it drops off everyone's list
+                in every library.
+                <a href="{{ url_for('lead_feeder_library', library_id=library.id) }}">What's in this library</a>
             </p>
         </div>
+        <a class="td-btn td-btn-ghost" href="{{ url_for('lead_feeder_libraries') }}">Switch library</a>
         <div class="td-lf-stats" aria-live="polite">
             <span>Open <b class="td-cyan" id="lf-open">–</b></span>
             <span>Taken today <b class="td-magenta" id="lf-taken-count">0</b></span>

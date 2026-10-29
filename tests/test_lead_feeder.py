@@ -283,6 +283,54 @@ def test_list_import(test_db):
     assert ok and store._load_list_rows("sweep")["202"] == {"hot": "Yes", "owner_inactive": True, "notes": "gate code 12"}
 
 
+# ---------------- lead libraries ----------------
+
+def test_library_pref_is_remembered_and_validated():
+    assert L.clean_prefs({})["library"] is None                       # no pick yet -> picker
+    assert L.clean_prefs({"library": "reiss"})["library"] == "reiss"
+    assert L.clean_prefs({"library": "nope"})["library"] is None
+    assert L.library_of({}) == L.library_of({"library": "nope"}) == "reiss"
+    assert L.LIBRARIES["reiss"]["name"] == "Reiss's List"
+
+
+def test_board_and_claims_are_scoped_to_the_library(monkeypatch):
+    import lead_feeder_store as store
+    monkeypatch.setitem(L.LIBRARIES, "va_only", {"name": "VA", "description": "", "includes": [], "excludes": [],
+                                                  "match": lambda p, now: L.in_state(p, "VA")})
+    nj, va = lead(), lead(state="VA", city="Farmville", phone="(434) 555-0100".replace("555", "392"))
+    store._state.update(entries=[{"id": "1", "variants": [{"p": nj, "s": L.score_lead(nj, NOW, None)}]},
+                                 {"id": "2", "variants": [{"p": va, "s": L.score_lead(va, NOW, None)}]}],
+                        version=1234, loaded_at=1.0)
+    store._list_cache.clear()
+    assert [x["id"] for x in store.open_leads(L.clean_prefs({"library": "reiss"}), set(), NOW)] == ["1", "2"]
+    assert [x["id"] for x in store.open_leads(L.clean_prefs({"library": "va_only"}), set(), NOW)] == ["2"]
+    # A lead taken in any library is gone from all of them.
+    assert store.open_leads(L.clean_prefs({"library": "reiss"}), {"2"}, NOW)[0]["id"] == "1"
+
+    monkeypatch.setattr(store, "_library_results", lambda: ({"reiss": {"worked": 10, "called": 8, "connected": 2,
+                                                                        "sales": 1}}, None))
+    monkeypatch.setattr(store, "_active_by_library", lambda: {"va_only": 1})
+    claims = {"9": {"library_id": "reiss", "user_id": 1, "outcome": "Talked"},
+              "8": {"library_id": "reiss", "user_id": 1, "outcome": "Auto-skipped"}}
+    cards = {c["id"]: c for c in store.library_summaries(L.clean_prefs({}), claims, NOW)}
+    assert cards["reiss"]["open"] == 2 and cards["reiss"]["nj"] == 1 and cards["reiss"]["va"] == 1
+    assert cards["reiss"]["called_today"] == 1 and cards["reiss"]["reps_today"] == 1    # auto-skips don't count
+    assert cards["reiss"]["sales_30"] == 1 and cards["reiss"]["connect_30"] == 0.25
+    assert cards["reiss"]["conversion_30"] == 0.1
+    assert cards["va_only"]["open"] == 1 and cards["va_only"]["active_now"] == 1
+    assert cards["va_only"]["sales_30"] == 0 and cards["va_only"]["connect_30"] is None
+
+
+@integration
+def test_claim_records_its_library(test_db):
+    import lead_feeder_store as store
+    p = lead()
+    assert store.try_claim("5004", REP_A, p, _scored(p), library="reiss")
+    assert store.try_claim("5005", REP_A, p, _scored(p))
+    ok, claims = store.get_claims_today()
+    assert claims["5004"]["library_id"] == "reiss" and claims["5005"]["library_id"] == "reiss"
+
+
 def test_only_active_reps_and_admins_use_lead_feeder():
     import permissions
     assert permissions.can_use_lead_feeder({"role": "Sales Rep", "status": "active"})

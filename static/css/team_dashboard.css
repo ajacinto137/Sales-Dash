@@ -3872,6 +3872,21 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-lf-spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--td-border); border-top-color: var(--td-cyan); border-radius: 50%; animation: td-lf-spin .8s linear infinite; vertical-align: -2px; }
 @keyframes td-lf-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .td-lf-spin { animation: none; } }
+/* Lead libraries (2026-10-28): picker cards + intro page */
+.td-lf-crumb { margin: 0 0 4px; font-size: 12.5px; color: var(--td-text-muted); }
+.td-lf-crumb a { color: var(--td-text-secondary); text-decoration: none; }
+.td-lf-crumb a:hover { color: var(--td-cyan); text-decoration: underline; }
+.td-lf-libs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.td-lf-lib { display: grid; gap: 10px; align-content: start; background: var(--td-panel); border: 1px solid var(--td-border); border-radius: var(--td-radius); padding: 18px; color: inherit; text-decoration: none; min-width: 0; }
+.td-lf-lib:hover, .td-lf-lib:focus-visible { border-color: var(--td-cyan); box-shadow: 0 0 0 3px var(--td-cyan-bg); outline: none; }
+.td-lf-lib-current { border-color: var(--td-cyan); }
+.td-lf-lib-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.td-lf-libnums { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px 14px; margin: 0; }
+.td-lf-libnum dt { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--td-text-muted); font-weight: 600; }
+.td-lf-libnum dd { margin: 2px 0 0; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.td-lf-libnum-big dd { font-size: 28px; }
+.td-lf-criteria { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.td-lf-criteria ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: var(--td-text-primary); }
 /* Admin > Lead Feeder */
 .td-lf-admin-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .td-lf-admin-kpi { background: var(--td-panel); border: 1px solid var(--td-border); border-radius: var(--td-radius); padding: 12px 14px; }

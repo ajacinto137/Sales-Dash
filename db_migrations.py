@@ -814,6 +814,18 @@ MIGRATIONS = [
         );
         """,
     ),
+    (
+        22,
+        "lead_feeder_claims.library_id (Lead Feeder lead libraries, 2026-10-28)",
+        """
+        -- Which library (lead_feeder_logic.LIBRARIES) the rep was working
+        -- when they took the lead -- drives each library's card numbers.
+        -- Claims from before libraries were all Reiss's List.
+        ALTER TABLE lead_feeder_claims ADD COLUMN IF NOT EXISTS library_id TEXT;
+        UPDATE lead_feeder_claims SET library_id = 'reiss' WHERE library_id IS NULL;
+        CREATE INDEX IF NOT EXISTS ix_lead_feeder_claims_library_date ON lead_feeder_claims (library_id, claim_date);
+        """,
+    ),
 ]
 
 _schema_ready = False

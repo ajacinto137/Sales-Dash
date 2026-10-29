@@ -1,0 +1,17 @@
+{# One library's summary numbers (lead_feeder_store.library_summaries), shared
+   by the library picker cards and the library intro page. None = unknown,
+   shown as a dash. #}
+{% macro num(value) %}{{ '–' if value is none else '{:,}'.format(value) }}{% endmacro %}
+{% macro rate(value) %}{{ '–' if value is none else '{:.0f}%'.format(value * 100) }}{% endmacro %}
+<dl class="td-lf-libnums">
+    <div class="td-lf-libnum td-lf-libnum-big" title="Leads you can take right now with your own State, Area and Skip if called settings">
+        <dt>Open leads</dt><dd class="td-cyan">{{ num(lib.open) }}</dd></div>
+    <div class="td-lf-libnum" title="P1 Call now + P2 High leads among the open ones">
+        <dt>P1 + P2</dt><dd class="td-magenta">{{ num(lib.hot) }}</dd></div>
+    <div class="td-lf-libnum" title="Leads the team took from this library today{{ ', by ' ~ lib.reps_today ~ ' rep' ~ ('' if lib.reps_today == 1 else 's') if lib.reps_today }}">
+        <dt>Called today</dt><dd class="td-yellow">{{ num(lib.called_today) }}</dd></div>
+    <div class="td-lf-libnum" title="PlanetWeb orders placed by leads taken from this library in the last {{ results_days }} days">
+        <dt>Sales · {{ results_days }}d</dt><dd class="td-green">{{ num(lib.sales_30) }}</dd></div>
+    <div class="td-lf-libnum" title="Of the leads called from this library in the last {{ results_days }} days (HubSpot calls), the share with a Connected call">
+        <dt>Connect rate · {{ results_days }}d</dt><dd class="td-orange">{{ rate(lib.connect_30) }}</dd></div>
+</dl>

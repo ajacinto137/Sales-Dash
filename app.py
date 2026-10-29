@@ -2617,20 +2617,84 @@ def _lead_feeder_claims_json(claims, user):
 @app.route("/lead-feeder")
 @auth.login_required
 def lead_feeder_page():
+    """The board for the rep's last-picked library; the library picker
+    until they've picked one."""
     user = _lead_feeder_user()
     if user is None:
         return render_template("unauthorized.html"), 403
     lead_feeder_store.start_scheduler()
+    prefs = lead_feeder_store.get_prefs(user["id"])
+    if not prefs["library"]:
+        return redirect(url_for("lead_feeder_libraries"))
     return render_template(
         "lead_feeder.html",
         active_page="lead_feeder",
-        prefs=lead_feeder_store.get_prefs(user["id"]),
+        prefs=prefs,
+        library=dict(lead_feeder_logic.LIBRARIES[prefs["library"]], id=prefs["library"]),
         areas=lead_feeder_logic.AREAS,
         cool_choices=lead_feeder_logic.COOL_CHOICES,
         outcomes=lead_feeder_logic.OUTCOMES,
         refresh_seconds=lead_feeder_store.REFRESH_SECONDS,
         last_refreshed=data_store["last_refreshed"],
     )
+
+
+@app.route("/lead-feeder/libraries")
+@auth.login_required
+def lead_feeder_libraries():
+    """Lead libraries: one card per library (lead_feeder_logic.LIBRARIES)
+    with its numbers for this rep's filters."""
+    user = _lead_feeder_user()
+    if user is None:
+        return render_template("unauthorized.html"), 403
+    lead_feeder_store.start_scheduler()
+    prefs = lead_feeder_store.get_prefs(user["id"])
+    _ok, claims = lead_feeder_store.get_claims_today()
+    return render_template(
+        "lead_feeder_libraries.html",
+        active_page="lead_feeder",
+        libraries=lead_feeder_store.library_summaries(prefs, claims),
+        current=prefs["library"],
+        pool=lead_feeder_store.pool_status(),
+        results_days=lead_feeder_store.RESULTS_DAYS,
+    )
+
+
+@app.route("/lead-feeder/libraries/<library_id>")
+@auth.login_required
+def lead_feeder_library(library_id):
+    """A library's intro page: what's in it, what's left out, its numbers
+    and Start calling."""
+    user = _lead_feeder_user()
+    if user is None:
+        return render_template("unauthorized.html"), 403
+    if library_id not in lead_feeder_logic.LIBRARIES:
+        abort(404)
+    lead_feeder_store.start_scheduler()
+    prefs = lead_feeder_store.get_prefs(user["id"])
+    _ok, claims = lead_feeder_store.get_claims_today()
+    library = next(lib for lib in lead_feeder_store.library_summaries(prefs, claims) if lib["id"] == library_id)
+    return render_template(
+        "lead_feeder_library.html",
+        active_page="lead_feeder",
+        library=library,
+        current=prefs["library"],
+        pool=lead_feeder_store.pool_status(),
+        results_days=lead_feeder_store.RESULTS_DAYS,
+    )
+
+
+@app.route("/lead-feeder/libraries/<library_id>/start", methods=["POST"])
+@auth.login_required
+def lead_feeder_start_library(library_id):
+    """Start calling: remembers the library and opens its board."""
+    user = _lead_feeder_user()
+    if user is None:
+        return render_template("unauthorized.html"), 403
+    if library_id not in lead_feeder_logic.LIBRARIES:
+        abort(404)
+    lead_feeder_store.save_prefs(user["id"], {"library": library_id})
+    return redirect(url_for("lead_feeder_page"))
 
 
 @app.route("/lead-feeder/api/state")
