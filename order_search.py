@@ -18,15 +18,28 @@ import time
 import pandas as pd
 
 import db
-from queries import DOOR_KNOCKER_CODES, WEB_SALES_SOURCE_TOKEN
+from queries import DOOR_KNOCKER_CODES, FIBER_INSTALL_JOB_TYPES_SQL, WEB_SALES_SOURCE_TOKEN
 from sales_metrics import extract_rep_name
 
 REFRESH_SECONDS = 600
 
-_QUERY = """
+_CANCELED_JOB_STATUS_ID = 16   # FTTPScheduleJobStatuses Canceled (same as passings_cache)
+
+# InstallDate: the order's latest fiber install job that wasn't cancelled
+# (Lead Feeder drops leads whose address has an install today or later).
+_QUERY = f"""
 SELECT fd.ID, fd.FirstName, fd.LastName, fd.Address, fd.ApartmentSuite, fd.City, fd.State,
-       fd.Zipcode, fd.InsertDate, fd.ReferralData, fd.SourceToken, fd.InsertByEmployeeID
+       fd.Zipcode, fd.InsertDate, fd.ReferralData, fd.SourceToken, fd.InsertByEmployeeID,
+       fd.vi_subscriber_uuid, x.InstallDate
 FROM FTTPFormData fd
+OUTER APPLY (
+    SELECT TOP 1 slots.StartDate AS InstallDate
+    FROM FTTPScheduleJobs jobs
+    JOIN FTTPScheduleSlots slots ON slots.ID = jobs.SlotID
+    WHERE jobs.FormDataID = fd.ID AND jobs.TypeID IN {FIBER_INSTALL_JOB_TYPES_SQL}
+      AND jobs.StatusID <> {_CANCELED_JOB_STATUS_ID}
+    ORDER BY slots.StartDate DESC, jobs.ID DESC
+) x
 WHERE fd.QuoteID IS NOT NULL
 """
 
@@ -93,6 +106,14 @@ def build_index(raw):
         "order_date": pd.to_datetime(df["InsertDate"], errors="coerce"),
         "sold_by": sold[0] if not df.empty else None,
         "sold_by_kind": sold[1] if not df.empty else None,
+        # Lead Feeder household check (2026-10-28): same-address orders and
+        # whether their Vision account is still current.
+        "city": city,
+        "zip5": zipcode.str[:5],
+        "subscriber_uuid": (_clean(df["vi_subscriber_uuid"]).str.lower() if "vi_subscriber_uuid" in df
+                            else pd.Series("", index=df.index)),
+        "install_date": (pd.to_datetime(df["InstallDate"], errors="coerce").dt.normalize() if "InstallDate" in df
+                         else pd.Series(pd.NaT, index=df.index)),
     })
     index["_name"] = (index["first_name"] + " " + index["last_name"]).str.strip().str.casefold()
     haystack = index["_name"] + " " + index["address"] + " " + index["city_state_zip"]

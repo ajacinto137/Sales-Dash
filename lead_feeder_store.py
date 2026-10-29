@@ -30,6 +30,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+import pandas as pd
+
 import db
 import db_migrations
 import hubspot_client
@@ -67,6 +69,10 @@ _state = {
 }
 _refresh_lock = threading.Lock()
 _list_cache = {}
+# app.py sets this to a callable returning its loaded Vision packages
+# DataFrame (VISION_PACKAGES_QUERY) -- the household check's "current"
+# test. Until it returns data the household check is skipped.
+vision_packages_source = None
 _current_cache = {}           # (user_id, contact_id) -> lead details shown on the "current" card
 
 
@@ -176,13 +182,23 @@ def _build_entries(client, now, intel, weights):
     sweep lead and as a regular lead -- a rep with sweep leads turned off
     (or whose sweep screen fails) still gets the regular one, like the page."""
     base, stats = {}, {"capped": False, "sweep": {"stored": 0, "out": {}}, "priority": {"stored": 0, "out": 0}}
+    household = _household_checker()
+    stats["household"] = {"ready": household is not None, "scheduled": 0, "current": 0, "not_current": 0}
+
+    def check(p):
+        if household:
+            result = household(p)
+            if result:
+                stats["household"][result["status"]] += 1
+        return p
+
     for _kind, groups in _pool_queries(now):
         rows, capped = client.search_all("contacts", groups, L.PROPS,
                                          sorts=[{"propertyName": "prequal_date", "direction": "DESCENDING"}])
         stats["capped"] |= capped
         for row in rows:
             cid, p = str(row["id"]), dict(row.get("properties") or {})
-            if cid not in base and L.prescreen(p, now, _POOL_PREFS):
+            if cid not in base and L.prescreen(check(p), now, _POOL_PREFS):
                 base[cid] = p
 
     sweep = {}
@@ -191,7 +207,7 @@ def _build_entries(client, now, intel, weights):
     if sweep_rows:
         found, missing = client.batch_read("contacts", list(sweep_rows), L.PROPS)
         for cid, props in found.items():
-            p = L.sweep_fill(dict(props), sweep_rows[cid])
+            p = check(L.sweep_fill(dict(props), sweep_rows[cid]))
             why = L.sweep_reason(p, now, _POOL_PREFS)
             if why:
                 stats["sweep"]["out"][why] = stats["sweep"]["out"].get(why, 0) + 1
@@ -208,7 +224,7 @@ def _build_entries(client, now, intel, weights):
             prio = prio_rows[cid]
             if cid in sweep:
                 sweep[cid]["__prio"] = prio
-            p = base.get(cid) or dict(props)
+            p = base.get(cid) or check(dict(props))
             p["__prio"] = prio
             if L.prescreen(p, now, _POOL_PREFS):
                 base[cid] = p
@@ -706,6 +722,13 @@ def verify(client, contact_id, pooled_p, prefs, now):
     p = dict(props)
     if pooled_p.get("__prio"):
         p["__prio"] = pooled_p["__prio"]
+    household = _household_checker()
+    if household:
+        household(p)
+    elif pooled_p.get("__household"):
+        p["__household"] = pooled_p["__household"]
+    if L.household_drop(p):
+        return {"ok": False, "why": p["__household"]["why"], "p": p}
     if pooled_p.get("__sweep"):
         L.sweep_fill(p, pooled_p["__sweep"])
         why = L.sweep_reason(p, now, prefs)
@@ -788,7 +811,7 @@ def current_lead(user, contact_id):
             found, _ = client.batch_read("contacts", [contact_id], L.PROPS)
             if str(contact_id) in found:
                 fresh = dict(found[str(contact_id)])
-                for key in ("__prio", "__sweep"):
+                for key in ("__prio", "__sweep", "__household"):
                     if p.get(key):
                         fresh[key] = p[key]
                 p = fresh
@@ -840,6 +863,90 @@ def _passings_by_address():
             index.setdefault(_street_key(street, zipcode), []).append(i)
         _address_index.update(df=df, index=index)
     return df, _address_index["index"]
+
+
+_orders_index = {"df": None, "by_zip": None, "by_city": None}
+_vision_current = {"source": None, "uuids": None}
+
+
+def _orders_by_address():
+    """order_search's index keyed by (street words, ZIP) and (street words,
+    city), rebuilt when the index refreshes. (None, None) until it loads."""
+    df = order_search.get_index()
+    if df is None:
+        return None, None
+    if _orders_index["df"] is not df:
+        by_zip, by_city = {}, {}
+        for i, (street, zip5, city) in enumerate(zip(df["address"], df["zip5"], df["city"])):
+            words = " ".join(order_search.normalize_words(street))
+            if not words:
+                continue
+            if zip5:
+                by_zip.setdefault((words, zip5), []).append(i)
+            if city:
+                by_city.setdefault((words, city.casefold()), []).append(i)
+        _orders_index.update(df=df, by_zip=by_zip, by_city=by_city)
+    return df, _orders_index
+
+
+def current_vision_uuids(vision, today):
+    """Lowercased subscriber uuids with an active, invoiced Vision package
+    not past its estimated cancellation -- "current in Vision"."""
+    if vision is None or vision.empty:
+        return set()
+    active = vision["active"].fillna(False).astype(bool)
+    cancel = pd.to_datetime(vision["estimated_cancellation_date"], errors="coerce")
+    live = active & (cancel.isna() | (cancel.dt.date > today))
+    return set(vision.loc[live, "subscriber_uuid"].dropna().astype(str).str.strip().str.lower())
+
+
+def _current_uuids():
+    vision = vision_packages_source() if vision_packages_source else None
+    if vision is None or "active" not in vision.columns:
+        return None
+    if _vision_current["source"] is not vision:
+        _vision_current.update(source=vision, uuids=current_vision_uuids(vision, _today()))
+    return _vision_current["uuids"]
+
+
+def orders_at(df, idx, street, zipcode, city):
+    """Order rows at exactly this street address (ZIP, else city), newest first."""
+    words = " ".join(order_search.normalize_words(street or ""))
+    if not words:
+        return []
+    zip5, town = str(zipcode or "").strip()[:5], str(city or "").strip().casefold()
+    rows = idx["by_zip"].get((words, zip5)) if zip5 else idx["by_city"].get((words, town))
+    out = []
+    for i in rows or []:
+        hit = df.iloc[i]
+        out.append({
+            "sale_id": int(hit["sale_id"]),
+            "name": f"{hit['first_name']} {hit['last_name']}".strip(),
+            "last_name": hit["last_name"],
+            "subscriber_uuid": hit["subscriber_uuid"],
+            "order_date": hit["order_date"].strftime("%b %-d, %Y") if hit["order_date"] == hit["order_date"] else "",
+            "install_date": hit["install_date"].date() if hit["install_date"] == hit["install_date"] else None,
+        })
+    return out
+
+
+def _household_checker():
+    """A function that sets p["__household"] (L.household_check) and
+    returns it, or None while PlanetWeb orders or Vision aren't loaded."""
+    df, idx = _orders_by_address()
+    uuids = _current_uuids()
+    if df is None or uuids is None:
+        return None
+    today = _today()
+
+    def check(p):
+        result = L.household_check(p, orders_at(df, idx, p.get("address"), p.get("zip"), p.get("city")), uuids, today)
+        if result:
+            p["__household"] = result
+        else:
+            p.pop("__household", None)
+        return result
+    return check
 
 
 def planetweb_lookup(lead, billed_uuids=None):

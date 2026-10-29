@@ -234,6 +234,64 @@ def is_customer(p):
     return bool(re.search("customer", str(p.get("hs_lead_status") or ""), re.I))
 
 
+# ---------- household check (added 2026-10-28, by request) ----------
+# An order at the lead's address by someone with the same last name means
+# family already ordered: if that order's Vision account is current the
+# lead is screened out; if it isn't (never installed, or cancelled) the
+# lead stays and jumps the line -- an order was placed but never became
+# service. Any order at the address (whatever the name) with a fiber
+# install scheduled today or later also screens the lead out -- the
+# household is about to get service. lead_feeder_store attaches the
+# result as p["__household"].
+NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
+
+
+def last_name_parts(name):
+    """Last name -> its words, lowercased, punctuation and Jr/Sr/III dropped
+    ("Lopez-Garcia Jr." -> {"lopez", "garcia"})."""
+    words = re.split(r"[^a-z]+", str(name or "").casefold())
+    return {w for w in words if len(w) >= 2 and w not in NAME_SUFFIXES}
+
+
+def same_family(lead_last, order_last):
+    """Same last name, or a shared part of a hyphenated/two-word one."""
+    return bool(last_name_parts(lead_last) & last_name_parts(order_last))
+
+
+# Statuses that screen the lead out.
+HOUSEHOLD_DROP = {"scheduled", "current"}
+
+
+def household_check(p, orders, current_uuids, today):
+    """orders: [{sale_id, name, last_name, subscriber_uuid, order_date,
+    install_date (date or None)}] at the lead's address, newest first.
+    current_uuids: lowercased Vision subscriber uuids that are current.
+    today: Eastern date. None when nothing applies, else {"status", "order",
+    "why"}; status, first match wins: "scheduled" (any order installs today
+    or later) > "current" (a family order is current in Vision) >
+    "not_current" (family ordered, never installed or cancelled)."""
+    scheduled = next((o for o in orders if o.get("install_date") and o["install_date"] >= today), None)
+    if scheduled:
+        when = "today" if scheduled["install_date"] == today else f"on {scheduled['install_date']:%b %-d, %Y}"
+        return {"status": "scheduled", "order": scheduled,
+                "why": f"{scheduled['name']} has an install at this address {when} (order #{scheduled['sale_id']})"}
+    family = [o for o in orders if same_family(p.get("lastname"), o.get("last_name"))]
+    if not family:
+        return None
+    current = next((o for o in family if o.get("subscriber_uuid") and o["subscriber_uuid"] in current_uuids), None)
+    if current:
+        return {"status": "current", "order": current,
+                "why": f"{current['name']} at this address is a current Planet customer (order #{current['sale_id']})"}
+    order = family[0]
+    placed = f" on {order['order_date']}" if order.get("order_date") else ""
+    return {"status": "not_current", "order": order,
+            "why": f"{order['name']} ordered at this address{placed} (#{order['sale_id']}) but isn't current in Vision"}
+
+
+def household_drop(p):
+    return (p.get("__household") or {}).get("status") in HOUSEHOLD_DROP
+
+
 def sql_only(p):
     # RULE (Reiss): only lifecycle stage "Sales Qualified Lead". No customers,
     # non-ordering, MQL, Lead or Other, from any source.
@@ -316,6 +374,9 @@ def sweep_reason(p, now, prefs):
         return "HubSpot marks them as a current customer"
     if p.get("lifecyclestage") in SWEEP_BAD_STAGES or is_customer(p):
         return "Customer, cancelled, DNC or unusable in HubSpot"
+    if household_drop(p):
+        return ("Install scheduled at this address" if p["__household"]["status"] == "scheduled"
+                else "Family at this address is a current customer")
     if not OK_STATES.match(str(p.get("state") or "").strip()):
         return "Not in NJ or VA"
     if not p.get("address") or not p.get("city"):
@@ -357,7 +418,7 @@ def prescreen(p, now, prefs):
         return False
     if _called_within_cooldown(p, now, prefs["cool_days"]):
         return False
-    if is_customer(p):
+    if is_customer(p) or household_drop(p):
         return False
     # must be serviceable now (Call-first leads: HubSpot is often stale, check PAS)
     if not p.get("__prio") and str(p.get("availability") or "").strip() != "1":
@@ -408,6 +469,8 @@ def signals(p):
         s["stalled"] = True
     if p.get("hs_lead_status") == "OBJ Price":
         s["price"] = True
+    if (p.get("__household") or {}).get("status") == "not_current":
+        s["notInstalled"] = True
     return s
 
 
@@ -510,7 +573,7 @@ def score_lead(p, now, intel, weights=None):
     else:
         tier = 4 if (c and c["rel"] >= 0.6) else 5
     # Older leads with a real buying signal jump the line
-    if sg.get("cameBack") or sg.get("hot") or sg.get("stalled"):
+    if sg.get("cameBack") or sg.get("hot") or sg.get("stalled") or sg.get("notInstalled"):
         tier = min(tier, 2)
     if sg.get("newly") or (sg.get("repeat") and sg["repeat"] >= 3):
         tier = min(tier, 3)
@@ -537,6 +600,8 @@ def score_lead(p, now, intel, weights=None):
         why.append("Marked Hot in the PAS sweep")
     if sg.get("stalled"):
         why.append("Signed up but never ordered, and barely called")
+    if sg.get("notInstalled"):
+        why.append(p["__household"]["why"] + ": an order may never have been installed")
     prio = p.get("__prio") or {}
     if prio.get("reason"):
         why.insert(0, prio["reason"])

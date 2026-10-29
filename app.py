@@ -182,6 +182,10 @@ data_store = {
     "normalized_for_date": None,
 }
 
+# Lead Feeder household check: "current in Vision" comes from the
+# Vision packages this app already loads (lead_feeder_store.py).
+lead_feeder_store.vision_packages_source = lambda: data_store.get("vision_packages")
+
 # Excel "Main" worksheet column order, left to right, with Install Date/Status
 # inserted where the Excel report places them. Anything not listed here keeps
 # its original position, appended after these.
@@ -2662,6 +2666,7 @@ def lead_feeder_state():
             "loaded_display": status["loaded_at"].astimezone(EASTERN_TZ).strftime("%-I:%M %p") if status["loaded_at"] else None,
             "weights_at": (status["weights_info"] or {}).get("at"),
             "kinds": kinds, "sweep": stats.get("sweep"), "priority": stats.get("priority"), "capped": stats.get("capped"),
+            "household": stats.get("household"),
         },
         "claims_ok": claims_ok,
         "open_count": len(leads),

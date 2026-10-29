@@ -11,7 +11,7 @@ and dropped -- the app's own appdb is never touched):
 
 import os
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -290,3 +290,134 @@ def test_only_active_reps_and_admins_use_lead_feeder():
     assert not permissions.can_use_lead_feeder({"role": "Customer Success", "status": "active"})
     assert not permissions.can_use_lead_feeder({"role": "Sales Rep", "status": "pending"})
     assert not permissions.can_use_lead_feeder(None)
+
+
+# ---------------- household check (family order at the address) ----------------
+
+TODAY = date(2026, 10, 28)
+
+
+def order(**overrides):
+    o = {"sale_id": 501, "name": "Jose Lopez", "last_name": "Lopez", "subscriber_uuid": "abc", "order_date": "Mar 3, 2026",
+         "install_date": None}
+    o.update(overrides)
+    return o
+
+
+@pytest.mark.parametrize("lead_last, order_last, same", [
+    ("Lopez", "Lopez", True),
+    ("lopez", "LOPEZ ", True),
+    ("Lopez-Garcia", "Garcia", True),
+    ("Lopez Jr.", "Lopez", True),
+    ("Lopez", "Smith", False),
+    ("Jr", "Jr", False),
+    ("", "Lopez", False),
+])
+def test_same_family(lead_last, order_last, same):
+    assert L.same_family(lead_last, order_last) is same
+
+
+def test_family_order_current_in_vision_screens_lead_out():
+    p = lead()
+    p["__household"] = L.household_check(p, [order()], {"abc"}, TODAY)
+    assert p["__household"]["status"] == "current"
+    assert L.prescreen(p, NOW, PREFS) is False
+
+
+def test_family_order_not_current_is_called_first():
+    p = lead(hs_v2_date_entered_salesqualifiedlead="2026-06-01T14:00:00Z")    # ~150 days: P4/P5 on its own
+    p["__household"] = L.household_check(p, [order()], {"someone-else"}, TODAY)
+    assert p["__household"]["status"] == "not_current"
+    assert L.prescreen(p, NOW, PREFS) == "sql"
+    s = L.score_lead(p, NOW, None)
+    assert s["tier"] == 2
+    assert any("isn't current in Vision" in w for w in s["why"])
+    assert "notInstalled" in L.sig_list(p)
+
+
+def test_order_without_vision_account_counts_as_not_current():
+    assert L.household_check(lead(), [order(subscriber_uuid="")], {"abc"}, TODAY)["status"] == "not_current"
+
+
+def test_any_current_family_order_wins():
+    orders = [order(sale_id=2, subscriber_uuid="old"), order(sale_id=1, subscriber_uuid="abc")]
+    assert L.household_check(lead(), orders, {"abc"}, TODAY)["order"]["sale_id"] == 1
+
+
+def test_different_last_name_at_address_is_ignored():
+    p = lead()
+    assert L.household_check(p, [order(name="Ann Smith", last_name="Smith")], {"abc"}, TODAY) is None
+    assert L.prescreen(p, NOW, PREFS) == "sql"
+
+
+def test_sweep_lead_with_current_family_is_screened_out():
+    p = L.sweep_fill(lead(), {"batch": ""})
+    p["__household"] = L.household_check(p, [order()], {"abc"}, TODAY)
+    assert L.sweep_reason(p, NOW, PREFS) == "Family at this address is a current customer"
+
+
+@pytest.mark.parametrize("install, dropped", [
+    (date(2026, 10, 28), True),     # today
+    (date(2026, 11, 4), True),      # later
+    (date(2026, 10, 27), False),    # yesterday: falls through to the Vision check
+])
+def test_install_today_or_later_at_address_screens_lead_out(install, dropped):
+    p = lead()
+    # Different last name on purpose: a scheduled install drops the lead whoever ordered.
+    p["__household"] = L.household_check(p, [order(name="Ann Smith", last_name="Smith", install_date=install)], set(), TODAY)
+    assert (L.prescreen(p, NOW, PREFS) is False) is dropped
+    if dropped:
+        assert p["__household"]["status"] == "scheduled"
+
+
+def test_scheduled_install_wins_over_not_current_family_order():
+    orders = [order(sale_id=9, subscriber_uuid="", install_date=None), order(sale_id=8, install_date=date(2026, 11, 2))]
+    result = L.household_check(lead(), orders, set(), TODAY)
+    assert result["status"] == "scheduled" and result["order"]["sale_id"] == 8
+    assert "on Nov 2, 2026" in result["why"]
+
+
+def test_sweep_lead_with_scheduled_install_is_screened_out():
+    p = L.sweep_fill(lead(), {"batch": ""})
+    p["__household"] = L.household_check(p, [order(install_date=TODAY)], set(), TODAY)
+    assert L.sweep_reason(p, NOW, PREFS) == "Install scheduled at this address"
+
+
+def test_orders_at_matches_street_and_zip_and_current_vision_uuids():
+    import datetime as dt
+
+    import pandas as pd
+
+    import lead_feeder_store as S
+    import order_search
+
+    raw = pd.DataFrame([
+        {"ID": 1, "FirstName": "Jose", "LastName": "Lopez", "Address": "12 Oak Street", "ApartmentSuite": "",
+         "City": "Sparta", "State": "NJ", "Zipcode": "07871-1234", "InsertDate": "2026-03-03", "ReferralData": None,
+         "SourceToken": None, "InsertByEmployeeID": None, "vi_subscriber_uuid": "ABC ", "InstallDate": "2026-11-04 08:00"},
+        {"ID": 2, "FirstName": "Ann", "LastName": "Lopez", "Address": "14 Oak St", "ApartmentSuite": "",
+         "City": "Sparta", "State": "NJ", "Zipcode": "07871", "InsertDate": "2026-03-04", "ReferralData": None,
+         "SourceToken": None, "InsertByEmployeeID": None, "vi_subscriber_uuid": None, "InstallDate": None},
+    ])
+    df = order_search.build_index(raw)
+    S._orders_index["df"] = None
+    orig = order_search.get_index
+    order_search.get_index = lambda: df
+    try:
+        df_, idx = S._orders_by_address()
+        hits = S.orders_at(df_, idx, "12 Oak St.", "07871", "Sparta")
+        assert [h["sale_id"] for h in hits] == [1] and hits[0]["subscriber_uuid"] == "abc"
+        assert hits[0]["install_date"] == dt.date(2026, 11, 4)
+        assert S.orders_at(df_, idx, "14 Oak St", "07871", "Sparta")[0]["install_date"] is None
+        assert [h["sale_id"] for h in S.orders_at(df_, idx, "12 oak st", "", "SPARTA")] == [1]
+    finally:
+        order_search.get_index = orig
+        S._orders_index["df"] = None
+
+    vision = pd.DataFrame([
+        {"subscriber_uuid": "ABC", "active": True, "estimated_cancellation_date": None},
+        {"subscriber_uuid": "gone", "active": True, "estimated_cancellation_date": "2026-10-01"},
+        {"subscriber_uuid": "off", "active": False, "estimated_cancellation_date": None},
+        {"subscriber_uuid": "later", "active": True, "estimated_cancellation_date": "2026-12-01"},
+    ])
+    assert S.current_vision_uuids(vision, dt.date(2026, 10, 28)) == {"abc", "later"}

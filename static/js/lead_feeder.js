@@ -82,6 +82,7 @@
     if (s.hot) out.push(`<span class="td-lf-chip td-lf-acc" title="Marked Hot in the PAS sweep">Hot</span>`);
     if (l.prio) out.push(`<span class="td-lf-chip td-lf-bad" title="${esc(l.prio.reason || "Put at the top of the list")}">Call first</span>`);
     if (l.prio_check_pas) out.push(`<span class="td-lf-chip td-lf-warn" title="HubSpot doesn't list this address as serviceable. Check PlanetWeb before you dial.">Check PAS</span>`);
+    if (s.notInstalled) out.push(`<span class="td-lf-chip td-lf-acc" title="Someone with the same last name ordered at this address, but they aren't current in Vision. The order may never have been installed.">Family order not installed</span>`);
     if (s.stalled) out.push(`<span class="td-lf-chip td-lf-acc" title="Signed up, never ordered, called 2 times or less">Stalled signup</span>`);
     if (s.newly) out.push(`<span class="td-lf-chip td-lf-acc" title="Signed up before Planet could serve them. Their address is serviceable now.">Now serviceable</span>`);
     if (s.repeat) out.push(`<span class="td-lf-chip td-lf-acc" title="Number of times they filled out the prequal form">Prequaled ${s.repeat}×</span>`);
@@ -135,7 +136,10 @@
         + (state.prefs.quiet_on ? `, ${k.quiet || 0} owned SQLs nobody's called in 30+ days` : "")
         + (state.prefs.sweep_on && p.sweep ? `, ${k.sweep || 0} PAS sweep (of ${p.sweep.stored} stored${Object.keys(p.sweep.out || {}).length ? `; screened out: ${Object.entries(p.sweep.out).sort((a, b) => b[1] - a[1]).map(([r, n]) => `${n} ${r.toLowerCase()}`).join(", ")}` : ""})` : "")
         + (prio ? `, ${prio} call-first` : "")
-        + `. Skipping anyone called in the last ${cool === 1 ? "day" : cool + " days"}.`;
+        + `. Skipping anyone called in the last ${cool === 1 ? "day" : cool + " days"}.`
+        + (p.household && p.household.ready
+          ? ` Install scheduled at the address: ${p.household.scheduled} left out; family already a current customer: ${p.household.current} left out; family order not installed: ${p.household.not_current} moved up.`
+          : p.household ? " Family-order check is waiting for PlanetWeb orders and Vision to load." : "");
       if (p.capped) mix += " HubSpot's 10,000-result search limit was reached, so some older leads may be missing.";
       $("lf-mix").textContent = mix;
     } else {
