@@ -421,3 +421,24 @@ def test_orders_at_matches_street_and_zip_and_current_vision_uuids():
         {"subscriber_uuid": "later", "active": True, "estimated_cancellation_date": "2026-12-01"},
     ])
     assert S.current_vision_uuids(vision, dt.date(2026, 10, 28)) == {"abc", "later"}
+
+
+def test_planetweb_lookup_matches_house_number_and_unit(monkeypatch):
+    """Passings' Street column has no house number; the lookup keys on the
+    FullAddress line instead, with or without an apartment/unit."""
+    import pandas as pd
+    import lead_feeder_store as S
+    import passings_cache as pc
+
+    df = pd.DataFrame.from_records(
+        [(7, None, None, "12 Main St", "Main St", "NEWARK", "NJ", "07101", 1, None, 1, 0, None, None, None),
+         (8, None, None, "40 Oak Avenue Apt 3", "Oak Ave", "NEWARK", "NJ", "07101", 1, None, 4, 0, None, None, None)],
+        columns=pc._SNAPSHOT_COLUMNS)
+    monkeypatch.setitem(pc._state, "df", pc._prepare(df))
+    monkeypatch.setattr(S.order_search, "get_index", lambda: None)
+
+    hit = S.planetweb_lookup({"street": "12 Main Street", "zip": "07101-1234", "address": ""})
+    assert hit["place"]["place_id"] == 7 and hit["place"]["pas_url"]
+    assert S.planetweb_lookup({"street": "40 Oak Ave", "zip": "07101"})["place"]["place_id"] == 8
+    assert S.planetweb_lookup({"street": "40 Oak Ave Unit 3", "zip": "07101"})["place"]["place_id"] == 8
+    assert S.planetweb_lookup({"street": "99 Main St", "zip": "07101"})["place"] is None

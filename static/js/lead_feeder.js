@@ -249,8 +249,9 @@
     try { w = window.open("", "planetPas"); if (w) w.document.body.innerHTML = '<p style="font:16px system-ui;padding:24px;color:#555">Finding this address in PAS…</p>'; } catch (e) {}
     const r = await loadPlanetweb(c);
     if (pasFor === c.id && pasUrl) { try { w ? (w.location.href = pasUrl) : window.open(pasUrl, "planetPas"); } catch (e) {} return; }
-    closeWin(w);
-    toast(r && !r.ok ? (r.error || "PlanetWeb lookup failed.") : "No PAS place matches this address.", true);
+    const why = r && !r.ok ? (r.error || "PlanetWeb lookup failed.") : "No PAS place matches this address.";
+    try { if (w && !w.closed) { w.document.title = "Not found in PAS"; w.document.body.innerHTML = `<p style="font:16px system-ui;padding:24px;color:#555">${esc(why)} ${esc(c.address)}</p>`; } } catch (e) {}
+    toast(why, true);
   }
 
   async function loadPlanetweb(c) {

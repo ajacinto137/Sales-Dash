@@ -849,8 +849,17 @@ def hubspot_url(contact_id):
 _address_index = {"df": None, "index": None}
 
 
-def _street_key(street, zipcode):
-    return " ".join(order_search.normalize_words(street or "")), str(zipcode or "").strip()[:5]
+_UNIT_WORDS = {"apt", "apartment", "unit", "ste", "suite", "fl", "floor", "rm", "room", "lot", "bldg"}
+
+
+def _street_key(street, zipcode, drop_unit=False):
+    words = order_search.normalize_words(street or "")
+    if drop_unit:
+        for i, w in enumerate(words):
+            if i and w in _UNIT_WORDS:
+                words = words[:i]
+                break
+    return " ".join(words), str(zipcode or "").strip()[:5]
 
 
 def _passings_by_address():
@@ -858,9 +867,14 @@ def _passings_by_address():
     if df is None:
         return None, None
     if _address_index["df"] is not df:
+        # Keyed by the address line (house number + street, before any
+        # comma): the Street column is the street name alone, with no house
+        # number, so it never matched a lead's address (fixed 2026-10-28).
         index = {}
-        for i, (street, zipcode) in enumerate(zip(df["Street"], df["ZipCode"])):
-            index.setdefault(_street_key(street, zipcode), []).append(i)
+        for i, (full, street, zipcode) in enumerate(zip(df["FullAddress"], df["Street"], df["ZipCode"])):
+            line = str(full).split(",")[0] if isinstance(full, str) and full else street
+            for key in {_street_key(line, zipcode), _street_key(line, zipcode, drop_unit=True)}:
+                index.setdefault(key, []).append(i)
         _address_index.update(df=df, index=index)
     return df, _address_index["index"]
 
@@ -957,7 +971,7 @@ def planetweb_lookup(lead, billed_uuids=None):
     result = {"place": None, "orders": [], "searched": lead.get("address") or "", "snapshot_ready": passings_cache.ready()}
     df, index = _passings_by_address()
     if df is not None:
-        rows = index.get(_street_key(street, zipcode)) or []
+        rows = index.get(_street_key(street, zipcode)) or index.get(_street_key(street, zipcode, drop_unit=True)) or []
         if rows:
             row = df.iloc[rows[0]]
             place_id = int(row["PlaceID"]) if row["PlaceID"] == row["PlaceID"] else None
