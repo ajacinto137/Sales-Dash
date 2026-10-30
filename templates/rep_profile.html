@@ -260,7 +260,7 @@
     <section class="td-tab-panel" data-tab-panel="monthly-status" style="display: none;">
         <div class="td-section-heading">
             <h2>Install Status by Month</h2>
-            <span class="td-muted-inline">By scheduled install month (sale month if no install date) &middot; all time &middot; click a count to see the accounts</span>
+            <span class="td-muted-inline">Outbound sales only &middot; by scheduled install month (sale month if no install date) &middot; all time &middot; click a count to see the accounts</span>
         </div>
         <p class="td-muted-inline">Bonus is paid on installed outbound sales only &middot; tier multiplier &times; plan price (GPON / XGSPON 1x / 1.25x / 1.5x, Single Tier 1x) &middot; Door to Door $200 flat &middot; Predicted adds pending installs</p>
 
@@ -268,7 +268,7 @@
 
         {% set ms = monthly_status %}
         {% if ms.months %}
-        {% set status_cols = [("all", "sales", "Accounts", "td-cyan"), ("installed", "installed", "Installed", "td-green"), ("inbound_installed", "inbound_installed", "Inbound Installed", "td-cyan"), ("outbound_installed", "outbound_installed", "Outbound Installed", "td-purple"), ("pending", "pending", "Pending", "td-yellow"), ("needs_attention", "needs_attention", "Needs Attention", "td-orange")] %}
+        {% set status_cols = [("all", "sales", "Accounts", "td-cyan"), ("installed", "installed", "Installed", "td-green"), ("pending", "pending", "Pending", "td-yellow"), ("needs_attention", "needs_attention", "Needs Attention", "td-orange")] %}
         <div class="td-record-card td-monthly-status-card">
             <table class="td-installs-table td-monthly-status-table">
                 <thead>

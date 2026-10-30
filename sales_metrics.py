@@ -42,9 +42,9 @@ SALES_CHANNELS = {
     8: "Social Media",
 }
 
-# Leaderboard-level grouping of the detailed channels above. Channels not
-# listed here (e.g. "Unknown") are intentionally excluded from both sets so
-# they are never force-counted as either direction.
+# Leaderboard-level grouping of the detailed channels above. A missing or
+# unrecognized SalesChannel_ID maps to "Door to Door" (by request,
+# 2026-10-30; it used to be "Unknown"), so it counts as outbound.
 INBOUND_CHANNELS = {"Inbound Call", "Inbound Email"}
 OUTBOUND_CHANNELS = {
     "Outbound Call",
@@ -108,12 +108,15 @@ def exclude_web(df):
     return df[~df["is_web"]]
 
 
+UNKNOWN_CHANNEL_FALLBACK = "Door to Door"
+
+
 def map_sales_channel(channel_id):
     try:
         key = int(channel_id)
     except (TypeError, ValueError):
-        return "Unknown"
-    return SALES_CHANNELS.get(key, "Unknown")
+        return UNKNOWN_CHANNEL_FALLBACK
+    return SALES_CHANNELS.get(key, UNKNOWN_CHANNEL_FALLBACK)
 
 
 def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_sales=None):
@@ -1596,13 +1599,12 @@ def get_install_month_account_view(df, rep, year, month):
 # Monthly Status tab columns: key -> (status value, drill-down title).
 # "all" is every account in the month, whatever its status.
 # key -> (status or None for all, label, channels or None for all).
-# Inbound / Outbound Installed added 2026-10-28, by request; Web sales
-# count as inbound, same as the Rep Leaderboard.
+# Inbound sales are left out of the tab entirely (2026-10-30, by request
+# -- see _rep_sales_with_month()), so the Inbound / Outbound Installed
+# columns added 2026-10-28 were dropped: Installed is outbound-only now.
 MONTHLY_STATUS_COLUMNS = {
     "all": (None, "Accounts", None),
     "installed": ("Installed", "Installed", None),
-    "inbound_installed": ("Installed", "Inbound Installed", INBOUND_CHANNELS | {WEB_CHANNEL}),
-    "outbound_installed": ("Installed", "Outbound Installed", OUTBOUND_CHANNELS),
     "pending": ("Pending", "Pending", None),
     "needs_attention": ("Needs Attention", "Needs Attention", None),
 }
@@ -1627,12 +1629,13 @@ def _rep_sales_with_month(df, rep):
     (its drill-downs). Bucketed by scheduled install month, so an order
     scheduled for November is Pending in November (by request,
     2026-10-26); a sale with no install date (only ever Needs Attention)
-    falls back to its sale month so it still shows up somewhere. Every
-    channel counts, same scope as the Rep Leaderboard. Returns an empty
+    falls back to its sale month so it still shows up somewhere. Inbound
+    sales (INBOUND_CHANNELS, plus Web, which counts as inbound) are
+    excluded entirely (by request, 2026-10-30). Returns an empty
     DataFrame for missing/empty input."""
     if df is None or df.empty:
         return pd.DataFrame()
-    sales = df[df["sales_rep"] == rep]
+    sales = df[(df["sales_rep"] == rep) & ~df["sales_channel"].isin(INBOUND_CHANNELS | {WEB_CHANNEL})]
     install_month = pd.to_datetime(sales["scheduled_date"], errors="coerce").dt.to_period("M")
     sale_month = pd.to_datetime(sales["sale_date"], errors="coerce").dt.to_period("M")
     return sales.assign(_status_month=install_month.fillna(sale_month))

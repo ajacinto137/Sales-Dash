@@ -11,12 +11,14 @@ import pandas as pd
 
 import sales_metrics as sm
 
+# The last two "A" rows are inbound (Inbound Call / Web) -- excluded from
+# the tab entirely.
 DF = pd.DataFrame({
-    "sales_rep": ["A", "A", "A", "A", "A", "A", "B"],
-    "status": ["Installed", "Pending", "Needs Attention", "Installed", "Cancelled", "Installed", "Installed"],
-    "sale_date": pd.to_datetime(["2026-07-03", "2026-07-20", "2026-07-25", "2026-09-01", "2026-09-02", None, "2026-07-02"]),
-    "scheduled_date": ["2026-07-10", "2026-11-05", None, "2026-09-08", None, "2026-08-01", "2026-07-09"],
-    "sales_channel": ["Outbound Call", "Inbound Call", "Door to Door", "Outbound Call", "Texting", "Outbound Call", "Outbound Call"],
+    "sales_rep": ["A", "A", "A", "A", "A", "A", "B", "A", "A"],
+    "status": ["Installed", "Pending", "Needs Attention", "Installed", "Cancelled", "Installed", "Installed", "Installed", "Pending"],
+    "sale_date": pd.to_datetime(["2026-07-03", "2026-07-20", "2026-07-25", "2026-09-01", "2026-09-02", None, "2026-07-02", "2026-07-04", "2026-07-05"]),
+    "scheduled_date": ["2026-07-10", "2026-11-05", None, "2026-09-08", None, "2026-08-01", "2026-07-09", "2026-07-11", "2026-12-01"],
+    "sales_channel": ["Outbound Call", "Texting", "Door to Door", "Outbound Call", "Texting", "Outbound Call", "Outbound Call", "Inbound Call", "Web"],
 })
 
 
@@ -47,6 +49,12 @@ def test_totals_match_all_months_and_other_reps_are_excluded():
     totals = monthly(DF, "A")["totals"]
     assert (totals["sales"], totals["installed"], totals["pending"]) == (6, 3, 1)
     assert monthly(DF, "nobody") == {"months": [], "totals": None}
+
+
+def test_unknown_channel_ids_map_to_door_to_door():
+    assert sm.map_sales_channel(None) == "Door to Door"
+    assert sm.map_sales_channel(99) == "Door to Door"
+    assert sm.map_sales_channel(1) == "Inbound Call"
 
 
 def test_drill_down_matches_cell_counts():
