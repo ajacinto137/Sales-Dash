@@ -171,6 +171,85 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
+    // Schedule Job Activity popup (added 2026-10-30): the "Job Activity"
+    // button on Needs Attention account cards fetches that order's install
+    // job notes and lists them as Date / User / Type / Note.
+    var activityModal = document.querySelector("[data-schedule-activity-modal]");
+    if (activityModal) {
+        var activityTitle = activityModal.querySelector("[data-schedule-activity-title]");
+        var activityBody = activityModal.querySelector("[data-schedule-activity-body]");
+        var activityRequest = 0;
+
+        var closeActivity = function () {
+            activityModal.hidden = true;
+            activityRequest++;
+        };
+        var showActivityMessage = function (text) {
+            activityBody.innerHTML = "";
+            var p = document.createElement("p");
+            p.className = "td-empty";
+            p.textContent = text;
+            activityBody.appendChild(p);
+        };
+        var renderActivity = function (rows) {
+            if (!rows.length) {
+                showActivityMessage("No schedule activity on this job.");
+                return;
+            }
+            var table = document.createElement("table");
+            table.className = "td-activity-table";
+            var head = table.createTHead().insertRow();
+            ["Date", "User", "Type", "Note"].forEach(function (label) {
+                var th = document.createElement("th");
+                th.textContent = label;
+                head.appendChild(th);
+            });
+            var body = table.createTBody();
+            rows.forEach(function (r) {
+                var tr = body.insertRow();
+                [r.date, r.user, r.type, r.note].forEach(function (value, i) {
+                    var td = tr.insertCell();
+                    td.textContent = value || "—";
+                    if (i === 3) td.className = "td-activity-note";
+                    else td.className = "td-activity-nowrap";
+                });
+            });
+            activityBody.innerHTML = "";
+            activityBody.appendChild(table);
+        };
+
+        document.querySelectorAll("[data-schedule-activity]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var request = ++activityRequest;
+                activityTitle.textContent = "Schedule Job Activity · " + btn.getAttribute("data-schedule-activity-name");
+                showActivityMessage("Loading…");
+                activityModal.hidden = false;
+                fetch(btn.getAttribute("data-schedule-activity"))
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (request !== activityRequest) return;
+                        if (!data.ok) {
+                            showActivityMessage(data.error || "Couldn't load schedule activity.");
+                            return;
+                        }
+                        renderActivity(data.activity);
+                    })
+                    .catch(function () {
+                        if (request === activityRequest) showActivityMessage("Couldn't load schedule activity.");
+                    });
+            });
+        });
+
+        activityModal.addEventListener("click", function (e) {
+            if (e.target === activityModal || e.target.closest("[data-schedule-activity-close]")) {
+                closeActivity();
+            }
+        });
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && !activityModal.hidden) closeActivity();
+        });
+    }
+
     // Rep name links and metric-cell drill-down links inside leaderboard
     // rows navigate elsewhere; stop the click from also bubbling to the
     // row's own select-this-rep handler above.

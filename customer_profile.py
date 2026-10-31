@@ -31,6 +31,7 @@ import attention_store
 import db
 import hubspot_logic
 import needs_attention_service
+from queries import FIBER_INSTALL_JOB_TYPES_SQL
 from sales_metrics import EASTERN_TZ
 
 ORDER_QUERY = """
@@ -113,6 +114,20 @@ LEFT JOIN FTTPScheduleNoteTypes nt ON nt.ID = n.NoteTypeID
 LEFT JOIN Users u ON u.ID = n.InsertUserID
 WHERE n.FormDataID = ? AND ISNULL(n.IsDeleted, 0) = 0
 ORDER BY n.InsertDate DESC
+"""
+
+# Schedule Job Activity popup on Needs Attention account cards (added
+# 2026-10-30, by request): the notes logged against the order's fiber
+# install job -- the same list PAS shows in that job's details. Newest
+# first, same as the Customer Profile's Schedule Notes.
+SCHEDULE_ACTIVITY_QUERY = f"""
+SELECT n.InsertDate, u.FullName AS UserName, nt.Name AS NoteType, n.Contents
+FROM FTTPScheduleNotes n
+LEFT JOIN FTTPScheduleNoteTypes nt ON nt.ID = n.NoteTypeID
+LEFT JOIN Users u ON u.ID = n.InsertUserID
+WHERE n.FormDataID = ? AND ISNULL(n.IsDeleted, 0) = 0
+  AND n.JobTypeID IN {FIBER_INSTALL_JOB_TYPES_SQL}
+ORDER BY n.InsertDate DESC, n.ID DESC
 """
 
 FOLLOW_UPS_QUERY = """
@@ -591,6 +606,23 @@ def _load_calls(phones, emails):
 
 
 # ------------------------------------------------------------------ main
+
+def load_schedule_activity(sale_id):
+    """[{date, user, type, note}, ...] for the Schedule Job Activity
+    popup (see SCHEDULE_ACTIVITY_QUERY). Raises on a database error --
+    the caller turns that into a JSON error."""
+    conn = db.get_planetweb_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(SCHEDULE_ACTIVITY_QUERY, sale_id)
+        rows = _rows(cur)
+    finally:
+        conn.close()
+    return [{
+        "date": fmt_datetime(r["InsertDate"]), "user": r["UserName"],
+        "type": r["NoteType"], "note": strip_html(r["Contents"]),
+    } for r in rows if _clean(r["Contents"])]
+
 
 def load_customer_profile(sale_id, state, subscriber_uuid, phone, include_calls):
     """Everything for one customer. `errors` maps a source name

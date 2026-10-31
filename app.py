@@ -3477,6 +3477,19 @@ def customer_profile_page(sale_id):
     )
 
 
+@app.route("/dashboard/customers/<int:sale_id>/schedule-activity")
+@auth.login_required
+def customer_schedule_activity(sale_id):
+    """Schedule Job Activity popup on Needs Attention account cards
+    (added 2026-10-30) -- see customer_profile.load_schedule_activity()."""
+    try:
+        activity = customer_profile.load_schedule_activity(sale_id)
+    except Exception:
+        app.logger.exception("Schedule activity lookup failed for order %s", sale_id)
+        return jsonify({"ok": False, "error": "Schedule activity is temporarily unavailable."}), 503
+    return jsonify({"ok": True, "activity": activity})
+
+
 def _order_account(order, known):
     """A Customer Profile `account` for an order that isn't in the sales
     or knocker datasets (e.g. pre-2026), built from its order_search row.

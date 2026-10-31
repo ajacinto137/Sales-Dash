@@ -43,6 +43,9 @@
                     {% if account.pas_url %}
                     <a class="td-bulk-vision td-bulk-pas" href="{{ account.pas_url }}" target="_blank" rel="noopener noreferrer" title="Open this place in PAS">Open in PAS &#8599;</a>
                     {% endif %}
+                    {% if account.status == 'Needs Attention' %}
+                    <button type="button" class="td-bulk-activity-btn" data-schedule-activity="{{ url_for('customer_schedule_activity', sale_id=account.sale_id) }}" data-schedule-activity-name="{{ account.first_name }} {{ account.last_name }}" title="Show the install job's schedule activity">Job Activity</button>
+                    {% endif %}
                 </span>
             </div>
             {% if view == 'needs_attention' and attention_available %}
@@ -97,6 +100,19 @@
                 {% endfor %}
             </div>
         </div>
+    </div>
+</div>
+
+{# Schedule Job Activity popup (added 2026-10-30) -- filled by
+   team_dashboard.js from the card's "Job Activity" button, which only
+   Needs Attention accounts get. #}
+<div class="td-activity-modal" data-schedule-activity-modal hidden>
+    <div class="td-activity-modal-box" role="dialog" aria-modal="true" aria-labelledby="td-activity-modal-title">
+        <div class="td-activity-modal-head">
+            <h3 id="td-activity-modal-title" data-schedule-activity-title>Schedule Job Activity</h3>
+            <button type="button" class="td-activity-modal-close" data-schedule-activity-close aria-label="Close">&times;</button>
+        </div>
+        <div class="td-activity-modal-body" data-schedule-activity-body></div>
     </div>
 </div>
 {% else %}

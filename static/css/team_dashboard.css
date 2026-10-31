@@ -3918,3 +3918,78 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
     font-size: 12.5px;
     color: var(--td-text-secondary);
 }
+
+/* Schedule Job Activity popup on Needs Attention cards (2026-10-30) */
+.td-bulk-activity-btn {
+    background: var(--td-orange-bg);
+    border: 1px solid var(--td-orange);
+    border-radius: var(--td-radius-sm);
+    color: var(--td-orange);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.td-bulk-activity-btn:hover { background: rgba(249, 115, 22, 0.22); }
+.td-activity-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.6);
+}
+.td-activity-modal[hidden] { display: none; }
+.td-activity-modal-box {
+    width: min(920px, 100%);
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: 10px;
+    box-shadow: var(--td-chart-tooltip-shadow);
+}
+.td-activity-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--td-border);
+}
+.td-activity-modal-head h3 { margin: 0; font-size: 15px; color: var(--td-text-primary); }
+.td-activity-modal-close {
+    background: none;
+    border: none;
+    color: var(--td-text-secondary);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+.td-activity-modal-close:hover { color: var(--td-text-primary); }
+.td-activity-modal-body { overflow: auto; padding: 12px 18px 18px; }
+.td-activity-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.td-activity-table th {
+    position: sticky;
+    top: -12px;
+    background: var(--td-panel);
+    text-align: left;
+    padding: 8px 10px;
+    color: var(--td-text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--td-border);
+}
+.td-activity-table td {
+    padding: 8px 10px;
+    vertical-align: top;
+    color: var(--td-text-secondary);
+    border-bottom: 1px solid var(--td-border-soft);
+}
+.td-activity-nowrap { white-space: nowrap; }
+.td-activity-note { color: var(--td-text-primary) !important; white-space: pre-line; overflow-wrap: anywhere; min-width: 260px; }
