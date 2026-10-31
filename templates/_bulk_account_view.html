@@ -14,6 +14,18 @@
     {% endif %}
 
     <div class="td-bulk-view-toggle-row">
+        {% if view == 'needs_attention' %}
+        {# Sort cards by when each account entered Needs Attention (added
+           2026-10-30) -- team_dashboard.js reorders the cards in place. #}
+        <label class="td-bulk-sort">
+            <span>Sort</span>
+            <select class="td-select td-select-sm" data-attention-sort>
+                <option value="">Default</option>
+                <option value="oldest">Longest in Needs Attention</option>
+                <option value="newest">Newest to Needs Attention</option>
+            </select>
+        </label>
+        {% endif %}
         <div class="td-chart-toggle">
             <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-bulk-view-btn="cards">Cards</button>
             <button type="button" class="td-chart-toggle-btn" data-bulk-view-btn="table">Table</button>
@@ -22,12 +34,13 @@
 
     <div class="td-bulk-list" data-bulk-view-panel="cards">
         {% for account in accounts %}
-        <div class="td-bulk-card td-bulk-card-link" data-href="{{ url_for('customer_profile_page', sale_id=account.sale_id) }}"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}"{% endif %}>
+        <div class="td-bulk-card td-bulk-card-link" data-href="{{ url_for('customer_profile_page', sale_id=account.sale_id) }}"{% if view == 'needs_attention' %} data-sale-id="{{ account.sale_id }}" data-attention-status="{{ account.attention_status or '' }}" data-attention-since="{{ account.attention_since_sort or '' }}" data-scheduled-sort="{{ account.scheduled_date_sort or '' }}"{% endif %}>
             <div class="td-bulk-card-head">
                 <a class="td-bulk-name" href="{{ url_for('customer_profile_page', sale_id=account.sale_id) }}">{{ account.first_name }} {{ account.last_name }}</a>
                 <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span>
             </div>
             {% if account.created %}<span class="td-bulk-created">{{ account.created }}</span>{% endif %}
+            {% if view == 'needs_attention' and account.attention_since %}<span class="td-bulk-attention-since">In Needs Attention since {{ account.attention_since }} &middot; {{ account.attention_days }} {{ 'day' if account.attention_days == 1 else 'days' }}</span>{% endif %}
             {% if account.sales_rep %}<a class="td-bulk-rep" href="{{ account.rep_url or url_for('rep_profile', rep_name=account.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ account.rep_label or 'Rep' }}: {{ account.sales_rep }}</a>{% endif %}
             {% if account.sales_channel %}<span class="td-bulk-channel">{{ account.sales_channel }}</span>{% endif %}
             {% if account.address %}<span class="td-bulk-address">{{ account.address }}</span>{% endif %}

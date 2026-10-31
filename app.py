@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import os
 import threading
 import time
@@ -743,7 +743,14 @@ def attach_attention_metadata(accounts):
             {**note, "created_at_display": _format_note_timestamp(note["created_at"])}
             for note in notes
         ]
-        can_work, reason = permissions.can_work_account(user, account.get("sales_rep"), since_map.get(sale_id))
+        since = since_map.get(sale_id)
+        # When the account entered Needs Attention -- the cards' sort
+        # key (added 2026-10-30). Not synced yet = just entered (now).
+        since_sort = since or datetime.now(timezone.utc)
+        account["attention_since_sort"] = f"{since_sort.timestamp():.0f}"
+        account["attention_since"] = since_sort.astimezone(EASTERN_TZ).strftime("%b %-d, %Y")
+        account["attention_days"] = int(needs_attention_service.days_since(since))
+        can_work, reason = permissions.can_work_account(user, account.get("sales_rep"), since)
         account["can_work"] = can_work
         account["cannot_work_reason"] = reason
     return available, progress
