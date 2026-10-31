@@ -675,6 +675,14 @@
          "Team Leaderboard Page — Section Names". -->
     <div class="td-section-heading" id="rep-leaderboard">
         <h2>Individual Rep Leaderboard</h2>
+        {# All / NJ / NY toggle (2026-10-30) -- by the sale's state; see
+           LEADERBOARD_STATE_VIEWS in app.py. #}
+        <div class="td-chart-toggle">
+            {% for key, label, _ in leaderboard_state_views %}
+            <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if key == lb_state else '' }}"
+               href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, sort=sort, dir=sort_dir, lb_state=key if key != 'all' else None, _anchor='rep-leaderboard') }}">{{ label }}</a>
+            {% endfor %}
+        </div>
     </div>
 
     <form class="td-search-form" method="get" action="{{ url_for('dashboard_page') }}">
@@ -684,6 +692,7 @@
         <input type="hidden" name="end" value="{{ custom_end }}">
         {% endif %}
         {% if selected_rep %}<input type="hidden" name="rep" value="{{ selected_rep }}">{% endif %}
+        {% if lb_state != 'all' %}<input type="hidden" name="lb_state" value="{{ lb_state }}">{% endif %}
         <input type="text" name="search" id="rep-search" class="td-search-input" placeholder="Find a rep..." value="{{ search }}" autocomplete="off">
     </form>
 
@@ -706,7 +715,7 @@
                         {% for col in rep_table_columns %}
                         <th{% if col.key == 'all_time_install_rate' %} data-formula="{{ formulas.rep_all_time_install_rate }}"{% endif %}>
                             <a class="td-sort-link {{ 'td-sort-active' if col.active else '' }}"
-                               href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, sort=col.key, dir=col.next_dir, _anchor='rep-leaderboard') }}">
+                               href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=selected_rep, sort=col.key, dir=col.next_dir, lb_state=lb_state if lb_state != 'all' else None, _anchor='rep-leaderboard') }}">
                                 {{ col.label }}
                                 {% if col.active %}<span class="td-sort-arrow">{{ '▲' if col.dir == 'asc' else '▼' }}</span>{% endif %}
                             </a>
@@ -717,7 +726,7 @@
                 <tbody>
                     {% for row in rep_rows %}
                     <tr class="td-row-link {{ 'td-row-selected' if row.sales_rep == selected_rep else '' }}"
-                        data-href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=row.sales_rep) }}">
+                        data-href="{{ url_for('dashboard_page', period=period, start=custom_start, end=custom_end, search=search, rep=row.sales_rep, lb_state=lb_state if lb_state != 'all' else None) }}">
                         <td class="td-rank">{{ row.rank }}</td>
                         <td class="td-rep-cell">
                             <a class="td-rep-link"
@@ -733,7 +742,7 @@
                                href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end, _anchor='needs-attention') }}">{{ row[metric_key] }}</a>
                             {% else %}
                             <a class="td-metric-link"
-                               href="{{ url_for('bulk_account_view', rep_name=row.sales_rep, view='metric', metric=metric_key, period=period, start=custom_start, end=custom_end) }}">{{ row[metric_key] }}</a>
+                               href="{{ url_for('bulk_account_view', rep_name=row.sales_rep, view='metric', metric=metric_key, period=period, start=custom_start, end=custom_end, state=lb_state_code) }}">{{ row[metric_key] }}</a>
                             {% endif %}
                         </td>
                         {% endfor %}

@@ -783,6 +783,17 @@ DASHBOARD_STATE_VIEWS = [
 ]
 DASHBOARD_STATE_VIEW_KEYS = {key for key, _, _ in DASHBOARD_STATE_VIEWS}
 
+# Individual Rep Leaderboard's All / NJ / NY toggle (added 2026-10-30, by
+# request) -- by the sale's state, like DASHBOARD_STATE_VIEWS, so the NJ
+# view ranks every rep by their NJ sales only. Carried in ?lb_state= so
+# sorting, the rep search and the metric drill-downs keep it.
+LEADERBOARD_STATE_VIEWS = [
+    ("all", "All", None),
+    ("nj", "NJ", "NJ"),
+    ("ny", "NY", "NY"),
+]
+LEADERBOARD_STATE_CODES = {key: code for key, _, code in LEADERBOARD_STATE_VIEWS}
+
 
 def _state_filtered(df, state_code):
     if state_code is None:
@@ -909,6 +920,16 @@ def dashboard_page():
 
     rep_rows = add_all_time_install_rates(calculate_rep_metrics(period_df), normalized)
     total_rep_count = sum(1 for r in rep_rows if r["sales_rep"] != WEB_REP)
+
+    lb_state = request.args.get("lb_state", "all")
+    if lb_state not in LEADERBOARD_STATE_CODES:
+        lb_state = "all"
+    lb_state_code = LEADERBOARD_STATE_CODES[lb_state]
+    if lb_state_code:
+        rep_rows = add_all_time_install_rates(
+            calculate_rep_metrics(_state_filtered(period_df, lb_state_code)),
+            _state_filtered(normalized, lb_state_code),
+        )
 
     if search:
         rep_rows = [r for r in rep_rows if search.lower() in r["sales_rep"].lower()]
@@ -1195,6 +1216,9 @@ def dashboard_page():
         daily_averages=daily_averages,
         rep_rows=rep_rows,
         rep_table_columns=rep_table_columns,
+        leaderboard_state_views=LEADERBOARD_STATE_VIEWS,
+        lb_state=lb_state,
+        lb_state_code=lb_state_code,
         sort=sort,
         sort_dir=sort_dir,
         records=records,
@@ -1600,7 +1624,12 @@ def bulk_account_view(rep_name):
         view_title, accounts = get_channel_account_view(normalized, rep_name, channel, period, custom_start, custom_end)
         all_time = False
     elif view == "metric":
-        view_title, accounts = get_leaderboard_metric_account_view(normalized, rep_name, metric, period, custom_start, custom_end)
+        # ?state= from the leaderboard's NJ / NY toggle (2026-10-30).
+        state_code = request.args.get("state", "")
+        scoped = _state_filtered(normalized, state_code) if state_code in ("NJ", "NY") else normalized
+        view_title, accounts = get_leaderboard_metric_account_view(scoped, rep_name, metric, period, custom_start, custom_end)
+        if state_code in ("NJ", "NY"):
+            view_title = f"{view_title} ({state_code})"
         all_time = False
     elif view == "date":
         try:
