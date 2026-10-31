@@ -20,9 +20,8 @@
         <label class="td-bulk-sort">
             <span>Sort</span>
             <select class="td-select td-select-sm" data-attention-sort>
-                <option value="">Default</option>
-                <option value="oldest">Longest in Needs Attention</option>
                 <option value="newest">Newest to Needs Attention</option>
+                <option value="oldest">Longest in Needs Attention</option>
             </select>
         </label>
         {% endif %}
@@ -40,7 +39,7 @@
                 <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span>
             </div>
             {% if account.created %}<span class="td-bulk-created">{{ account.created }}</span>{% endif %}
-            {% if view == 'needs_attention' and account.attention_since %}<span class="td-bulk-attention-since">Days in Needs Attention: {{ account.attention_days }}</span>{% endif %}
+            {% if view == 'needs_attention' and account.attention_since %}<span class="td-bulk-attention-since">Days in Needs Attention: <strong>{{ account.attention_days }}</strong></span>{% endif %}
             {% if account.sales_rep %}<a class="td-bulk-rep" href="{{ account.rep_url or url_for('rep_profile', rep_name=account.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ account.rep_label or 'Rep' }}: {{ account.sales_rep }}</a>{% endif %}
             {% if account.sales_channel %}<span class="td-bulk-channel">{{ account.sales_channel }}</span>{% endif %}
             {% if account.address %}<span class="td-bulk-address">{{ account.address }}</span>{% endif %}

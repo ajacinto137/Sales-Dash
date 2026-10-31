@@ -174,7 +174,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Needs Attention sort (added 2026-10-30): reorders the cards by when
     // each account entered Needs Attention; ties (accounts that were
     // already in it when tracking began) fall back to the install date.
-    // "Default" restores the server's order.
+    // The server already renders them newest first (the default).
     document.querySelectorAll("[data-attention-sort]").forEach(function (select) {
         var list = select.closest("[data-bulk-view]").querySelector(".td-bulk-list");
         var cards = Array.prototype.slice.call(list.children);
@@ -183,18 +183,17 @@ document.addEventListener("DOMContentLoaded", function () {
             return v ? Number(v) || v : null;
         };
         select.addEventListener("change", function () {
-            var dir = select.value === "newest" ? -1 : 1;
             var ordered = cards.slice();
-            if (select.value) {
+            if (select.value === "oldest") {
                 ordered.sort(function (a, b) {
                     var sa = key(a, "data-attention-since"), sb = key(b, "data-attention-since");
                     if (sa !== sb) {
                         if (sa === null) return 1;
                         if (sb === null) return -1;
-                        return (sa < sb ? -1 : 1) * dir;
+                        return sa < sb ? -1 : 1;
                     }
                     var da = a.getAttribute("data-scheduled-sort") || "", db = b.getAttribute("data-scheduled-sort") || "";
-                    return da === db ? 0 : (da < db ? -1 : 1) * dir;
+                    return da === db ? 0 : (da < db ? -1 : 1);
                 });
             }
             ordered.forEach(function (card) { list.appendChild(card); });

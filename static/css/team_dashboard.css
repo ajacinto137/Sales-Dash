@@ -3997,4 +3997,14 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 /* Needs Attention sort + "Days in Needs Attention" line (2026-10-30) */
 .td-bulk-view-toggle-row { align-items: center; gap: 12px; flex-wrap: wrap; }
 .td-bulk-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--td-text-secondary); }
-.td-bulk-attention-since { font-size: 12px; color: var(--td-text-secondary); }
+.td-bulk-attention-since {
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--td-yellow);
+    background: var(--td-yellow-bg);
+    border: 1px solid rgba(234, 179, 8, 0.35);
+}
+.td-bulk-attention-since strong { font-weight: 800; }

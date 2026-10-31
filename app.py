@@ -753,6 +753,9 @@ def attach_attention_metadata(accounts):
         can_work, reason = permissions.can_work_account(user, account.get("sales_rep"), since)
         account["can_work"] = can_work
         account["cannot_work_reason"] = reason
+    # Newest to Needs Attention first (2026-10-30, by request) -- the
+    # cards' Sort dropdown default; ties fall back to the install date.
+    accounts.sort(key=lambda a: (int(a["attention_since_sort"]), a.get("scheduled_date_sort") or ""), reverse=True)
     return available, progress
 
 
