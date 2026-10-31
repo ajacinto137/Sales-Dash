@@ -70,6 +70,8 @@ SELECT
     END AS Scheduled,
 
     sched.StartDate,
+    -- The fiber install job's own ID, shown on account cards (2026-10-30).
+    sched.JobID,
 
     fd.[SalesChannel_ID],
 
@@ -88,6 +90,7 @@ JOIN FTTPRates rates
 
 OUTER APPLY (
     SELECT TOP 1
+        jobs.ID AS JobID,
         jobs.SlotID,
         slots.StartDate
 

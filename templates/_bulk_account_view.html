@@ -38,6 +38,7 @@
                 <a class="td-bulk-name" href="{{ url_for('customer_profile_page', sale_id=account.sale_id) }}">{{ account.first_name }} {{ account.last_name }}</a>
                 <span class="td-bulk-status td-bulk-status-{{ account.status|lower|replace(' ', '-') }}">{{ account.status }}</span>
             </div>
+            <span class="td-bulk-ids">Order ID: {{ account.sale_id }}{% if account.job_id %} &middot; Job ID: {{ account.job_id }}{% endif %}</span>
             {% if account.created %}<span class="td-bulk-created">{{ account.created }}</span>{% endif %}
             {% if view == 'needs_attention' and account.attention_since %}<span class="td-bulk-attention-since">Days in Needs Attention: <strong>{{ account.attention_days }}</strong></span>{% endif %}
             {% if account.sales_rep %}<a class="td-bulk-rep" href="{{ account.rep_url or url_for('rep_profile', rep_name=account.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ account.rep_label or 'Rep' }}: {{ account.sales_rep }}</a>{% endif %}

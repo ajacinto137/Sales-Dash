@@ -212,6 +212,7 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
         "subscriber_uuid": subscriber_uuids,
         "scheduled": df["Scheduled"] if "Scheduled" in df.columns else None,
         "scheduled_date": df["StartDate"] if "StartDate" in df.columns else None,
+        "job_id": df["JobID"] if "JobID" in df.columns else None,
         "installed": installed_mask.values,
         "cancelled": cancelled_mask.values,
         "status": status.values,
@@ -1156,6 +1157,11 @@ def build_bulk_account_rows(df):
             # unique, unlike subscriber_uuid (see attention_store.py's
             # module docstring for why that one was rejected).
             "sale_id": int(row["sale_id"]),
+            # The fiber install job's ID (FTTPScheduleJobs.ID), shown on
+            # the cards next to the order ID (2026-10-30). None when the
+            # order has no install job, or for door-knocker orders (their
+            # dataset doesn't carry it).
+            "job_id": _int_or_none(row.get("job_id")),
             "sales_rep": row["sales_rep"],
             "first_name": _clean_text(row["first_name"]) or "",
             "last_name": _clean_text(row["last_name"]) or "",
@@ -1171,6 +1177,13 @@ def build_bulk_account_rows(df):
             "pas_url": pas_place_url(row.get("place_id")),
         })
     return accounts
+
+
+def _int_or_none(value):
+    try:
+        return None if pd.isna(value) else int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _bulk_status_filter(status):
