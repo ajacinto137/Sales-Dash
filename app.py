@@ -786,14 +786,15 @@ DASHBOARD_STATE_VIEWS = [
 ]
 DASHBOARD_STATE_VIEW_KEYS = {key for key, _, _ in DASHBOARD_STATE_VIEWS}
 
-# Individual Rep Leaderboard's All / NJ / NY toggle (added 2026-10-30, by
+# Individual Rep Leaderboard's All / NJ / NY/PA toggle (added 2026-10-30, by
 # request) -- by the sale's state, like DASHBOARD_STATE_VIEWS, so the NJ
 # view ranks every rep by their NJ sales only. Carried in ?lb_state= so
 # sorting, the rep search and the metric drill-downs keep it.
 LEADERBOARD_STATE_VIEWS = [
     ("all", "All", None),
     ("nj", "NJ", "NJ"),
-    ("ny", "NY", "NY"),
+    # NY/PA together (2026-10-30, by request), like DASHBOARD_STATE_VIEWS'.
+    ("ny-pa", "NY/PA", ("NY", "PA")),
 ]
 LEADERBOARD_STATE_CODES = {key: code for key, _, code in LEADERBOARD_STATE_VIEWS}
 
@@ -1221,7 +1222,7 @@ def dashboard_page():
         rep_table_columns=rep_table_columns,
         leaderboard_state_views=LEADERBOARD_STATE_VIEWS,
         lb_state=lb_state,
-        lb_state_code=lb_state_code,
+        lb_state_param=",".join(lb_state_code) if isinstance(lb_state_code, tuple) else lb_state_code,
         sort=sort,
         sort_dir=sort_dir,
         records=records,
@@ -1627,12 +1628,13 @@ def bulk_account_view(rep_name):
         view_title, accounts = get_channel_account_view(normalized, rep_name, channel, period, custom_start, custom_end)
         all_time = False
     elif view == "metric":
-        # ?state= from the leaderboard's NJ / NY toggle (2026-10-30).
-        state_code = request.args.get("state", "")
-        scoped = _state_filtered(normalized, state_code) if state_code in ("NJ", "NY") else normalized
+        # ?state= from the leaderboard's NJ / NY/PA toggle (2026-10-30) --
+        # one or more state codes ("NJ", or "NY,PA").
+        state_codes = tuple(c for c in request.args.get("state", "").split(",") if c in ("NJ", "NY", "PA"))
+        scoped = _state_filtered(normalized, state_codes) if state_codes else normalized
         view_title, accounts = get_leaderboard_metric_account_view(scoped, rep_name, metric, period, custom_start, custom_end)
-        if state_code in ("NJ", "NY"):
-            view_title = f"{view_title} ({state_code})"
+        if state_codes:
+            view_title = f"{view_title} ({'/'.join(state_codes)})"
         all_time = False
     elif view == "date":
         try:

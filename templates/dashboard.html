@@ -675,7 +675,7 @@
          "Team Leaderboard Page — Section Names". -->
     <div class="td-section-heading" id="rep-leaderboard">
         <h2>Individual Rep Leaderboard</h2>
-        {# All / NJ / NY toggle (2026-10-30) -- by the sale's state; see
+        {# All / NJ / NY/PA toggle (2026-10-30) -- by the sale's state; see
            LEADERBOARD_STATE_VIEWS in app.py. #}
         <div class="td-chart-toggle">
             {% for key, label, _ in leaderboard_state_views %}
@@ -742,7 +742,7 @@
                                href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end, _anchor='needs-attention') }}">{{ row[metric_key] }}</a>
                             {% else %}
                             <a class="td-metric-link"
-                               href="{{ url_for('bulk_account_view', rep_name=row.sales_rep, view='metric', metric=metric_key, period=period, start=custom_start, end=custom_end, state=lb_state_code) }}">{{ row[metric_key] }}</a>
+                               href="{{ url_for('bulk_account_view', rep_name=row.sales_rep, view='metric', metric=metric_key, period=period, start=custom_start, end=custom_end, state=lb_state_param) }}">{{ row[metric_key] }}</a>
                             {% endif %}
                         </td>
                         {% endfor %}
