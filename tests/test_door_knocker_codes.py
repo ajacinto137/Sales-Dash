@@ -69,10 +69,10 @@ def test_referral_code_reps_are_internal_reps():
     ])
     df = sm.build_sales_dataset(main, None, None, web).set_index("sale_id")
     assert df.loc[10, "sales_rep"] == "Aldo Vallorosi"
-    assert df.loc[11, "sales_rep"] == "iponce"
+    assert df.loc[11, "sales_rep"] == "Issac Ponce"
     assert df.loc[12, "sales_rep"] == sm.WEB_REP
     assert not df.loc[10, "is_web"] and df.loc[12, "is_web"]
-    assert df.loc[10, "sales_channel"] == sm.WEB_CHANNEL
+    assert df.loc[10, "sales_channel"] == "Door to Door"
     board = {r["sales_rep"]: r for r in sm.calculate_rep_metrics(df.reset_index())}
-    assert board["Aldo Vallorosi"]["inbound"] == 1
-    assert board["Aldo Vallorosi"]["outbound"] == 0
+    assert board["Aldo Vallorosi"]["inbound"] == 0
+    assert board["Aldo Vallorosi"]["outbound"] == 1

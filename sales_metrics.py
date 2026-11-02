@@ -84,6 +84,8 @@ WEB_CHANNEL = "Web"
 # Channel vocabulary for the channel charts/drill-downs: the real
 # SalesChannel_ID channels plus Web.
 CHART_CHANNELS = list(SALES_CHANNELS.values()) + [WEB_CHANNEL]
+# Channel of a REFERRAL_CODE_REPS rep's website orders (2026-11-02).
+REFERRAL_REP_CHANNEL = "Door to Door"
 
 
 def door_knocker_mask(df, rep_codes=frozenset()):
@@ -208,12 +210,11 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
     # (so came in via main_sales) -- it's still a website order.
     is_web = web_sale_mask(df, rep_codes)
     # A website order under an internal rep's own referral code
-    # (REFERRAL_CODE_REPS, 2026-11-02) is that rep's sale, not Web's --
-    # still channel Web (counted as Inbound).
+    # (REFERRAL_CODE_REPS, 2026-11-02) is that rep's sale, not Web's,
+    # and a Door to Door sale (by request).
     referrals = df["ReferralData"] if "ReferralData" in df.columns else pd.Series(None, index=df.index)
     referral_rep = referrals.apply(normalize_referral_code).map(REFERRAL_CODE_REPS).where(is_web)
     is_web = is_web & referral_rep.isna()
-    web_channel = is_web | referral_rep.notna()
 
     normalized = pd.DataFrame({
         "sale_id": df["ID"] if "ID" in df.columns else df.index,
@@ -225,7 +226,7 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
         "source_token": source_tokens,
         "sales_rep": source_tokens.apply(extract_rep_name).where(~is_web, WEB_REP).where(referral_rep.isna(), referral_rep),
         "sales_channel_id": channel_ids,
-        "sales_channel": channel_ids.apply(map_sales_channel).where(~web_channel, WEB_CHANNEL),
+        "sales_channel": channel_ids.apply(map_sales_channel).where(~is_web, WEB_CHANNEL).where(referral_rep.isna(), REFERRAL_REP_CHANNEL),
         "is_web": is_web.values,
         "subscriber_uuid": subscriber_uuids,
         "scheduled": df["Scheduled"] if "Scheduled" in df.columns else None,
@@ -375,9 +376,7 @@ def calculate_rep_metrics(df):
         pending = int((group["status"] == "Pending").sum())
         cancels = int((group["status"] == "Cancelled").sum())
         needs_attention = int((group["status"] == "Needs Attention").sum())
-        # Web-channel sales count as Inbound (a referral-code rep's website
-        # orders, 2026-11-02 -- same as the Web pseudo-rep).
-        inbound = int(group["sales_channel"].isin(INBOUND_CHANNELS | {WEB_CHANNEL}).sum())
+        inbound = int(group["sales_channel"].isin(INBOUND_CHANNELS).sum())
         outbound = int(group["sales_channel"].isin(OUTBOUND_CHANNELS).sum())
         outbound_installs = int((group["sales_channel"].isin(OUTBOUND_CHANNELS) & (group["status"] == "Installed")).sum())
         denom = installs + cancels

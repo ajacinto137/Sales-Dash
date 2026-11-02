@@ -547,10 +547,11 @@ NOT_DOOR_KNOCKER_CODES = frozenset({
 # Internal reps who sell through their own website referral code
 # (2026-11-02, by request) -- not door knockers. Website orders carrying
 # one of these codes are credited to that rep (by name) instead of the
-# Web pseudo-rep; see sales_metrics.build_sales_dataset().
+# Web pseudo-rep, as Door to Door sales; see
+# sales_metrics.build_sales_dataset().
 REFERRAL_CODE_REPS = {
     "avallorosi": "Aldo Vallorosi",
-    "iponce": "iponce",  # full name not known yet -- shown as the code
+    "iponce": "Issac Ponce",
 }
 _NAME_SHAPED_CODE = re.compile(r"[a-z]{6,}[0-9]?")
 INTERNAL_REP_TOKEN_MARKER = "PAS Employee:"
