@@ -18,7 +18,7 @@ import time
 import pandas as pd
 
 import db
-from queries import DOOR_KNOCKER_CODES, FIBER_INSTALL_JOB_TYPES_SQL, WEB_SALES_SOURCE_TOKEN
+from queries import FIBER_INSTALL_JOB_TYPES_SQL, REFERRAL_CODE_REPS, WEB_SALES_SOURCE_TOKEN, internal_rep_codes, is_door_knocker_code
 from sales_metrics import extract_rep_name
 
 REFRESH_SECONDS = 600
@@ -71,15 +71,17 @@ def normalize_words(text):
 _lock = threading.Lock()
 
 
-def _sold_by(row):
+def _sold_by(row, rep_codes=frozenset()):
     """(name, kind): a door-knocker code, a rep, "Web", or (None, None)."""
     code = row["ReferralData"].strip().lower() if isinstance(row["ReferralData"], str) else ""
-    if code and code in DOOR_KNOCKER_CODES:
+    if is_door_knocker_code(code, rep_codes):
         return code, "knocker"
     if pd.notna(row["InsertByEmployeeID"]):
         name = extract_rep_name(row["SourceToken"])
         return (name, "rep") if name != "Unknown" else (None, None)
     if row["SourceToken"] == WEB_SALES_SOURCE_TOKEN:
+        if code in REFERRAL_CODE_REPS:
+            return REFERRAL_CODE_REPS[code], "rep"
         return "Web", "web"
     return None, None
 
@@ -91,7 +93,8 @@ def _clean(series):
 def build_index(raw):
     """PlanetWeb rows -> the search index (newest order first)."""
     df = raw.copy()
-    sold = df.apply(_sold_by, axis=1, result_type="expand") if not df.empty else pd.DataFrame(columns=[0, 1])
+    rep_codes = internal_rep_codes(df.loc[df["InsertByEmployeeID"].notna(), "SourceToken"]) if not df.empty else frozenset()
+    sold = df.apply(_sold_by, axis=1, result_type="expand", rep_codes=rep_codes) if not df.empty else pd.DataFrame(columns=[0, 1])
     first, last = _clean(df["FirstName"]), _clean(df["LastName"])
     address = _clean(df["Address"])
     apt = _clean(df["ApartmentSuite"])

@@ -43,8 +43,11 @@ import db_migrations
 from queries import (
     EXTERNAL_ORDER_CANCELLATIONS_QUERY,
     EXTERNAL_REP_SALES_QUERY,
+    INTERNAL_REP_TOKENS_QUERY,
     SERVICE_CANCELLATIONS_QUERY,
     VISION_PACKAGES_QUERY,
+    internal_rep_codes,
+    is_door_knocker_code,
 )
 
 SYNC_INTERVAL_SECONDS = max(60, int(os.environ.get("EXTERNAL_SALES_SYNC_INTERVAL_SECONDS", "300")))
@@ -169,16 +172,24 @@ def _log(message):
 
 def fetch_source_rows():
     """Runs the spec query against PlanetWeb. Returns a list of dicts
-    keyed by appdb column. Raises on any connection/query failure."""
+    keyed by appdb column. Raises on any connection/query failure.
+
+    The query also returns every name-shaped referral code (2026-11-02);
+    only rows queries.is_door_knocker_code() accepts are kept -- the same
+    rule the internal dashboard uses to drop door-knocker sales, so a
+    sale is on exactly one of the two."""
     conn = db.get_planetweb_connection()
     try:
         cursor = conn.cursor()
+        cursor.execute(INTERNAL_REP_TOKENS_QUERY)
+        rep_codes = internal_rep_codes(token for (token,) in cursor.fetchall())
         cursor.execute(EXTERNAL_REP_SALES_QUERY)
         returned = [d[0] for d in cursor.description]
         expected = [src for _key, src, _col, _label, _shown in SOURCE_COLUMNS]
         if returned != expected:
             raise RuntimeError(f"External Rep Sales query returned unexpected columns: {returned}")
-        return [dict(zip(_SOURCE_DB_COLUMNS, row)) for row in cursor.fetchall()]
+        rows = [dict(zip(_SOURCE_DB_COLUMNS, row)) for row in cursor.fetchall()]
+        return [r for r in rows if is_door_knocker_code(r.get("referral_code"), rep_codes)]
     finally:
         conn.close()
 

@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from queries import DOOR_KNOCKER_CODES, WEB_SALES_SOURCE_TOKEN, pas_place_url
+from queries import DOOR_KNOCKER_CODES, REFERRAL_CODE_REPS, WEB_SALES_SOURCE_TOKEN, internal_rep_codes, is_door_knocker_code, normalize_referral_code, pas_place_url
 
 # InsertDate on the PlanetWeb SQL Server is already written in
 # America/New_York local time, not UTC -- so sale_datetime only needs this
@@ -86,18 +86,21 @@ WEB_CHANNEL = "Web"
 CHART_CHANNELS = list(SALES_CHANNELS.values()) + [WEB_CHANNEL]
 
 
-def _is_door_knocker_code(referral_data):
-    return isinstance(referral_data, str) and referral_data.strip().lower() in DOOR_KNOCKER_CODES
+def door_knocker_mask(df, rep_codes=frozenset()):
+    """True for rows whose ReferralData is a door knocker's code
+    (queries.is_door_knocker_code: listed, or first initial + last name).
+    Those sales belong on /knockers only, whoever entered them."""
+    referrals = df["ReferralData"] if "ReferralData" in df.columns else pd.Series(None, index=df.index)
+    return referrals.apply(lambda code: is_door_knocker_code(code, rep_codes)).astype(bool)
 
 
-def web_sale_mask(df):
+def web_sale_mask(df, rep_codes=frozenset()):
     """True for rows that are Web sales: SourceToken is the website's
     map-pin token and ReferralData is not a door-knocker code. Takes a
     raw PlanetWeb frame (SourceToken/ReferralData columns)."""
     tokens = df["SourceToken"] if "SourceToken" in df.columns else pd.Series(None, index=df.index)
-    referrals = df["ReferralData"] if "ReferralData" in df.columns else pd.Series(None, index=df.index)
     is_web_token = tokens.astype(str).str.strip() == WEB_SALES_SOURCE_TOKEN
-    return is_web_token & ~referrals.apply(_is_door_knocker_code)
+    return is_web_token & ~door_knocker_mask(df, rep_codes)
 
 
 def exclude_web(df):
@@ -134,9 +137,17 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
     if main_sales is None:
         return None
 
+    # Door-knocker sales (2026-11-02, by request) are dropped from BOTH
+    # sources -- even one an internal rep keyed in under a knocker's code
+    # -- they're on /knockers (External Rep Sales) instead. An internal
+    # rep's own name code ('dzupkay') stays theirs.
+    tokens = main_sales["SourceToken"] if "SourceToken" in main_sales.columns else []
+    rep_codes = internal_rep_codes(tokens)
+    main_sales = main_sales[~door_knocker_mask(main_sales, rep_codes)]
+
     web_count = 0
     if web_sales is not None and not web_sales.empty:
-        web_rows = web_sales[web_sale_mask(web_sales)]
+        web_rows = web_sales[web_sale_mask(web_sales, rep_codes)]
         web_count = len(web_rows)
         main_sales = pd.concat([main_sales, web_rows], ignore_index=True)
 
@@ -195,7 +206,14 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
     channel_ids = df["SalesChannel_ID"] if "SalesChannel_ID" in df.columns else pd.Series([None] * len(df), index=df.index)
     # Also catches a map-pin order that somehow has an InsertByEmployeeID
     # (so came in via main_sales) -- it's still a website order.
-    is_web = web_sale_mask(df)
+    is_web = web_sale_mask(df, rep_codes)
+    # A website order under an internal rep's own referral code
+    # (REFERRAL_CODE_REPS, 2026-11-02) is that rep's sale, not Web's --
+    # still channel Web (counted as Inbound).
+    referrals = df["ReferralData"] if "ReferralData" in df.columns else pd.Series(None, index=df.index)
+    referral_rep = referrals.apply(normalize_referral_code).map(REFERRAL_CODE_REPS).where(is_web)
+    is_web = is_web & referral_rep.isna()
+    web_channel = is_web | referral_rep.notna()
 
     normalized = pd.DataFrame({
         "sale_id": df["ID"] if "ID" in df.columns else df.index,
@@ -205,9 +223,9 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
         # display formatting. Used by the "Latest Sales" record card.
         "sale_datetime": pd.to_datetime(df["DateTime"], errors="coerce") if "DateTime" in df.columns else pd.NaT,
         "source_token": source_tokens,
-        "sales_rep": source_tokens.apply(extract_rep_name).where(~is_web, WEB_REP),
+        "sales_rep": source_tokens.apply(extract_rep_name).where(~is_web, WEB_REP).where(referral_rep.isna(), referral_rep),
         "sales_channel_id": channel_ids,
-        "sales_channel": channel_ids.apply(map_sales_channel).where(~is_web, WEB_CHANNEL),
+        "sales_channel": channel_ids.apply(map_sales_channel).where(~web_channel, WEB_CHANNEL),
         "is_web": is_web.values,
         "subscriber_uuid": subscriber_uuids,
         "scheduled": df["Scheduled"] if "Scheduled" in df.columns else None,
@@ -357,7 +375,9 @@ def calculate_rep_metrics(df):
         pending = int((group["status"] == "Pending").sum())
         cancels = int((group["status"] == "Cancelled").sum())
         needs_attention = int((group["status"] == "Needs Attention").sum())
-        inbound = int(group["sales_channel"].isin(INBOUND_CHANNELS).sum())
+        # Web-channel sales count as Inbound (a referral-code rep's website
+        # orders, 2026-11-02 -- same as the Web pseudo-rep).
+        inbound = int(group["sales_channel"].isin(INBOUND_CHANNELS | {WEB_CHANNEL}).sum())
         outbound = int(group["sales_channel"].isin(OUTBOUND_CHANNELS).sum())
         outbound_installs = int((group["sales_channel"].isin(OUTBOUND_CHANNELS) & (group["status"] == "Installed")).sum())
         denom = installs + cancels

@@ -26,7 +26,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import db
-from queries import DOOR_KNOCKER_CODES, WEB_SALES_SOURCE_TOKEN
+from queries import WEB_SALES_SOURCE_TOKEN, is_door_knocker_code
 from sales_metrics import _today, extract_rep_name, map_sales_channel
 
 # Maps a raw FTTPFormData.SourceToken value to a human-readable order
@@ -42,7 +42,7 @@ SOURCE_TOKEN_LABELS = {
 def referral_type(referral_data):
     if not isinstance(referral_data, str) or not referral_data.strip():
         return ""
-    return "Door Knocker" if referral_data.strip().lower() in DOOR_KNOCKER_CODES else "Other"
+    return "Door Knocker" if is_door_knocker_code(referral_data) else "Other"
 
 QUERY = """
 SELECT

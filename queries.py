@@ -313,7 +313,7 @@ OUTER APPLY (
 
 WHERE fd.QuoteID IS NOT NULL
 
-AND fd.ReferralData IN (
+AND (fd.ReferralData IN (
     'mritchie',
     'dpond',
     'bthompson',
@@ -455,6 +455,15 @@ AND fd.ReferralData IN (
     'shenrik',
     'bgill'
 )
+-- 2026-11-02: also any name-shaped code (6+ letters, then at most digits)
+-- since 2026 -- a superset; external_sales_store.fetch_source_rows()
+-- keeps only the rows queries.is_door_knocker_code() accepts.
+OR (
+    fd.InsertDate >= '2026-01-01'
+    AND LEN(LTRIM(RTRIM(fd.ReferralData))) >= 6
+    AND LTRIM(RTRIM(fd.ReferralData)) NOT LIKE '%[^a-zA-Z0-9]%'
+    AND LTRIM(RTRIM(fd.ReferralData)) LIKE '[a-zA-Z][a-zA-Z][a-zA-Z][a-zA-Z][a-zA-Z][a-zA-Z]%'
+))
 
 AND fd.ID NOT IN (
     '201443',
@@ -511,7 +520,7 @@ def _door_knocker_codes():
     'welcometoplanet'. Lowercased to match SQL Server's case-insensitive
     collation."""
     match = re.search(
-        r"ReferralData IN \((.*?)\)\s*\n\s*AND fd\.ID NOT IN",
+        r"ReferralData IN \((.*?)\)\s*\n\s*-- 2026-11-02",
         EXTERNAL_REP_SALES_QUERY,
         re.DOTALL,
     )
@@ -519,3 +528,71 @@ def _door_knocker_codes():
 
 
 DOOR_KNOCKER_CODES = _door_knocker_codes()
+
+# Door-knocker rule (2026-11-02, by request): ANY referral code shaped
+# like first initial + last name is a door knocker's -- not only the
+# listed DOOR_KNOCKER_CODES -- so a new knocker's sales land on /knockers
+# instead of leaking into the internal dashboard (as Web) before someone
+# adds their code to the list. "Name-shaped" = 6+ letters, optionally one
+# trailing digit ('iponce', 'tharshbarger', 'joakley2'). Shorter codes
+# only count when listed: 5-letter codes are mostly random promo codes
+# ('batjq', 'akkqd'). Not a knocker even though name-shaped: the promo
+# words below, and an internal rep's own first-initial+last-name code
+# ('dzupkay' = PAS Employee Dylan Zupkay; see internal_rep_codes()).
+NOT_DOOR_KNOCKER_CODES = frozenset({
+    "welcometoplanet",
+    "strausnews",
+    "independence",
+})
+# Internal reps who sell through their own website referral code
+# (2026-11-02, by request) -- not door knockers. Website orders carrying
+# one of these codes are credited to that rep (by name) instead of the
+# Web pseudo-rep; see sales_metrics.build_sales_dataset().
+REFERRAL_CODE_REPS = {
+    "avallorosi": "Aldo Vallorosi",
+    "iponce": "iponce",  # full name not known yet -- shown as the code
+}
+_NAME_SHAPED_CODE = re.compile(r"[a-z]{6,}[0-9]?")
+INTERNAL_REP_TOKEN_MARKER = "PAS Employee:"
+
+
+def normalize_referral_code(code):
+    return code.strip().lower() if isinstance(code, str) else ""
+
+
+def is_door_knocker_code(code, rep_codes=frozenset()):
+    """True when a referral code belongs to a door knocker: a listed
+    DOOR_KNOCKER_CODES code, or a name-shaped code that isn't a known
+    promo word or an internal rep's own name code."""
+    code = normalize_referral_code(code)
+    if not code or code in REFERRAL_CODE_REPS:
+        return False
+    if code in DOOR_KNOCKER_CODES:
+        return True
+    if code in NOT_DOOR_KNOCKER_CODES or code in rep_codes:
+        return False
+    return _NAME_SHAPED_CODE.fullmatch(code) is not None
+
+
+def internal_rep_codes(source_tokens):
+    """First-initial+last-name codes of the internal reps in these
+    SourceTokens ('PAS Employee: Dylan Zupkay' -> 'dzupkay')."""
+    codes = set()
+    for token in source_tokens:
+        if not isinstance(token, str) or INTERNAL_REP_TOKEN_MARKER not in token:
+            continue
+        words = re.findall(r"[a-z]+", token.split(INTERNAL_REP_TOKEN_MARKER, 1)[1].lower())
+        if len(words) >= 2:
+            codes.add(words[0][0] + words[-1])
+    return frozenset(codes)
+
+
+# SourceTokens of every internal rep (for internal_rep_codes()), read by
+# the External Rep Sales sync.
+INTERNAL_REP_TOKENS_QUERY = f"""
+SELECT DISTINCT SourceToken
+FROM FTTPFormData
+WHERE InsertByEmployeeID IS NOT NULL
+  AND SourceToken LIKE '{INTERNAL_REP_TOKEN_MARKER}%'
+  AND InsertDate >= '2026-01-01'
+"""
