@@ -39,6 +39,7 @@ import permissions
 import staffing_store
 import user_store
 from queries import (
+    EXTERNAL_ORDER_CANCELLATIONS_QUERY,
     MAIN_SALES_QUERY,
     WEB_SALES_QUERY,
     SERVICE_CANCELLATIONS_QUERY,
@@ -69,6 +70,7 @@ from sales_metrics import (
     calculate_monthly_forecast,
     calculate_monthly_sales_trend,
     calculate_month_to_date_comparison,
+    calculate_cancelled_accounts,
     calculate_needs_attention,
     calculate_records,
     calculate_rep_metrics,
@@ -238,6 +240,7 @@ def _load_planetweb(store):
                 store[key] = None
                 store[f"{key}_status"] = "FAILED"
                 store[f"{key}_error"] = db.sanitize_error(exc)
+        _attach_order_cancellations(store, conn)
     except Exception as exc:
         for key in ("main_sales", "web_sales"):
             store[key] = None
@@ -246,6 +249,27 @@ def _load_planetweb(store):
     finally:
         if conn is not None:
             conn.close()
+
+
+def _attach_order_cancellations(store, conn):
+    """Adds OrderCancellationDate to main_sales/web_sales -- the same
+    order-level cancel /knockers uses (EXTERNAL_ORDER_CANCELLATIONS_QUERY:
+    fiber install job set to Canceled and never rebooked). Without it
+    these orders sat in Needs Attention forever (2026-10-30, by request:
+    every order in exactly one of Installed/Pending/Needs Attention/
+    Cancelled). A failed lookup leaves the column off, so those orders
+    fall back to Needs Attention rather than failing the refresh."""
+    try:
+        cursor = conn.cursor()
+        cursor.execute(EXTERNAL_ORDER_CANCELLATIONS_QUERY)
+        cancel_dates = {int(order_id): day for order_id, day in cursor.fetchall()}
+    except Exception as exc:
+        print(f"Order cancellations lookup failed ({db.sanitize_error(exc)}); cancelled orders stay in Needs Attention.")
+        return
+    for key in ("main_sales", "web_sales"):
+        df = store.get(key)
+        if df is not None and "ID" in df.columns:
+            df["OrderCancellationDate"] = pd.to_numeric(df["ID"], errors="coerce").map(cancel_dates)
 
 
 def _load_kpi(store):
@@ -1311,9 +1335,12 @@ def rep_profile(rep_name):
     rep_monthly_activity = calculate_rep_monthly_activity(normalized, rep_name, cal_year, cal_month)
     rep_sales_by_month = calculate_rep_sales_by_month(normalized, rep_name)
 
-    # Always all-time, independent of the period filter -- see
-    # calculate_needs_attention()'s docstring.
-    needs_attention = calculate_needs_attention(normalized, rep_name)
+    # Needs Attention / Cancelled tab: follows the period filter since
+    # 2026-10-30 (by request) -- by sale date, same as the Door Knocker
+    # Leaderboard. Cancelled is shown under Needs Attention in the same tab.
+    flagged_df = filter_by_period(normalized, period, custom_start, custom_end)
+    needs_attention = calculate_needs_attention(flagged_df, rep_name)
+    cancelled_accounts = calculate_cancelled_accounts(flagged_df, rep_name)
 
     # Installs tab (added 2026-10-20) -- installs per install month,
     # all-time, each count drilling into ?view=installs_month.
@@ -1369,6 +1396,7 @@ def rep_profile(rep_name):
         rep_sales_by_month=rep_sales_by_month,
         needs_attention=needs_attention,
         needs_attention_count=len(needs_attention),
+        cancelled_accounts=cancelled_accounts,
         monthly_installs=monthly_installs,
         monthly_status=monthly_status,
         monthly_bonus=monthly_bonus,

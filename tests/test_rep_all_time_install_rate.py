@@ -23,5 +23,5 @@ def test_all_time_install_rate_ignores_the_period():
     october = everything[everything["sale_date"] >= "2026-10-01"]
     rows = sm.add_all_time_install_rates(sm.calculate_rep_metrics(october), everything)
     assert rows[0]["install_rate"] == 100.0           # October only
-    assert rows[0]["all_time_install_rate"] == 75.0   # 1 - 1/4
+    assert rows[0]["all_time_install_rate"] == 75.0   # 3 installed / (4 - 0 pending)
     assert [r["sales_rep"] for r in sm.sort_rep_rows(rows, "all_time_install_rate", "desc")] == ["amy"]

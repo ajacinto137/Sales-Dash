@@ -55,7 +55,7 @@
         <nav class="td-tabs">
             <button type="button" class="td-tab td-tab-active" data-tab="overview">Overview</button>
             <button type="button" class="td-tab {{ 'td-tab-warning' if needs_attention_count > 0 else '' }}" data-tab="needs-attention">
-                Needs Attention <span class="td-tab-count">{{ needs_attention_count }}</span>
+                Needs Attention / Cancelled <span class="td-tab-count">{{ needs_attention_count }} / {{ cancelled_accounts|length }}</span>
             </button>
             <button type="button" class="td-tab" data-tab="installs">
                 Installs <span class="td-tab-count">{{ "{:,}".format(monthly_installs.total) }}</span>
@@ -190,16 +190,27 @@
         {% include "_outbound_calls.html" %}
     </section>
 
-    <!-- ================= Needs Attention ================= -->
+    <!-- ================= Needs Attention / Cancelled ================= -->
     <section class="td-tab-panel" data-tab-panel="needs-attention" style="display: none;">
         <div class="td-section-heading">
             <h2>Needs Attention</h2>
-            <span class="td-muted-inline">Scheduled install date has passed and still shows Not Yet Installed &middot; all time</span>
+            <span class="td-muted-inline">Install date passed, or never scheduled, and not installed &middot; sold in the selected period</span>
         </div>
 
         {% set accounts = needs_attention %}
         {% set empty_message = "No accounts currently need attention." %}
         {% set view = "needs_attention" %}
+        {% include "_bulk_account_view.html" %}
+
+        {# Cancelled accounts (added 2026-10-30, by request) -- no
+           Needs Attention workflow controls; Days Flagged sort like above. #}
+        <div class="td-section-heading td-section-heading-spaced">
+            <h2>Cancelled</h2>
+            <span class="td-muted-inline">Install job cancelled (or service cancelled) before it was installed &middot; sold in the selected period</span>
+        </div>
+        {% set accounts = cancelled_accounts %}
+        {% set empty_message = "No cancelled accounts." %}
+        {% set view = "cancelled" %}
         {% include "_bulk_account_view.html" %}
     </section>
 
@@ -254,7 +265,7 @@
          accounts per scheduled INSTALL month (sale month when there's no
          install date) split into Installed / Pending / Needs Attention,
          all time, newest first. Install Rate uses the same
-         1 - needs_attention / sales formula as the Rep Leaderboard. Each
+         installed / (sales - pending) formula as the Rep Leaderboard. Each
          count opens a Bulk Account View (?view=status_month). See
          calculate_rep_monthly_status() in sales_metrics.py. -->
     <section class="td-tab-panel" data-tab-panel="monthly-status" style="display: none;">

@@ -124,6 +124,25 @@ def map_sales_channel(channel_id):
     return SALES_CHANNELS.get(key, UNKNOWN_CHANNEL_FALLBACK)
 
 
+def _cancelled_since(df, subscriber_uuids, service_cancellations):
+    """Per row: OrderCancellationDate, else the subscriber's earliest
+    service cancellation, else the sale date (see "cancelled_since" in
+    build_sales_dataset())."""
+    since = (
+        pd.to_datetime(df["OrderCancellationDate"], errors="coerce") if "OrderCancellationDate" in df.columns
+        else pd.Series(pd.NaT, index=df.index)
+    )
+    if service_cancellations is not None and {"subscriber_uuid", "completed_date"} <= set(service_cancellations.columns):
+        first_cancel = (
+            service_cancellations.assign(completed_date=pd.to_datetime(service_cancellations["completed_date"], errors="coerce"))
+            .groupby("subscriber_uuid")["completed_date"].min()
+        )
+        since = since.fillna(subscriber_uuids.map(first_cancel))
+    if "Date" in df.columns:
+        since = since.fillna(pd.to_datetime(df["Date"], errors="coerce"))
+    return since
+
+
 def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_sales=None):
     """Builds one normalized row per Main Sales record, plus one per Web
     sale (web_sales rows that pass web_sale_mask() -- door-knocker-coded
@@ -171,7 +190,10 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
     else:
         subscriber_uuids = pd.Series([None] * len(df), index=df.index)
 
-    cancelled_mask = (~installed_mask) & subscriber_uuids.isin(cancelled_uuids)
+    if "OrderCancellationDate" in df.columns:
+        order_cancelled = df["OrderCancellationDate"].notna()
+    else:
+        order_cancelled = pd.Series(False, index=df.index)
 
     # Pending vs Needs Attention (redefined again 2026-08-17, by request --
     # today no longer counts as Needs Attention). Pending is now any
@@ -197,6 +219,13 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
     # plain date. normalize() keeps datetime64 dtype throughout, so it
     # compares safely against another Timestamp in every case.
     past_mask = scheduled_dates_raw.notna() & (scheduled_dates_raw.dt.normalize() < today_ts)
+    # Cancelled (2026-10-30, by request) = never installed and either a
+    # service cancellation or an order cancellation (OrderCancellationDate,
+    # attached by app.py's _attach_order_cancellations() -- fiber install
+    # job cancelled and never rebooked). An order that never had an
+    # install job at all (no date / "Not Scheduled") is NOT Cancelled --
+    # it stays Needs Attention (by request), same as a passed install date.
+    cancelled_mask = (~installed_mask) & (subscriber_uuids.isin(cancelled_uuids) | order_cancelled)
     needs_attention_mask = (~installed_mask) & (~cancelled_mask) & (no_date_mask | unscheduled_mask | past_mask)
 
     status = pd.Series("Pending", index=df.index)
@@ -234,6 +263,10 @@ def build_sales_dataset(main_sales, vision_packages, service_cancellations, web_
         "job_id": df["JobID"] if "JobID" in df.columns else None,
         "installed": installed_mask.values,
         "cancelled": cancelled_mask.values,
+        # When a Cancelled account was cancelled -- its Days Flagged on the
+        # Rep Profile (2026-10-30): the order cancellation date, else the
+        # service cancellation's, else the sale date.
+        "cancelled_since": _cancelled_since(df, subscriber_uuids, service_cancellations).where(cancelled_mask).values,
         "status": status.values,
         # Passthrough contact/address fields, needed by the Rep Profile's
         # Needs Attention tab. Purely additive -- doesn't affect row count
@@ -330,6 +363,15 @@ def _rate(numerator, denominator):
     return numerator / denominator * 100
 
 
+def install_rate(installed, pending, sales):
+    """Install Rate = Installed / (Sales - Pending) -- of the orders that
+    are done one way or another (Installed, Needs Attention or
+    Cancelled), the share that installed. Same formula as /knockers
+    (2026-10-30, by request; was 1 - Needs Attention / Sales, which
+    counted cancels as successes once they left Needs Attention)."""
+    return _rate(installed, sales - pending)
+
+
 def calculate_total_daily_sales(df):
     """Count of sales made today, for the Team Overview KPI bar. Always
     operates on the full ALL-TIME normalized dataset (like
@@ -380,14 +422,7 @@ def calculate_rep_metrics(df):
         outbound = int(group["sales_channel"].isin(OUTBOUND_CHANNELS).sum())
         outbound_installs = int((group["sales_channel"].isin(OUTBOUND_CHANNELS) & (group["status"] == "Installed")).sum())
         denom = installs + cancels
-        # Install Rate redefined 2026-08-17, by request: 1.0 - (Needs
-        # Attention / Total Sales) -- not the installs/(installs+cancels)
-        # ratio used elsewhere. Needs Attention is always <= sales_count
-        # (it's a status subset of the same rep's rows), so this stays in
-        # [0, 100]. Cancel Rate is unchanged (still installs/cancels
-        # based) -- only Install Rate's formula and the visible Cancels
-        # count column (now Needs Attention) changed.
-        install_rate = (1 - (needs_attention / sales_count)) * 100 if sales_count else None
+        rate = install_rate(installs, pending, sales_count)
         if rep == WEB_REP:
             # By request (2026-10-22): every Web sale counts as Inbound;
             # the outbound columns don't apply (shown as N/A).
@@ -404,7 +439,7 @@ def calculate_rep_metrics(df):
             "cancels": cancels,
             "needs_attention": needs_attention,
             "chargebacks": None,
-            "install_rate": install_rate,
+            "install_rate": rate,
             "cancel_rate": _rate(cancels, denom),
         })
 
@@ -424,8 +459,12 @@ REP_TABLE_COLUMNS = [
     ("sales", "Sales", "desc"),
     ("outbound", "Outbound", "desc"),
     ("inbound", "Inbound", "desc"),
+    # Installed + Pending + Needs Attention + Cancelled = Sales, every row
+    # (2026-10-30, by request -- each order in exactly one of the four).
+    ("installs", "Installed", "desc"),
     ("pending", "Pending", "desc"),
     ("needs_attention", "Needs Attention", "desc"),
+    ("cancels", "Cancelled", "desc"),
     ("all_time_install_rate", "All Time Install Rate", "desc"),
 ]
 REP_SORT_KEYS = {key for key, _label, _default_dir in REP_TABLE_COLUMNS}
@@ -1315,6 +1354,9 @@ LEADERBOARD_METRIC_FILTERS = {
     "installs": _bulk_status_filter("Installed"),
     "pending": _bulk_status_filter("Pending"),
     "needs_attention": _bulk_status_filter("Needs Attention"),
+    # Door-knocker rows (Sales by Town's Door Knockers/Combined sources)
+    # also have "Service Cancelled"; internal rows never do.
+    "cancels": lambda df: df[df["status"].isin(["Cancelled", "Service Cancelled"])],
 }
 
 # ---------------- Sales by Town (added 2026-10-27, by request) ----------------
@@ -1323,7 +1365,7 @@ LEADERBOARD_METRIC_FILTERS = {
 # LEADERBOARD_METRIC_FILTERS as the Individual Rep Leaderboard, so a
 # town's numbers add up the same way a rep's do.
 
-TOWN_METRICS = ["sales", "installs", "pending", "needs_attention", "outbound", "inbound"]
+TOWN_METRICS = ["sales", "installs", "pending", "needs_attention", "cancels", "outbound", "inbound"]
 UNKNOWN_TOWN = "Unknown"
 
 
@@ -1335,9 +1377,9 @@ def _town_keys(df):
 
 def calculate_town_breakdown(df):
     """{"rows": [{town, state, sales, installs, pending, needs_attention,
-    outbound, inbound, install_rate, share}, ...] most sales first,
+    cancels, outbound, inbound, install_rate, share}, ...] most sales first,
     "total": same keys for everything, "states": sorted states present}.
-    install_rate = 1 - needs_attention / sales (the leaderboard's
+    install_rate = installs / (sales - pending) (the leaderboard's
     definition); share = the town's % of all sales. Empty-safe."""
     empty_total = {m: 0 for m in TOWN_METRICS}
     if df is None or df.empty:
@@ -1348,7 +1390,8 @@ def calculate_town_breakdown(df):
 
     def summarize(slice_df):
         counts = {m: int(len(LEADERBOARD_METRIC_FILTERS[m](slice_df))) for m in TOWN_METRICS}
-        counts["install_rate"] = round((1 - counts["needs_attention"] / counts["sales"]) * 100, 1) if counts["sales"] else None
+        rate = install_rate(counts["installs"], counts["pending"], counts["sales"])
+        counts["install_rate"] = round(rate, 1) if rate is not None else None
         counts["share"] = round(counts["sales"] / grand * 100, 1) if grand else None
         return counts
 
@@ -1474,6 +1517,7 @@ LEADERBOARD_METRIC_TITLES = {
     "installs": "Installs",
     "pending": "Pending",
     "needs_attention": "Needs Attention",
+    "cancels": "Cancelled",
 }
 
 
@@ -1680,7 +1724,7 @@ def calculate_rep_monthly_status(df, rep):
     _rep_sales_with_month()), every month from the rep's first through
     their last scheduled month or the current month, whichever is later
     (zero months included), "totals" (same keys, all months)}. `sales` is
-    every account in the month, whatever its status. install_rate is 1 - needs_attention / sales, the
+    every account in the month, whatever its status. install_rate is installed / (sales - pending), the
     same formula as calculate_rep_metrics(). Always all-time, independent
     of the page's period filter."""
     sales = _rep_sales_with_month(df, rep)
@@ -1693,7 +1737,7 @@ def calculate_rep_monthly_status(df, rep):
         for key in MONTHLY_STATUS_COLUMNS:
             if key != "all":
                 row[key] = int(_monthly_status_mask(group, key).sum())
-        row["install_rate"] = (1 - row["needs_attention"] / row["sales"]) * 100 if row["sales"] else None
+        row["install_rate"] = install_rate(row["installed"], row["pending"], row["sales"])
         return row
 
     result["totals"] = summarize(sales)
@@ -1739,6 +1783,29 @@ def get_status_month_account_view(df, rep, year, month, column):
         _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
     ).sort_values("_scheduled_sort", na_position="last")
     return title, build_bulk_account_rows(filtered)
+
+
+def calculate_cancelled_accounts(df, rep):
+    """The Rep Profile's Needs Attention / Cancelled tab's Cancelled list
+    (added 2026-10-30, by request): every Cancelled account of `rep`'s,
+    all time, most recently cancelled first, each with Days Flagged
+    (days since `cancelled_since`)."""
+    if df is None or df.empty:
+        return []
+    cancelled = df[(df["sales_rep"] == rep) & (df["status"] == "Cancelled")]
+    if cancelled.empty:
+        return []
+    since = pd.to_datetime(cancelled["cancelled_since"], errors="coerce") if "cancelled_since" in cancelled.columns else pd.Series(pd.NaT, index=cancelled.index)
+    cancelled = cancelled.assign(_since=since).sort_values(["_since", "sale_datetime"], ascending=False, na_position="last")
+    today = pd.Timestamp(_today())
+    accounts = build_bulk_account_rows(cancelled)
+    # Days Flagged + its sort key, same fields attach_attention_metadata()
+    # (app.py) sets on Needs Attention cards.
+    for account, day in zip(accounts, cancelled["_since"]):
+        if pd.notna(day):
+            account["attention_since_sort"] = f"{day.timestamp():.0f}"
+            account["attention_days"] = max((today - day.normalize()).days, 0)
+    return accounts
 
 
 def calculate_needs_attention(df, rep):

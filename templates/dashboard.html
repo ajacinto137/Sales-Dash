@@ -699,15 +699,16 @@
     <section class="td-table-card">
         <div class="td-table-scroll">
             <table class="td-table">
-                <!-- 8 equal-width columns (#, Sales Rep, Sales, Outbound,
-                     Inbound, Pending, Needs Attention, All Time Install
-                     Rate; Installs + Outbound Installs removed 2026-10-23,
-                     by request) -- matches table-layout: fixed in
+                <!-- 10 equal-width columns (#, Sales Rep, Sales, Outbound,
+                     Inbound, Installed, Pending, Needs Attention, Cancelled,
+                     All Time Install Rate; Installed + Cancelled added
+                     2026-10-30 so the four statuses add up to Sales) --
+                     matches table-layout: fixed in
                      team_dashboard.css, which keeps the longest header
                      labels from stretching wider than the rest. -->
                 <colgroup>
                     {% for _ in rep_table_columns %}
-                    <col style="width: 12.5%">
+                    <col style="width: 10%">
                     {% endfor %}
                 </colgroup>
                 <thead>
@@ -732,14 +733,11 @@
                             <a class="td-rep-link"
                                href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end) }}">{{ row.sales_rep }}</a>
                         </td>
-                        {% for metric_key, metric_class in [('sales', 'td-text-primary'), ('outbound', 'td-cyan'), ('inbound', 'td-purple'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta')] %}
+                        {% for metric_key, metric_class in [('sales', 'td-text-primary'), ('outbound', 'td-cyan'), ('inbound', 'td-purple'), ('installs', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta'), ('cancels', 'td-orange')] %}
                         <td class="{{ metric_class }}">
                             {% if row[metric_key] is none %}
                             {# Web's outbound columns (see calculate_rep_metrics()) #}
                             N/A
-                            {% elif metric_key == 'needs_attention' %}
-                            <a class="td-metric-link"
-                               href="{{ url_for('rep_profile', rep_name=row.sales_rep, period=period, start=custom_start, end=custom_end, _anchor='needs-attention') }}">{{ row[metric_key] }}</a>
                             {% else %}
                             <a class="td-metric-link"
                                href="{{ url_for('bulk_account_view', rep_name=row.sales_rep, view='metric', metric=metric_key, period=period, start=custom_start, end=custom_end, state=lb_state_param) }}">{{ row[metric_key] }}</a>
@@ -749,7 +747,7 @@
                         <td class="td-green">{% if row.all_time_install_rate is not none %}{{ "%.1f"|format(row.all_time_install_rate) }}%{% else %}—{% endif %}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="td-empty-row">No reps match the current filters.</td></tr>
+                    <tr><td colspan="10" class="td-empty-row">No reps match the current filters.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -783,7 +781,7 @@
         {# Styled like the Individual Rep Leaderboard (2026-10-27, by
            request): plain cyan rank, centered equal-width columns, each
            metric column in its leaderboard color, green Install Rate. #}
-        {% set town_cols = [('sales', 'Sales', 'td-text-primary'), ('installs', 'Installed', 'td-green'), ('pending', 'Pending', 'td-yellow'), ('needs_attention', 'Needs Attention', 'td-magenta'), ('outbound', 'Outbound', 'td-cyan'), ('inbound', 'Inbound', 'td-purple')] %}
+        {% set town_cols = [('sales', 'Sales', 'td-text-primary'), ('installs', 'Installed', 'td-green'), ('pending', 'Pending', 'td-yellow'), ('needs_attention', 'Needs Attention', 'td-magenta'), ('cancels', 'Cancelled', 'td-orange'), ('outbound', 'Outbound', 'td-cyan'), ('inbound', 'Inbound', 'td-purple')] %}
         {% for source, town_views in town_breakdown.items() %}
         <div data-bulk-view data-town-source-panel="{{ source }}"{% if not loop.first %} style="display: none;"{% endif %}>
         {% if town_views.All.rows %}
