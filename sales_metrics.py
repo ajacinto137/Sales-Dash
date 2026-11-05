@@ -1375,6 +1375,19 @@ def _town_keys(df):
     return city.where(city != "", UNKNOWN_TOWN), state
 
 
+def _town_rows(df, town, state):
+    towns, states = _town_keys(df)
+    return df[(towns == town) & (states == (state or "").strip().upper())]
+
+
+def _town_counts(df):
+    """TOWN_METRICS counts for a slice of rows, plus its install_rate."""
+    counts = {m: int(len(LEADERBOARD_METRIC_FILTERS[m](df))) for m in TOWN_METRICS}
+    rate = install_rate(counts["installs"], counts["pending"], counts["sales"])
+    counts["install_rate"] = round(rate, 1) if rate is not None else None
+    return counts
+
+
 def calculate_town_breakdown(df):
     """{"rows": [{town, state, sales, installs, pending, needs_attention,
     cancels, outbound, inbound, install_rate, share}, ...] most sales first,
@@ -1389,9 +1402,7 @@ def calculate_town_breakdown(df):
     grand = len(keyed)
 
     def summarize(slice_df):
-        counts = {m: int(len(LEADERBOARD_METRIC_FILTERS[m](slice_df))) for m in TOWN_METRICS}
-        rate = install_rate(counts["installs"], counts["pending"], counts["sales"])
-        counts["install_rate"] = round(rate, 1) if rate is not None else None
+        counts = _town_counts(slice_df)
         counts["share"] = round(counts["sales"] / grand * 100, 1) if grand else None
         return counts
 
@@ -1433,14 +1444,142 @@ def get_town_account_view(df, town, state, metric, period, start, end):
     scoped = filter_by_period(df, period, start, end) if df is not None and not df.empty else None
     if scoped is None or scoped.empty:
         return title, []
-    towns, states = _town_keys(scoped)
-    filtered = row_filter(scoped[(towns == town) & (states == (state or "").upper())])
+    filtered = row_filter(_town_rows(scoped, town, state))
     if filtered.empty:
         return title, []
     filtered = filtered.assign(
         _scheduled_sort=pd.to_datetime(filtered["scheduled_date"], errors="coerce")
     ).sort_values("_scheduled_sort", na_position="last")
     return title, build_bulk_account_rows(filtered)
+
+
+# ---------------- Town Profile (added 2026-11-05, by request) ----------------
+# /dashboard/town, opened from a town's name in Sales by Town. The recent
+# window is the last 90 days including today (Eastern); its weeks are
+# Monday-Sunday like the "This Week" period, clipped to the window so they
+# add up to the window's total (so the first and last are usually partial).
+
+TOWN_PROFILE_DAYS = 90
+TOWN_PROFILE_MONTHS = 12
+TOWN_PROFILE_TOP_REPS = 10
+
+
+def _date_range_label(start, end):
+    if start == end:
+        return start.strftime("%b %-d")
+    end_format = "%-d" if start.month == end.month else "%b %-d"
+    return f"{start.strftime('%b %-d')} – {end.strftime(end_format)}"
+
+
+def calculate_town_weeks(town_df, start, end):
+    """One row per Monday-Sunday week touching start..end, oldest first,
+    zero weeks included: TOWN_METRICS counts, install_rate, days in the
+    window, avg_per_day, partial."""
+    valid = town_df.dropna(subset=["sale_date"])
+    dates = valid["sale_date"].dt.date
+    weeks = []
+    monday = start - timedelta(days=start.weekday())
+    while monday <= end:
+        first, last = max(monday, start), min(monday + timedelta(days=6), end)
+        days = (last - first).days + 1
+        counts = _town_counts(valid[(dates >= first) & (dates <= last)])
+        weeks.append({
+            **counts,
+            "installed": counts["installs"],  # the status chart's key
+            "start": first.isoformat(),
+            "end": last.isoformat(),
+            "label": _date_range_label(first, last),
+            "name": first.strftime("%b %-d"),
+            "days": days,
+            "partial": days < 7,
+            "avg_per_day": round(counts["sales"] / days, 2),
+        })
+        monday += timedelta(days=7)
+    return weeks
+
+
+def calculate_town_profile(df, town, state):
+    """Everything the Town Profile shows for one town within `df` (one
+    Sales by Town source), or None if the town has no sales there."""
+    if df is None or df.empty:
+        return None
+    town_df = _town_rows(df, town, state)
+    if town_df.empty:
+        return None
+
+    today = _today()
+    start = today - timedelta(days=TOWN_PROFILE_DAYS - 1)
+    prior_end = start - timedelta(days=1)
+    prior_start = prior_end - timedelta(days=TOWN_PROFILE_DAYS - 1)
+
+    dated = town_df.dropna(subset=["sale_date"])
+    dates = dated["sale_date"].dt.date
+    recent = dated[(dates >= start) & (dates <= today)]
+    prior_sales = int(((dates >= prior_start) & (dates <= prior_end)).sum())
+
+    counts = _town_counts(recent)
+    sales = counts["sales"]
+    per_day = sales / TOWN_PROFILE_DAYS
+    weeks = calculate_town_weeks(town_df, start, today)
+    # Latest week wins a tie.
+    best_week = max(reversed(weeks), key=lambda w: w["sales"]) if sales else None
+
+    towns = calculate_town_breakdown(df)["rows"]
+    state_key = (state or "").strip().upper()
+    rank, all_time = next((i, r) for i, r in enumerate(towns, 1) if r["town"] == town and r["state"] == state_key)
+
+    recent_by_rep = recent["sales_rep"].value_counts()
+    reps = []
+    for rep, rep_df in town_df.groupby("sales_rep"):
+        rep_counts = _town_counts(rep_df)
+        reps.append({
+            "rep": rep,
+            "recent_sales": int(recent_by_rep.get(rep, 0)),
+            "sales": rep_counts["sales"],
+            "installs": rep_counts["installs"],
+            "install_rate": rep_counts["install_rate"],
+        })
+    reps.sort(key=lambda r: (-r["recent_sales"], -r["sales"], str(r["rep"]).casefold()))
+
+    recent_by_channel = recent["sales_channel"].value_counts()
+    channels = [
+        {"channel": channel, "recent_sales": int(recent_by_channel.get(channel, 0)), "sales": int(count)}
+        for channel, count in town_df["sales_channel"].value_counts().items()
+    ]
+    channels.sort(key=lambda c: (-c["recent_sales"], -c["sales"]))
+
+    last_sale = dated["sale_date"].max().date() if not dated.empty else None
+    first_sale = dated["sale_date"].min().date() if not dated.empty else None
+    return {
+        "town": town,
+        "state": state_key,
+        "place": ", ".join(p for p in (town, state_key) if p),
+        "all_time": all_time,
+        "rank": rank,
+        "town_count": len(towns),
+        "first_sale": first_sale,
+        "last_sale": last_sale,
+        "days_since_last_sale": (today - last_sale).days if last_sale else None,
+        "recent": {
+            **counts,
+            "days": TOWN_PROFILE_DAYS,
+            "start": start.isoformat(),
+            "end": today.isoformat(),
+            "label": f"{start.strftime('%b %-d, %Y')} – {today.strftime('%b %-d, %Y')}",
+            "avg_per_day": round(per_day, 2),
+            "avg_per_week": round(per_day * 7, 1),
+            "prior_sales": prior_sales,
+            "prior_start": prior_start.isoformat(),
+            "prior_end": prior_end.isoformat(),
+            "change_pct": round((sales - prior_sales) / prior_sales * 100, 1) if prior_sales else None,
+            "best_week": best_week,
+        },
+        "weeks": weeks,
+        "months": calculate_monthly_sales_by_status(town_df)[-TOWN_PROFILE_MONTHS:],
+        "reps": reps[:TOWN_PROFILE_TOP_REPS],
+        "rep_count": len(reps),
+        "channels": channels,
+    }
 
 
 # ---------------- Monthly Sales by Status (added 2026-10-27, by request) ----------------

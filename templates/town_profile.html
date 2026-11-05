@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ profile.place if profile else town }} — Town Profile — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Town Profile (added 2026-11-05). Opened from a town's name in Sales by
+   Town; numbers come from sales_metrics.calculate_town_profile(). Every
+   count opens the town's Bulk Account View for exactly that date range. #}
+
+{% macro metric(label, value, color, url=None, note=None) -%}
+    <div class="td-profile-metric">
+        <span class="td-profile-metric-label">{{ label }}</span>
+        {% if url %}
+        <a class="td-profile-metric-value td-profile-metric-link {{ color }}" href="{{ url }}">{{ value }}</a>
+        {% else %}
+        <span class="td-profile-metric-value {{ color }}">{{ value }}</span>
+        {% endif %}
+        {% if note %}<span class="td-town-profile-note">{{ note }}</span>{% endif %}
+    </div>
+{%- endmacro %}
+
+{% macro count_link(n, url) -%}
+    {% if n %}<a class="td-metric-link" href="{{ url }}">{{ "{:,}".format(n) }}</a>{% else %}0{% endif %}
+{%- endmacro %}
+
+{% macro rate(value) -%}
+    {{ "%.1f%%"|format(value) if value is not none else "—" }}
+{%- endmacro %}
+
+<div class="td-page">
+
+    <header class="td-profile-header">
+        <a class="td-back-link" href="{{ url_for('dashboard_page', period=back_period, start=back_start, end=back_end, _anchor='sales-by-town') }}">&larr; Back to Sales by Town</a>
+
+        <div class="td-profile-headline">
+            <div class="td-header-titles">
+                <p class="td-profile-subtitle">Town Profile</p>
+                <h1 class="td-profile-name">{{ profile.place if profile else town }}</h1>
+            </div>
+
+            {% if town_sources|length > 1 %}
+            <form class="td-period-form" method="get" action="{{ url_for('town_profile') }}">
+                <input type="hidden" name="town" value="{{ town }}">
+                <input type="hidden" name="state" value="{{ state }}">
+                {% if back_period %}<input type="hidden" name="period" value="{{ back_period }}">{% endif %}
+                {% if back_start %}<input type="hidden" name="start" value="{{ back_start }}">{% endif %}
+                {% if back_end %}<input type="hidden" name="end" value="{{ back_end }}">{% endif %}
+                <select name="source" class="td-select" aria-label="Sales source" onchange="this.form.submit()">
+                    {% for key, label in town_sources %}
+                    <option value="{{ key }}" {{ 'selected' if key == source else '' }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if not profile %}
+    <p class="td-empty">No {{ source_label }} sales recorded for this town.</p>
+    {% else %}
+    {% set recent = profile.recent %}
+    {% set all_time = profile.all_time %}
+    {% set week_cols = [('sales', 'td-text-primary'), ('installs', 'td-green'), ('pending', 'td-yellow'), ('needs_attention', 'td-magenta'), ('cancels', 'td-orange'), ('outbound', 'td-cyan'), ('inbound', 'td-purple')] %}
+
+    <!-- ================= Last 90 Days ================= -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Last {{ recent.days }} Days</h2>
+            <span class="td-muted-inline">{{ recent.label }}</span>
+        </div>
+
+        <div class="td-profile-metrics-primary">
+            {{ metric('Avg Sales / Day', "%.2f"|format(recent.avg_per_day), 'td-text-primary td-gradient-text') }}
+            {{ metric('Avg Sales / Week', "%.1f"|format(recent.avg_per_week), 'td-purple') }}
+            {{ metric('Total Sales', "{:,}".format(recent.sales), 'td-cyan', account_url('sales', 'custom', recent.start, recent.end) if recent.sales else None) }}
+        </div>
+
+        <div class="td-profile-metrics-secondary">
+            {% if recent.change_pct is not none %}
+            {{ metric('vs Prior ' ~ recent.days ~ ' Days', "%+.1f%%"|format(recent.change_pct), 'td-green' if recent.change_pct >= 0 else 'td-orange', None, "{:,}".format(recent.prior_sales) ~ ' sales before') }}
+            {% else %}
+            {{ metric('vs Prior ' ~ recent.days ~ ' Days', '—', 'td-text-primary', None, 'No sales in the prior ' ~ recent.days ~ ' days') }}
+            {% endif %}
+            {% if recent.best_week %}
+            {{ metric('Best Week', "{:,}".format(recent.best_week.sales), 'td-yellow', recent.best_week.url, recent.best_week.label) }}
+            {% else %}
+            {{ metric('Best Week', '—', 'td-text-primary') }}
+            {% endif %}
+            {{ metric('Install Rate', rate(recent.install_rate), 'td-green', None, 'Sales from these ' ~ recent.days ~ ' days') }}
+        </div>
+    </section>
+
+    <!-- ================= Weekly Breakdown ================= -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Weekly Breakdown</h2>
+            <span class="td-muted-inline">Monday to Sunday &middot; the first and last weeks stop at the {{ recent.days }}-day window</span>
+        </div>
+
+        <div class="td-chart-card">
+            <div class="td-chart-card-head">
+                <div>
+                    <h3>Sales by Week</h3>
+                    <span class="td-muted-inline">Each bar = that week's sales, split by where those accounts stand today &middot; click a segment to see the accounts</span>
+                </div>
+            </div>
+            <div class="td-chart-canvas-wrap td-kn-month-status-chart">
+                <canvas data-chart-type="townStatus" data-rows='{{ profile.weeks|tojson }}' aria-label="Sales per week for the last {{ recent.days }} days, stacked by installed, pending, needs attention and cancels; the numbers are in the table below"></canvas>
+            </div>
+        </div>
+
+        <div class="td-table-card">
+            <div class="td-table-scroll">
+                <table class="td-table td-town-profile-table" data-sortable>
+                    <thead>
+                        <tr>
+                            <th>Week</th>
+                            <th>Sales</th>
+                            <th>Avg / Day</th>
+                            <th>Installed</th>
+                            <th>Pending</th>
+                            <th>Needs Attention</th>
+                            <th>Cancelled</th>
+                            <th>Outbound</th>
+                            <th>Inbound</th>
+                            <th>Install Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for week in profile.weeks|reverse %}
+                        <tr>
+                            <td class="td-rep-cell" data-sort-value="{{ week.start }}">{{ week.label }}{% if week.partial %}<span class="td-town-week-partial">{{ week.days }} day{{ '' if week.days == 1 else 's' }}</span>{% endif %}</td>
+                            {% for key, color in week_cols %}
+                            <td class="{{ color }}" data-sort-value="{{ week[key] }}">{{ count_link(week[key], account_url(key, 'custom', week.start, week.end)) }}</td>
+                            {% if key == 'sales' %}<td class="td-purple">{{ "%.2f"|format(week.avg_per_day) }}</td>{% endif %}
+                            {% endfor %}
+                            <td class="td-green">{{ rate(week.install_rate) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="td-channel-state-total">
+                            <td class="td-rep-cell">Total</td>
+                            {% for key, color in week_cols %}
+                            <td class="{{ color }}">{{ "{:,}".format(recent[key]) }}</td>
+                            {% if key == 'sales' %}<td class="td-purple">{{ "%.2f"|format(recent.avg_per_day) }}</td>{% endif %}
+                            {% endfor %}
+                            <td class="td-green">{{ rate(recent.install_rate) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= All Time ================= -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>All Time</h2>
+            {% if profile.first_sale %}<span class="td-muted-inline">Since {{ profile.first_sale.strftime('%b %-d, %Y') }} &middot; last sale {{ 'today' if profile.days_since_last_sale == 0 else profile.last_sale.strftime('%b %-d, %Y') }}</span>{% endif %}
+        </div>
+
+        <div class="td-profile-metrics-primary">
+            {{ metric('Total Sales', "{:,}".format(all_time.sales), 'td-text-primary td-gradient-text', account_url('sales', 'all_time')) }}
+            {{ metric('Installed', "{:,}".format(all_time.installs), 'td-green', account_url('installs', 'all_time') if all_time.installs else None) }}
+            {{ metric('Install Rate', rate(all_time.install_rate), 'td-green') }}
+        </div>
+
+        <div class="td-profile-metrics-secondary">
+            {{ metric('Pending', "{:,}".format(all_time.pending), 'td-yellow', account_url('pending', 'all_time') if all_time.pending else None) }}
+            {{ metric('Needs Attention', "{:,}".format(all_time.needs_attention), 'td-magenta', account_url('needs_attention', 'all_time') if all_time.needs_attention else None) }}
+            {{ metric('Cancelled', "{:,}".format(all_time.cancels), 'td-orange', account_url('cancels', 'all_time') if all_time.cancels else None) }}
+            {{ metric('Outbound', "{:,}".format(all_time.outbound), 'td-cyan', account_url('outbound', 'all_time') if all_time.outbound else None) }}
+            {{ metric('Inbound', "{:,}".format(all_time.inbound), 'td-purple', account_url('inbound', 'all_time') if all_time.inbound else None) }}
+            {{ metric('Town Rank', '#' ~ profile.rank, 'td-yellow', None, 'of ' ~ "{:,}".format(profile.town_count) ~ ' towns · ' ~ rate(all_time.share) ~ ' of all sales') }}
+        </div>
+    </section>
+
+    <!-- ================= Monthly Sales by Status ================= -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Monthly Sales by Status</h2>
+            <span class="td-muted-inline">Last {{ profile.months|length }} month{{ '' if profile.months|length == 1 else 's' }}, by the month of the sale</span>
+        </div>
+        <div class="td-chart-card">
+            <div class="td-chart-canvas-wrap td-kn-month-status-chart">
+                <canvas data-chart-type="townStatus" data-rows='{{ profile.months|tojson }}' aria-label="Sales per month, stacked by installed, pending, needs attention and cancels"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= Top Reps & Channels ================= -->
+    <section class="td-section">
+        <div class="td-section-heading">
+            <h2>Top Reps &amp; Channels</h2>
+            <span class="td-muted-inline">Most sales in the last {{ recent.days }} days first</span>
+        </div>
+        <div class="td-activity-split">
+            <div class="td-table-card">
+                <div class="td-table-scroll">
+                    <table class="td-table td-town-profile-table" data-sortable>
+                        <thead><tr><th>Rep</th><th>Last {{ recent.days }} Days</th><th>All Time</th><th>Installed</th><th>Install Rate</th></tr></thead>
+                        <tbody>
+                            {% for rep in profile.reps %}
+                            <tr>
+                                <td class="td-rep-cell"><a class="td-rep-link" href="{{ rep.url }}">{{ rep.rep }}</a></td>
+                                <td class="td-cyan">{{ "{:,}".format(rep.recent_sales) }}</td>
+                                <td class="td-text-primary">{{ "{:,}".format(rep.sales) }}</td>
+                                <td class="td-green">{{ "{:,}".format(rep.installs) }}</td>
+                                <td class="td-green">{{ rate(rep.install_rate) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="td-table-card">
+                <div class="td-table-scroll">
+                    <table class="td-table td-town-profile-table" data-sortable>
+                        <thead><tr><th>Channel</th><th>Last {{ recent.days }} Days</th><th>All Time</th></tr></thead>
+                        <tbody>
+                            {% for channel in profile.channels %}
+                            <tr>
+                                <td class="td-rep-cell">{{ channel.channel }}</td>
+                                <td class="td-cyan">{{ "{:,}".format(channel.recent_sales) }}</td>
+                                <td class="td-text-primary">{{ "{:,}".format(channel.sales) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% if profile.rep_count > profile.reps|length %}
+        <p class="td-town-profile-note">Showing the top {{ profile.reps|length }} of {{ profile.rep_count }} reps.</p>
+        {% endif %}
+    </section>
+    {% endif %}
+
+</div>
+</body>
+</html>

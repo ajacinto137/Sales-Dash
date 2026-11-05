@@ -1120,6 +1120,18 @@ Each source fails independently (a notice replaces its sections). Card
 number/CVV/expiry/bank fields are never queried; only pay method + last 4.
 To drop a field, delete its line in the matching `_fields([...])` list.
 
+## Town Profile Page
+
+`/dashboard/town?town=&state=&source=`, opened from a town's name in Sales by Town on the Team Leaderboard (`town_profile()` in `app.py`, `calculate_town_profile()` in `sales_metrics.py`, `templates/town_profile.html`). `source` follows that section's Internal / Door Knockers / Combined dropdown and can be changed on the page. The page has no period filter; a `period` carried from the dashboard only feeds the Back link.
+
+- **Last 90 Days** — the last 90 days including today (Eastern). Avg Sales / Day = sales ÷ 90, Avg Sales / Week = that × 7, plus total sales, change vs the 90 days before, best week and install rate.
+- **Weekly Breakdown** — Monday–Sunday weeks clipped to the 90-day window, so they add up to its total and the first and last weeks are usually partial (the table shows their day count). Chart stacked by status plus a table, newest week first.
+- **All Time** — the same counts as the town's Sales by Town row at All Time, plus its rank among towns and share of sales.
+- **Monthly Sales by Status** — last 12 months with sales history, by sale month.
+- **Top Reps & Channels** — top 10 reps and every channel, most sales in the last 90 days first.
+
+Counts open the town's Bulk Account View (`?view=town`) for exactly that date range. `from_profile=1` hides its period form and points Back at the profile.
+
 ## Rep Profile Page — Section Names
 
 Clicking a rep's name in the Individual Rep Leaderboard table (`.td-rep-link`) opens

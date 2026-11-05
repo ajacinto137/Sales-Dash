@@ -764,8 +764,9 @@
          Every count opens a team-wide Bulk Account View (?view=town).
          Internal / Door Knockers / Combined dropdown (2026-10-28): one
          block per source, each with its own All / per-state toggle;
-         Combined counts an order in both datasets once. -->
-    <section class="td-section">
+         Combined counts an order in both datasets once. A town's name
+         opens its Town Profile (2026-11-05). -->
+    <section class="td-section" id="sales-by-town">
         <div class="td-section-heading">
             <h2>Sales by Town</h2>
             <span class="td-muted-inline">{{ period|replace('_', ' ')|title if period != 'custom' else 'Custom range' }} &middot; city on the order</span>
@@ -814,7 +815,7 @@
                         {% for row in tb.rows %}
                         <tr>
                             <td class="td-rank" data-sort-value="{{ loop.index }}">{{ loop.index }}</td>
-                            <td class="td-rep-cell">{{ row.town }}</td>
+                            <td class="td-rep-cell"><a class="td-rep-link" href="{{ url_for('town_profile', town=row.town, state=row.state, source=source, period=period, start=custom_start, end=custom_end) }}">{{ row.town }}</a></td>
                             <td>{{ row.state or '—' }}</td>
                             {% for metric, _, color in town_cols %}
                             <td class="{{ color }}" data-sort-value="{{ row[metric] }}">

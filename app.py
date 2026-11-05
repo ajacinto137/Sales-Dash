@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+import calendar
 import os
 import threading
 import time
@@ -62,6 +63,7 @@ from sales_metrics import (
     TOWN_SOURCE_KEYS,
     town_source_df,
     get_town_account_view,
+    calculate_town_profile,
     calculate_monthly_sales_by_status,
     MONTHLY_SALES_STATUSES,
     get_month_status_account_view,
@@ -1852,6 +1854,7 @@ def all_sales_view():
     period = request.args.get("period", "today")
     custom_start = request.args.get("start", "")
     custom_end = request.args.get("end", "")
+    back_url = back_label = None
 
     # "channel" and "date" are runtime-parameterized drill-downs -- same
     # reasoning as their rep-scoped counterparts in bulk_account_view()
@@ -1897,13 +1900,20 @@ def all_sales_view():
         source_df = town_source_df(source, normalized, knocker_df)
         if source_df is None:
             abort(503)
-        view_title, accounts = get_town_account_view(
-            source_df, request.args.get("town", ""), request.args.get("state", ""),
-            request.args.get("metric", "sales"), period, custom_start, custom_end,
-        )
+        town, town_state = request.args.get("town", ""), request.args.get("state", "")
+        # Town Profile's status charts append &status=<segment>, which
+        # names Installed differently from the metric.
+        status = request.args.get("status")
+        metric = {"installed": "installs"}.get(status, status) or request.args.get("metric", "sales")
+        view_title, accounts = get_town_account_view(source_df, town, town_state, metric, period, custom_start, custom_end)
         if source != "internal":
             view_title = f"{view_title} ({dict(TOWN_SOURCES)[source]})"
-        all_time = False
+        # From the Town Profile the date range comes from what was clicked,
+        # so there's no period form and Back returns to the profile.
+        all_time = "from_profile" in request.args
+        if all_time:
+            back_url = url_for("town_profile", town=town, state=town_state, source=source)
+            back_label = f"Back to {town}"
     elif view == "month_status":
         # Monthly Sales by Status segment click (added 2026-10-27) --
         # all-time, scoped to the chart's Team/state panel.
@@ -1946,9 +1956,73 @@ def all_sales_view():
         custom_start=custom_start,
         custom_end=custom_end,
         all_time=all_time,
+        back_url=back_url,
+        back_label=back_label,
         attention_available=attention_available,
         attention_progress=attention_progress,
         attention_statuses=attention_store.ATTENTION_STATUSES,
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/dashboard/town")
+@auth.login_required
+def town_profile():
+    """Town Profile (added 2026-11-05, by request), opened from a town's
+    name in Sales by Town. ?source= carries that section's Internal / Door
+    Knockers / Combined dropdown; ?period/start/end only feed the Back link,
+    since the page's own windows are fixed (all time and the last 90 days)."""
+    ensure_data_loaded()
+
+    town = request.args.get("town", "")
+    state = request.args.get("state", "")
+    if not town:
+        abort(404)
+    source = request.args.get("source", "internal")
+    if source not in TOWN_SOURCE_KEYS:
+        source = "internal"
+
+    normalized = get_normalized_sales()
+    knocker_df = _load_knockers_or_error()[0]
+    source_df = town_source_df(source, normalized, knocker_df)
+    if source_df is None:
+        abort(503)
+    profile = calculate_town_profile(source_df, town, state)
+
+    def account_url(metric, period, start=None, end=None):
+        return url_for("all_sales_view", view="town", town=town, state=state, metric=metric, source=source,
+                       period=period, start=start, end=end, from_profile=1)
+
+    if profile:
+        for week in profile["weeks"]:
+            week["url"] = account_url("sales", "custom", week["start"], week["end"])
+        for month in profile["months"]:
+            last_day = calendar.monthrange(month["year"], month["month"])[1]
+            month["name"] = month["label"]
+            month["start"] = f"{month['year']:04d}-{month['month']:02d}-01"
+            month["end"] = f"{month['year']:04d}-{month['month']:02d}-{last_day:02d}"
+            month["url"] = account_url("sales", "custom", month["start"], month["end"])
+        internal_reps = set(normalized["sales_rep"].unique()) if normalized is not None else set()
+        for rep in profile["reps"]:
+            if rep["rep"] in internal_reps:
+                rep["url"] = url_for("rep_profile", rep_name=rep["rep"])
+            else:
+                rep["url"] = url_for("knocker_profile", code=rep["rep"])
+
+    return render_template(
+        "town_profile.html",
+        active_page="dashboard",
+        town=town,
+        state=state,
+        source=source,
+        source_label=dict(TOWN_SOURCES)[source],
+        town_sources=[(key, label) for key, label in TOWN_SOURCES
+                      if key == "internal" or knocker_df is not None],
+        profile=profile,
+        account_url=account_url,
+        back_period=request.args.get("period"),
+        back_start=request.args.get("start"),
+        back_end=request.args.get("end"),
         last_refreshed=data_store["last_refreshed"],
     )
 

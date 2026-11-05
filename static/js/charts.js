@@ -1359,6 +1359,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.querySelectorAll('canvas[data-chart-type="blitzDaily"]').forEach((el) => createBlitzDailyChart(el, tokens));
     document.querySelectorAll('canvas[data-chart-type="statusStacked"]').forEach((el) => createStatusStackedChart(el, tokens));
+    // Town Profile: always visible, so no toggle wiring to create them.
+    document.querySelectorAll('canvas[data-chart-type="townStatus"]').forEach((el) => createMonthlyStatusChart(el, tokens));
 
     wireChartToggle(document.getElementById("channel-hourly-toggle"));
     wireChartToggle(document.getElementById("team-channel-hourly-toggle"));
