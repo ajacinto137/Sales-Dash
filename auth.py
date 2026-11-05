@@ -53,11 +53,17 @@ def current_user():
     return user
 
 
+def _return_path():
+    """Where login sends the visitor back to, query string included (a Town
+    Profile link means nothing without its ?town=)."""
+    return request.full_path.rstrip("?")
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if current_user() is None:
-            return redirect(url_for("login", next=request.path))
+            return redirect(url_for("login", next=_return_path()))
         return view(*args, **kwargs)
     return wrapped
 
@@ -67,7 +73,7 @@ def admin_required(view):
     def wrapped(*args, **kwargs):
         user = current_user()
         if user is None:
-            return redirect(url_for("login", next=request.path))
+            return redirect(url_for("login", next=_return_path()))
         if user.get("role") != "Admin":
             abort(403)
         return view(*args, **kwargs)
