@@ -33,6 +33,7 @@ import marketing_metrics
 import needs_attention_service
 import order_search
 import parcel_map
+import passing_batches
 import passings_activity_store
 import passings_cache
 import passings_classification
@@ -3045,6 +3046,24 @@ def admin_lead_feeder_refresh():
     threading.Thread(target=lead_feeder_store.refresh, daemon=True).start()
     flash("Refreshing the lead pool from HubSpot. Reload in a minute.", "ok")
     return redirect(url_for("admin_lead_feeder"))
+
+
+@app.route("/tools/passing-batches")
+@auth.login_required
+def passing_batches_page():
+    """Passing Batches (added 2026-11-06) -- weekly release batches per town
+    and their Organic sales by week. Data and rules: passing_batches.py."""
+    batches, load_error = passing_batches.load_batches()
+    return render_template(
+        "passing_batches.html",
+        active_page="tools",
+        batches=batches,
+        summary=passing_batches.summarize(batches or []),
+        load_error=load_error,
+        days_back=passing_batches.DAYS_BACK,
+        release_line=passing_batches.RELEASE_LINE,
+        min_batch=passing_batches.MIN_BATCH,
+    )
 
 
 @app.route("/tools/parcel-map")

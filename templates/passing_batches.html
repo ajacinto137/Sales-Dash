@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Passing Batches — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Passing Batches (Tools menu, added 2026-11-06). Data and rules: passing_batches.py. #}
+
+{% macro batch_table(rows) %}
+    <div class="td-batch-card">
+        <div class="td-batch-scroll">
+            <table class="td-batch-table">
+                <thead>
+                    <tr>
+                        <th scope="col" class="td-batch-name-col">Batch</th>
+                        <th scope="col">Passings</th>
+                        <th scope="col">Status</th>
+                        {% for week in range(1, summary.week_columns + 1) %}<th scope="col">Week {{ week }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for batch in rows %}
+                    <tr class="{{ 'td-batch-row-small' if batch.status == 'small' }}">
+                        <th scope="row" class="td-batch-name-col">{{ batch.name }}</th>
+                        <td class="td-batch-count">{{ "{:,}".format(batch.passings) }}</td>
+                        <td class="td-batch-status td-batch-status-{{ batch.status }}">
+                            {% if batch.status == 'small' %}Small batch
+                            {% else %}{{ 'Under' if batch.status == 'under' else 'Above' }} {{ "%g"|format(release_line) }}% &middot; Week {{ batch.running.number }} so far{% endif %}
+                        </td>
+                        {% for week in batch.weeks %}
+                        <td class="td-batch-week{{ ' td-batch-week-running' if not week.final }}">
+                            <span class="td-batch-rate {{ 'td-batch-rate-high' if week.rate >= 10 else 'td-batch-rate-mid' if week.rate >= release_line else 'td-batch-rate-low' }}">{{ "%.1f"|format(week.rate) }}%</span>
+                            <span class="td-batch-sales">{{ week.sales }} {{ 'sale' if week.sales == 1 else 'sales' }}{{ ' so far' if not week.final }}</span>
+                        </td>
+                        {% endfor %}
+                        {% for _ in range(summary.week_columns - batch.weeks|length) %}<td class="td-batch-week td-batch-week-empty" aria-label="Not started">—</td>{% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endmacro %}
+
+<div class="td-page">
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Passing Batches</h1>
+            <p class="td-muted-inline">
+                Passings released in the last {{ days_back }} days, grouped by town and release week &middot;
+                each week shows Organic sales ÷ total batch &middot; calendar weeks, Monday to Sunday &middot; Week 1 is the release week
+            </p>
+        </div>
+    </header>
+
+    {% if load_error %}<p class="td-batch-warning" role="status">{{ load_error }}{% if batches is not none %} Showing the last data loaded.{% endif %}</p>{% endif %}
+
+    {% if batches %}
+    <section class="td-kpi-bar td-batch-kpis" aria-label="Batch summary">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Batches</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(summary.batches) }}</span>
+            <span class="td-kpi-note">town and release week</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Passings</span>
+            <span class="td-kpi-value td-purple">{{ "{:,}".format(summary.passings) }}</span>
+            <span class="td-kpi-note">released in these batches</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Under {{ "%g"|format(release_line) }}%</span>
+            <span class="td-kpi-value td-green">{{ "{:,}".format(summary.under) }}</span>
+            <span class="td-kpi-note">running week, so far</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Above {{ "%g"|format(release_line) }}%</span>
+            <span class="td-kpi-value td-yellow">{{ "{:,}".format(summary.above) }}</span>
+            <span class="td-kpi-note">running week, so far</span>
+        </div>
+    </section>
+
+    <div class="td-batch-legend">
+        <span><i class="td-batch-swatch td-batch-swatch-running"></i>Current week, sales so far</span>
+    </div>
+
+    {{ batch_table(batches | rejectattr("status", "equalto", "small") | list) }}
+
+    {% set small_batches = batches | selectattr("status", "equalto", "small") | list %}
+    {% if small_batches %}
+    <details class="td-batch-small">
+        <summary>{{ small_batches | length }} small batches, under {{ min_batch }} passings ({{ small_batches | sum(attribute="passings") }} passings total)</summary>
+        {{ batch_table(small_batches) }}
+    </details>
+    {% endif %}
+    {% elif batches is not none %}
+    <p class="td-muted-inline">No passings were released in the last {{ days_back }} days.</p>
+    {% endif %}
+</div>
+</body>
+</html>
