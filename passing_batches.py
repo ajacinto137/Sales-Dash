@@ -8,7 +8,9 @@ so a batch only ever has one running week). A late-week release therefore has
 a short Week 1, and more of its early sales land in Week 2. A week is final
 once its Sunday has passed. Status compares the running week, the current
 calendar week, with the release line. Organic is parcel_map's rule: every
-quoted order that isn't a door knocker's.
+quoted order that isn't a door knocker's. Orders link to passings by property
+ID. A few passings share one, so a sale goes to the first passing released on
+that property, and is never counted twice.
 """
 
 import threading
@@ -27,9 +29,14 @@ MIN_BATCH = 50      # below this, one sale swings the rate across the line
 REFRESH_SECONDS = 1800
 
 _PASSINGS_QUERY = (
-    f"{passings_data._BASE_CTE} SELECT PlaceID, BecameAvailable, Municipality, City "
+    f"{passings_data._BASE_CTE} SELECT PlaceID, BecameAvailable, Municipality, City, PropertyID "
     "FROM passings_base WHERE BecameAvailable IS NOT NULL"
 )
+_ORDERS_QUERY = """
+SELECT LTRIM(RTRIM(Property_ID)), ReferralData, CAST(InsertDate AS date)
+FROM [PlanetWeb].[dbo].[FTTPFormData]
+WHERE QuoteID IS NOT NULL AND NULLIF(LTRIM(RTRIM(Property_ID)), '') IS NOT NULL
+"""
 
 _lock = threading.Lock()
 _state = {"data": None, "loaded_at": 0.0}
@@ -48,8 +55,8 @@ def _town(municipality, city):
     return name.title()
 
 
-def _batch_row(town, monday, releases, weekly_sales, today):
-    passings = len(releases)
+def _batch_row(town, monday, place_ids, weekly_sales, today):
+    passings = len(place_ids)
     weeks = []
     for week in range((today - monday).days // 7 + 1):
         sales = weekly_sales[week]
@@ -71,6 +78,9 @@ def _batch_row(town, monday, releases, weekly_sales, today):
         "town": town,
         "week_of": monday,
         "passings": passings,
+        "place_ids": place_ids,
+        "organic_sales": sum(week["sales"] for week in weeks),
+        "organic_rate": sum(week["rate"] for week in weeks),
         "weeks": weeks,
         "status": status,
         "running": running,
@@ -90,7 +100,7 @@ def build_batches(passings, organic_sales, today):
             continue
         monday = week_start(released)
         key = (_town(municipality, city), monday)
-        releases.setdefault(key, []).append(released)
+        releases.setdefault(key, []).append(place_id)
         counts = weekly_sales.setdefault(key, Counter())
         for sale in organic_sales.get(place_id, []):
             sold = date.fromisoformat(sale)
@@ -103,6 +113,30 @@ def build_batches(passings, organic_sales, today):
     ]
     batches.sort(key=lambda b: (b["week_of"], b["passings"]), reverse=True)
     return batches
+
+
+def sales_by_passing(passings, sales_by_property):
+    """{place_id: sale dates} from [(PlaceID, BecameAvailable, Municipality,
+    City, PropertyID), ...] and {property_id: sale dates}. Each property's
+    sales go to its first-released passing (lowest PlaceID on a tie)."""
+    first_passing = {}
+    for place_id, became_available, _municipality, _city, property_id in passings:
+        property_id = property_id.strip() if isinstance(property_id, str) else ""
+        if not property_id:
+            continue
+        rank = (_as_date(became_available), place_id)
+        if property_id not in first_passing or rank < first_passing[property_id]:
+            first_passing[property_id] = rank
+    return {
+        rank[1]: sales_by_property[property_id]
+        for property_id, rank in first_passing.items()
+        if property_id in sales_by_property
+    }
+
+
+def find_batch(batches, town, week):
+    """The batch for a town and its release Monday ("YYYY-MM-DD"), or None."""
+    return next((b for b in batches if b["town"] == town and b["week_of"].isoformat() == week), None)
 
 
 def summarize(batches):
@@ -122,10 +156,11 @@ def _fetch():
         cursor = conn.cursor()
         cursor.execute(parcel_map._REP_TOKENS_QUERY)
         rep_codes = internal_rep_codes(row[0] for row in cursor.fetchall())
-        cursor.execute(parcel_map._ORDERS_QUERY)
-        organic_sales = parcel_map.organic_sale_dates(cursor.fetchall(), rep_codes)
+        cursor.execute(_ORDERS_QUERY)
+        sales_by_property = parcel_map.organic_sale_dates(cursor.fetchall(), rep_codes)
         cursor.execute(_PASSINGS_QUERY)
-        return [tuple(row) for row in cursor.fetchall()], organic_sales
+        passings = [tuple(row) for row in cursor.fetchall()]
+        return [row[:4] for row in passings], sales_by_passing(passings, sales_by_property)
     finally:
         conn.close()
 

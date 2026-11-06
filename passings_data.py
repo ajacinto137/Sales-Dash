@@ -226,6 +226,7 @@ passings_base AS (
         p.Counter_AddressUnits AS AddressUnits,
         -- Parcel Map only (parcel_map.py).
         p.MunicipalityName AS Municipality,
+        p.PropertyID AS PropertyID,
         COALESCE(p.Parcel_Latitude, p.Rooftop_Latitude) AS Latitude,
         COALESCE(p.Parcel_Longitude, p.Rooftop_Longitude) AS Longitude,
         CASE WHEN bf.NJPR_PlaceID IS NOT NULL THEN 1 ELSE 0 END AS PrequalAsBusiness,

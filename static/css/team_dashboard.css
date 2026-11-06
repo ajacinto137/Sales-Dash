@@ -4200,3 +4200,11 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-batch-row-small .td-batch-name-col,
 .td-batch-row-small .td-batch-count,
 .td-batch-row-small .td-batch-rate { color: var(--td-text-muted); }
+
+/* Batch Profile (added 2026-11-06) */
+.td-batch-name-link { color: inherit; text-decoration: none; }
+.td-batch-name-link:hover { color: var(--td-cyan); text-decoration: underline; }
+.td-batch-profile-weeks { margin-bottom: 16px; }
+.td-batch-profile-weeks .td-batch-scroll { max-height: none; }
+.td-batch-show { width: fit-content; margin-bottom: 12px; }
+.td-batch-show a { text-decoration: none; }

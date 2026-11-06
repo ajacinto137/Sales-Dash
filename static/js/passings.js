@@ -211,7 +211,15 @@ document.addEventListener("DOMContentLoaded", function () {
         var submitBtn = checkoutBar.querySelector("[data-checkout-submit]");
         var messageEl = checkoutBar.querySelector("[data-checkout-message]");
 
+        // Select All (Batch Profile only): every card in the view across
+        // all pages, from the server. `everything` holds those ids, and
+        // ticking or unticking a card edits it.
+        var everythingBtn = checkoutBar.querySelector("[data-checkout-select-everything]");
+        var everything = null;
+        var skipped = 0;
+
         var selectedIds = function () {
+            if (everything) return Object.keys(everything);
             var ids = {};
             boxes.forEach(function (box) { if (box.checked) ids[box.value] = true; });
             return Object.keys(ids);
@@ -219,6 +227,10 @@ document.addEventListener("DOMContentLoaded", function () {
         var refresh = function () {
             var n = selectedIds().length;
             countEl.textContent = n + " selected";
+            if (everything) {
+                countEl.textContent += " across all pages" + (skipped ? " · " + skipped + " already checked out left out" : "");
+            }
+            if (everythingBtn) everythingBtn.textContent = everything ? "Clear All" : "Select All";
             submitBtn.disabled = n === 0 || !repSelect.value;
             var all = boxes.length > 0 && Array.prototype.every.call(boxes, function (b) { return b.checked; });
             selectAll.checked = all;
@@ -228,23 +240,64 @@ document.addEventListener("DOMContentLoaded", function () {
                 document.querySelectorAll('[data-checkout-select][value="' + box.value + '"]').forEach(function (other) {
                     other.checked = box.checked;
                 });
+                if (everything) {
+                    if (box.checked) everything[box.value] = true;
+                    else delete everything[box.value];
+                }
                 refresh();
             });
         });
         selectAll.addEventListener("change", function () {
+            everything = null;
             boxes.forEach(function (box) { box.checked = selectAll.checked; });
             refresh();
         });
+        if (everythingBtn) {
+            everythingBtn.addEventListener("click", function () {
+                showError(messageEl, "");
+                if (everything) {
+                    everything = null;
+                    boxes.forEach(function (box) { box.checked = false; });
+                    refresh();
+                    return;
+                }
+                everythingBtn.disabled = true;
+                fetch(everythingBtn.getAttribute("data-checkout-select-everything"))
+                    .then(function (res) {
+                        return res.json().then(function (data) {
+                            if (!res.ok || !data.ok) throw new Error(data.error || "Could not select all.");
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        everything = {};
+                        data.place_ids.forEach(function (id) { everything[id] = true; });
+                        skipped = data.skipped;
+                        boxes.forEach(function (box) { box.checked = !!everything[box.value]; });
+                        refresh();
+                    })
+                    .catch(function (err) { showError(messageEl, err.message || "Could not select all."); })
+                    .then(function () { everythingBtn.disabled = false; });
+            });
+        }
         repSelect.addEventListener("change", refresh);
         submitBtn.addEventListener("click", function () {
             var ids = selectedIds();
             if (!ids.length || !repSelect.value) return;
             submitBtn.disabled = true;
             showError(messageEl, "");
-            postJson("/passings/checkout", { place_ids: ids, sales_rep_id: repSelect.value })
+            // The server takes 500 per request (MAX_CHECKOUT_BATCH).
+            var done = 0;
+            var sendNext = function () {
+                if (done >= ids.length) return Promise.resolve();
+                var chunk = ids.slice(done, done + 500);
+                return postJson("/passings/checkout", { place_ids: chunk, sales_rep_id: repSelect.value })
+                    .then(function () { done += chunk.length; return sendNext(); });
+            };
+            sendNext()
                 .then(function () { window.location.reload(); })
                 .catch(function (err) {
-                    showError(messageEl, err.message);
+                    showError(messageEl, (done ? "Checked out " + done + " of " + ids.length + ". " : "") + err.message);
                     refresh();
                 });
         });

@@ -88,3 +88,39 @@ def test_summary_counts():
 
 def test_passings_use_the_passings_definition():
     assert "p.IsPlanetImproved = 1" in pb._PASSINGS_QUERY
+
+
+def test_a_batch_keeps_its_place_ids_and_organic_totals():
+    sales = {0: ["2026-10-20"], 1: ["2026-10-27"], 2: ["2026-10-28"]}
+    batch = pb.build_batches(passings(100, date(2026, 10, 19)), sales, TODAY)[0]
+    assert batch["place_ids"] == list(range(100))
+    assert batch["organic_sales"] == 3
+    assert batch["organic_rate"] == 3.0
+
+
+def test_find_batch_matches_town_and_release_monday():
+    rows = passings(60, date(2026, 10, 19)) + passings(60, date(2026, 10, 26), start=100)
+    batches = pb.build_batches(rows, {}, TODAY)
+    assert pb.find_batch(batches, "Hopatcong", "2026-10-26")["place_ids"][0] == 100
+    assert pb.find_batch(batches, "Hopatcong", "2026-10-27") is None
+    assert pb.find_batch(batches, "Hardyston", "2026-10-26") is None
+
+
+def test_sales_link_by_property_id():
+    rows = [(1, date(2026, 10, 19), "A", None, " PROP-1 "), (2, date(2026, 10, 19), "A", None, "PROP-2")]
+    sales = {"PROP-1": ["2026-10-20"], "OTHER": ["2026-10-20"]}
+    assert pb.sales_by_passing(rows, sales) == {1: ["2026-10-20"]}
+
+
+def test_a_shared_property_credits_only_its_first_released_passing():
+    rows = [
+        (5, date(2026, 10, 22), "A", None, "PROP-1"),
+        (9, datetime(2026, 10, 19, 8), "A", None, "PROP-1"),
+        (3, date(2026, 10, 19), "A", None, "PROP-1"),
+    ]
+    assert pb.sales_by_passing(rows, {"PROP-1": ["2026-10-20", "2026-10-21"]}) == {3: ["2026-10-20", "2026-10-21"]}
+
+
+def test_a_passing_with_no_property_id_gets_no_sales():
+    rows = [(1, date(2026, 10, 19), "A", None, None), (2, date(2026, 10, 19), "A", None, "  ")]
+    assert pb.sales_by_passing(rows, {"": ["2026-10-20"]}) == {}

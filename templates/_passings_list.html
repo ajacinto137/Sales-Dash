@@ -16,6 +16,9 @@
      preserves every other active filter by merging `request.args` rather
      than hand-listing each of the ~18 possible query params. -->
 {% set rows = page_result.rows %}
+{# Sort and page links stay on the page showing this list (/passings or a
+   Batch Profile), keeping its URL parts and query string. #}
+{% set list_args = dict(request.view_args, **request.args.to_dict()) %}
 {% if rows %}
 <div class="td-bulk-view" data-bulk-view>
 
@@ -24,6 +27,10 @@
            "Checked Out" tab; they stay here too. static/js/passings.js. #}
         <div class="td-checkout-bar" data-checkout-bar>
             <label class="td-checkout-select-all"><input type="checkbox" data-checkout-select-all> Select page</label>
+            {% if select_all_url %}
+            <button type="button" class="td-btn td-btn-ghost" data-checkout-select-everything="{{ select_all_url }}"
+                    title="Select every card in this view, on all pages, except ones already checked out">Select All</button>
+            {% endif %}
             <span class="td-muted-inline" data-checkout-count>0 selected</span>
             <select class="td-select" data-checkout-rep aria-label="Sales rep to check out to">
                 <option value="">Check out to…</option>
@@ -55,7 +62,7 @@
                     <tr>
                         {% macro sort_th(key, label) %}
                         {% set next_dir = 'asc' if (selected.sort == key and selected.dir == 'desc') else 'desc' %}
-                        <th><a class="td-sort-link" href="{{ url_for('passings_page', **dict(request.args.to_dict(), sort=key, dir=next_dir, page=1)) }}">{{ label }}{% if selected.sort == key %} {{ '▲' if selected.dir == 'asc' else '▼' }}{% endif %}</a></th>
+                        <th><a class="td-sort-link" href="{{ url_for(request.endpoint, **dict(list_args, sort=key, dir=next_dir, page=1)) }}">{{ label }}{% if selected.sort == key %} {{ '▲' if selected.dir == 'asc' else '▼' }}{% endif %}</a></th>
                         {% endmacro %}
                         <th class="td-checkout-col"></th>
                         {{ sort_th('address', 'Address') }}
@@ -115,12 +122,12 @@
     <span class="td-muted-inline">Page {{ page_result.page }} of {{ page_result.total_pages }}</span>
     <div class="td-marketing-pagination-btns">
         {% if page_result.page > 1 %}
-        <a class="td-btn td-btn-ghost" href="{{ url_for('passings_page', **dict(request.args.to_dict(), page=page_result.page - 1)) }}">&larr; Prev</a>
+        <a class="td-btn td-btn-ghost" href="{{ url_for(request.endpoint, **dict(list_args, page=page_result.page - 1)) }}">&larr; Prev</a>
         {% else %}
         <span class="td-btn td-btn-ghost td-btn-disabled">&larr; Prev</span>
         {% endif %}
         {% if page_result.page < page_result.total_pages %}
-        <a class="td-btn td-btn-ghost" href="{{ url_for('passings_page', **dict(request.args.to_dict(), page=page_result.page + 1)) }}">Next &rarr;</a>
+        <a class="td-btn td-btn-ghost" href="{{ url_for(request.endpoint, **dict(list_args, page=page_result.page + 1)) }}">Next &rarr;</a>
         {% else %}
         <span class="td-btn td-btn-ghost td-btn-disabled">Next &rarr;</span>
         {% endif %}

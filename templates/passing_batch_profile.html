@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ batch.name }} — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/passings.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Batch Profile (added 2026-11-06). Opened from a batch name on Passing
+   Batches. Cards and Check Out are the shared /passings list. #}
+{% set order_colors = {'Completed Order': 'td-green', 'Install Scheduled': 'td-cyan', 'Needs Attention': 'td-orange',
+                       'Not Scheduled': 'td-yellow', 'Order Cancelled': 'td-magenta', 'No Order': 'td-purple'} %}
+<div class="td-page">
+    <a class="td-back-link" href="{{ url_for('passing_batches_page') }}">&larr; Back to Passing Batches</a>
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">{{ batch.name }}</h1>
+            <p class="td-muted-inline">
+                Released the week of {{ batch.week_of.strftime('%b') }} {{ batch.week_of.day }}, {{ batch.week_of.year }} &middot;
+                {% if batch.status == 'small' %}Small batch, no status call
+                {% else %}{{ 'Under' if batch.status == 'under' else 'Above' }} {{ "%g"|format(release_line) }}% in Week {{ batch.running.number }} so far{% endif %}
+            </p>
+        </div>
+    </header>
+
+    {% if load_error %}<p class="td-batch-warning" role="status">{{ load_error }} Showing the last data loaded.</p>{% endif %}
+
+    <section class="td-kpi-bar td-batch-kpis" aria-label="Batch metrics">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Passings</span>
+            <span class="td-kpi-value td-purple">{{ "{:,}".format(batch.passings) }}</span>
+            <span class="td-kpi-note">in this batch</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Leads</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(kpis.total_leads) }}</span>
+            <span class="td-kpi-note">{{ "%.1f"|format(kpis.lead_penetration_pct) }}% of passings</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Organic Sales</span>
+            <span class="td-kpi-value td-green">{{ "{:,}".format(batch.organic_sales) }}</span>
+            <span class="td-kpi-note">{{ "%.1f"|format(batch.organic_rate) }}% of batch since release</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Week {{ batch.running.number }} Rate</span>
+            <span class="td-kpi-value {{ 'td-yellow' if batch.running.rate >= release_line else 'td-green' }}">{{ "%.1f"|format(batch.running.rate) }}%</span>
+            <span class="td-kpi-note">{{ batch.running.sales }} {{ 'sale' if batch.running.sales == 1 else 'sales' }} so far</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Checked Out</span>
+            <span class="td-kpi-value td-magenta">{{ "{:,}".format(checked_out_count) }}</span>
+            <span class="td-kpi-note">of {{ "{:,}".format(batch.passings) }} passings</span>
+        </div>
+    </section>
+
+    <section class="td-kpi-bar td-batch-kpis" aria-label="Lead mix">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Residential Leads</span>
+            <span class="td-kpi-value td-cyan">{{ "{:,}".format(kpis.residential_leads) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Commercial Hot Leads</span>
+            <span class="td-kpi-value td-orange">{{ "{:,}".format(kpis.commercial_hot_leads) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Commercial Field Targets</span>
+            <span class="td-kpi-value td-yellow">{{ "{:,}".format(kpis.commercial_field_targets) }}</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Outreach Coverage</span>
+            <span class="td-kpi-value td-green">{{ "%.1f"|format(kpis.outreach_coverage_pct) }}%</span>
+            <span class="td-kpi-note">{{ "{:,}".format(kpis.actionable_with_activity) }} of {{ "{:,}".format(kpis.actionable_total) }} worked</span>
+        </div>
+    </section>
+
+    {% if order_counts %}
+    <section class="td-kpi-bar td-batch-kpis" aria-label="Order status">
+        {% for status, count in order_counts %}
+        <div class="td-kpi">
+            <span class="td-kpi-label">{{ status }}</span>
+            <span class="td-kpi-value {{ order_colors[status] }}">{{ "{:,}".format(count) }}</span>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <div class="td-batch-card td-batch-profile-weeks">
+        <div class="td-batch-scroll">
+            <table class="td-batch-table">
+                <thead>
+                    <tr>{% for week in batch.weeks %}<th scope="col">Week {{ week.number }}</th>{% endfor %}</tr>
+                </thead>
+                <tbody>
+                    <tr>{% for week in batch.weeks %}{% include "_passing_batch_week.html" %}{% endfor %}</tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="td-section-heading">
+        <h2>Passings</h2>
+    </div>
+    <div class="td-chart-toggle td-batch-show">
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'all' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town) }}">All Passings</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'leads' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show='leads') }}">Leads</a>
+    </div>
+
+    {% if not hubspot_calls_available %}
+    <p class="td-muted-inline">HubSpot call counts are temporarily unavailable.</p>
+    {% endif %}
+    {% if not last_activity_available %}
+    <p class="td-muted-inline">Activity status is temporarily unavailable -- every record below shows as No Activity until this is restored.</p>
+    {% endif %}
+
+    {% include "_passings_list.html" %}
+</div>
+</body>
+</html>

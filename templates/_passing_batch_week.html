@@ -1,0 +1,5 @@
+{# One week cell of a batch (Passing Batches, Batch Profile). Expects `week` and `release_line`. #}
+<td class="td-batch-week{{ ' td-batch-week-running' if not week.final }}">
+    <span class="td-batch-rate {{ 'td-batch-rate-high' if week.rate >= 10 else 'td-batch-rate-mid' if week.rate >= release_line else 'td-batch-rate-low' }}">{{ "%.1f"|format(week.rate) }}%</span>
+    <span class="td-batch-sales">{{ week.sales }} {{ 'sale' if week.sales == 1 else 'sales' }}{{ ' so far' if not week.final }}</span>
+</td>

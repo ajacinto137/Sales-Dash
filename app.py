@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 import calendar
 import os
@@ -1422,6 +1423,20 @@ def rep_profile(rep_name):
     )
 
 
+def _all_passing_rows(source, filters):
+    """Every Passings & Leads row matching filters, or None if a page
+    couldn't be read."""
+    rows, page = [], 1
+    while True:
+        result = source.get_page(filters, None, "place_id", "asc", page)
+        if not result.get("ok"):
+            return None
+        rows.extend(result["rows"])
+        if page >= result["total_pages"]:
+            return rows
+        page += 1
+
+
 def _checked_out_passings(rep_name):
     """(available, rows, hubspot_calls_available) for the Rep Profile's
     Checked Out tab: the Passings & Leads rows checked out to this rep,
@@ -1434,15 +1449,9 @@ def _checked_out_passings(rep_name):
     source = passings_cache if passings_cache.wait_until_ready(20) else passings_data
     _, residential_marks = passings_activity_store.get_residential_marks()
     filters = {"place_id_in": sorted(checkouts), "residential_ids": set(residential_marks)}
-    rows, page = [], 1
-    while True:
-        result = source.get_page(filters, None, "place_id", "asc", page)
-        if not result.get("ok"):
-            return False, [], False
-        rows.extend(result["rows"])
-        if page >= result["total_pages"]:
-            break
-        page += 1
+    rows = _all_passing_rows(source, filters)
+    if rows is None:
+        return False, [], False
     billed_uuids = _billed_subscriber_uuids()
     order_statuses = (
         passings_cache.order_statuses(billed_uuids)
@@ -3064,6 +3073,99 @@ def passing_batches_page():
         release_line=passing_batches.RELEASE_LINE,
         min_batch=passing_batches.MIN_BATCH,
     )
+
+
+@app.route("/tools/passing-batches/<week>/<path:town>")
+@auth.login_required
+def passing_batch_profile(week, town):
+    """Batch Profile (added 2026-11-06) -- one batch's metrics plus its
+    Passings & Leads cards, with the same Check Out as /passings."""
+    batches, load_error = passing_batches.load_batches()
+    if batches is None:
+        return redirect(url_for("passing_batches_page"))
+    batch = passing_batches.find_batch(batches, town, week)
+    if batch is None:
+        abort(404)
+
+    show = "leads" if request.args.get("show") == "leads" else "all"
+    sort_key = request.args.get("sort", "became_available")
+    sort_dir = request.args.get("dir", "desc")
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+
+    passings_cache.start_scheduler()
+    source = passings_cache if passings_cache.wait_until_ready(20) else passings_data
+    _, residential_marks = passings_activity_store.get_residential_marks()
+    filters = {"place_id_in": batch["place_ids"], "residential_ids": set(residential_marks)}
+    kpis = source.get_kpis(filters, activity_place_ids=passings_activity_store.get_all_place_ids_with_activity())
+    page_result = source.get_page(
+        {**filters, "has_lead": True if show == "leads" else None}, None, sort_key, sort_dir, page
+    )
+
+    billed_uuids = _billed_subscriber_uuids()
+    order_statuses = (
+        passings_cache.order_statuses(billed_uuids)
+        if billed_uuids is not None and passings_cache._state["orders"] is not None else None
+    )
+    order_counts = None
+    if order_statuses is not None:
+        counts = Counter(order_statuses.get(int(i), passings_cache.NO_ORDER) for i in batch["place_ids"])
+        order_counts = [(status, counts[status]) for status in passings_cache.ORDER_STATUSES]
+
+    hubspot_calls_available, hubspot_call_stats = hubspot_store.get_call_stats_by_email()
+    _, checkouts = passings_activity_store.get_checkouts()
+    last_activity_available = _decorate_passing_rows(
+        page_result["rows"], order_statuses, hubspot_call_stats, residential_marks, checkouts
+    )
+
+    return render_template(
+        "passing_batch_profile.html",
+        active_page="tools",
+        batch=batch,
+        load_error=load_error,
+        kpis=kpis,
+        order_counts=order_counts,
+        checked_out_count=sum(1 for place_id in batch["place_ids"] if place_id in checkouts),
+        page_result=page_result,
+        last_activity_available=last_activity_available,
+        hubspot_calls_available=hubspot_calls_available,
+        activity_types=passings_activity_store.ACTIVITY_TYPES,
+        checkout_reps=user_store.list_sales_reps(),
+        checkout_default_rep_id=(auth.current_user() or {}).get("sales_rep_id"),
+        release_line=passing_batches.RELEASE_LINE,
+        show=show,
+        select_all_url=url_for(
+            "passing_batch_place_ids", week=week, town=town, show="leads" if show == "leads" else None
+        ),
+        selected={"sort": sort_key, "dir": sort_dir},
+    )
+
+
+@app.route("/tools/passing-batch-place-ids/<week>/<path:town>")
+@auth.login_required
+def passing_batch_place_ids(week, town):
+    """Select All on the Batch Profile (added 2026-11-06): every place in
+    the current view, across all pages. Places already checked out are left
+    out, so one click can't move accounts off other reps."""
+    batches, _ = passing_batches.load_batches()
+    batch = passing_batches.find_batch(batches or [], town, week)
+    if batch is None:
+        abort(404)
+    passings_cache.start_scheduler()
+    source = passings_cache if passings_cache.wait_until_ready(20) else passings_data
+    _, residential_marks = passings_activity_store.get_residential_marks()
+    rows = _all_passing_rows(source, {
+        "place_id_in": batch["place_ids"],
+        "residential_ids": set(residential_marks),
+        "has_lead": True if request.args.get("show") == "leads" else None,
+    })
+    checkouts_available, checkouts = passings_activity_store.get_checkouts()
+    if rows is None or not checkouts_available:
+        return jsonify({"ok": False, "error": "Could not load this batch. Try again in a minute."}), 503
+    place_ids = [row["PlaceID"] for row in rows if row["PlaceID"] not in checkouts]
+    return jsonify({"ok": True, "place_ids": place_ids, "skipped": len(rows) - len(place_ids)})
 
 
 @app.route("/tools/parcel-map")

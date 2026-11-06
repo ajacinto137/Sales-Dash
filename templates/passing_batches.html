@@ -28,17 +28,14 @@
                 <tbody>
                     {% for batch in rows %}
                     <tr class="{{ 'td-batch-row-small' if batch.status == 'small' }}">
-                        <th scope="row" class="td-batch-name-col">{{ batch.name }}</th>
+                        <th scope="row" class="td-batch-name-col"><a class="td-batch-name-link" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town) }}">{{ batch.name }}</a></th>
                         <td class="td-batch-count">{{ "{:,}".format(batch.passings) }}</td>
                         <td class="td-batch-status td-batch-status-{{ batch.status }}">
                             {% if batch.status == 'small' %}Small batch
                             {% else %}{{ 'Under' if batch.status == 'under' else 'Above' }} {{ "%g"|format(release_line) }}% &middot; Week {{ batch.running.number }} so far{% endif %}
                         </td>
                         {% for week in batch.weeks %}
-                        <td class="td-batch-week{{ ' td-batch-week-running' if not week.final }}">
-                            <span class="td-batch-rate {{ 'td-batch-rate-high' if week.rate >= 10 else 'td-batch-rate-mid' if week.rate >= release_line else 'td-batch-rate-low' }}">{{ "%.1f"|format(week.rate) }}%</span>
-                            <span class="td-batch-sales">{{ week.sales }} {{ 'sale' if week.sales == 1 else 'sales' }}{{ ' so far' if not week.final }}</span>
-                        </td>
+                        {% include "_passing_batch_week.html" %}
                         {% endfor %}
                         {% for _ in range(summary.week_columns - batch.weeks|length) %}<td class="td-batch-week td-batch-week-empty" aria-label="Not started">—</td>{% endfor %}
                     </tr>
