@@ -17,21 +17,21 @@
 {% set order_colors = {'Completed Order': 'td-green', 'Install Scheduled': 'td-cyan', 'Needs Attention': 'td-orange',
                        'Not Scheduled': 'td-yellow', 'Order Cancelled': 'td-magenta', 'No Order': 'td-purple'} %}
 <div class="td-page">
-    <a class="td-back-link" href="{{ url_for('passing_batches_page', external=external_param) }}">&larr; Back to Passing Batches</a>
+    <a class="td-back-link" href="{{ url_for('passing_batches_page', external=external_param, group=group_param) }}">&larr; Back to Passing Batches</a>
     <header class="td-header">
         <div class="td-header-titles">
             <h1 class="td-title">{{ batch.name }}</h1>
             <p class="td-muted-inline">
-                Released the week of {{ batch.week_of.strftime('%b') }} {{ batch.week_of.day }}, {{ batch.week_of.year }} &middot;
+                Released {% if group_param %}in {{ batch.week_of.strftime('%B %Y') }}{% else %}the week of {{ batch.week_of.strftime('%b') }} {{ batch.week_of.day }}, {{ batch.week_of.year }}{% endif %} &middot;
                 {% if batch.status == 'small' %}Small batch, no status call
-                {% else %}{{ 'Under' if batch.status == 'under' else 'Above' }} {{ "%g"|format(release_line) }}% in Week {{ batch.running.number }} so far{% endif %}
+                {% else %}{{ 'Under' if batch.status == 'under' else 'Above' }} {{ "%g"|format(release_line) }}% in {{ period_label }} {{ batch.running.number }} so far{% endif %}
             </p>
         </div>
     </header>
 
     <div class="td-chart-toggle td-batch-show" aria-label="Sales counted">
-        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if not external_param }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show=show_param) }}">Organic</a>
-        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if external_param }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show=show_param, external='1') }}" title="Add door knockers' sales to the sales, rates and status">Include External</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if not external_param }}" href="{{ url_for('passing_batch_profile', **dict(profile_args, external=none)) }}">Organic</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if external_param }}" href="{{ url_for('passing_batch_profile', **dict(profile_args, external='1')) }}" title="Add door knockers' sales to the sales, rates and status">Include External</a>
     </div>
 
     {% if load_error %}<p class="td-batch-warning" role="status">{{ load_error }} Showing the last data loaded.</p>{% endif %}
@@ -53,7 +53,7 @@
             <span class="td-kpi-note">{{ "%.1f"|format(batch.total_rate) }}% of batch since release</span>
         </div>
         <div class="td-kpi">
-            <span class="td-kpi-label">Week {{ batch.running.number }} Rate</span>
+            <span class="td-kpi-label">{{ period_label }} {{ batch.running.number }} Rate</span>
             <span class="td-kpi-value {{ 'td-yellow' if batch.running.rate >= release_line else 'td-green' }}">{{ "%.1f"|format(batch.running.rate) }}%</span>
             <span class="td-kpi-note">{{ batch.running.sales }} {{ 'sale' if batch.running.sales == 1 else 'sales' }} so far</span>
         </div>
@@ -99,7 +99,7 @@
         <div class="td-batch-scroll">
             <table class="td-batch-table">
                 <thead>
-                    <tr>{% for week in batch.weeks %}<th scope="col">Week {{ week.number }}</th>{% endfor %}</tr>
+                    <tr>{% for week in batch.weeks %}<th scope="col">{{ period_label }} {{ week.number }}</th>{% endfor %}</tr>
                 </thead>
                 <tbody>
                     <tr>{% for week in batch.weeks %}{% include "_passing_batch_week.html" %}{% endfor %}</tr>
@@ -112,8 +112,8 @@
         <h2>Passings</h2>
     </div>
     <div class="td-chart-toggle td-batch-show">
-        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'all' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, external=external_param) }}">All Passings</a>
-        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'leads' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show='leads', external=external_param) }}">Leads</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'all' }}" href="{{ url_for('passing_batch_profile', **dict(profile_args, show=none)) }}">All Passings</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'leads' }}" href="{{ url_for('passing_batch_profile', **dict(profile_args, show='leads')) }}">Leads</a>
     </div>
 
     {% if not hubspot_calls_available %}

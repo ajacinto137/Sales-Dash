@@ -4206,3 +4206,7 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-batch-profile-weeks .td-batch-scroll { max-height: none; }
 .td-batch-show { width: fit-content; margin-bottom: 12px; }
 .td-batch-show a { text-decoration: none; }
+.td-batch-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.td-batch-controls .td-batch-show { margin-bottom: 0; }
+.td-batch-toggles { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.td-batch-toggles .td-batch-show { margin-bottom: 0; }

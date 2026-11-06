@@ -3063,12 +3063,16 @@ def passing_batches_page():
     """Passing Batches (added 2026-11-06) -- weekly release batches per town
     and their Organic sales by week. Data and rules: passing_batches.py."""
     include_external = request.args.get("external") == "1"
-    batches, load_error = passing_batches.load_batches(include_external)
+    monthly = request.args.get("group") == "month"
+    batches, load_error = passing_batches.load_batches(include_external, monthly)
     all_batches = batches or []
     small = [batch for batch in all_batches if batch["status"] == "small"]
     regular = [batch for batch in all_batches if batch["status"] != "small"]
     view = "small" if request.args.get("view") == "small" else "batches"
     listed = small if view == "small" else regular
+    sort_dir = "asc" if request.args.get("dir") == "asc" else "desc"
+    if sort_dir == "asc":
+        listed = listed[::-1]
 
     page_size = passing_batches.PAGE_SIZE
     total_pages = max(1, -(-len(listed) // page_size))
@@ -3083,14 +3087,23 @@ def passing_batches_page():
         batches=batches,
         rows=listed[(page - 1) * page_size:page * page_size],
         view=view,
+        sort_dir=sort_dir,
         external_param="1" if include_external else None,
+        group_param="month" if monthly else None,
+        period_label="Month" if monthly else "Week",
+        list_args={
+            "view": "small" if view == "small" else None,
+            "external": "1" if include_external else None,
+            "dir": "asc" if sort_dir == "asc" else None,
+            "group": "month" if monthly else None,
+        },
         sales_label="Organic + External" if include_external else "Organic",
         regular_count=len(regular),
         small_count=len(small),
         page=page,
         total_pages=total_pages,
         summary=passing_batches.summarize(all_batches),
-        plateau=passing_batches.plateau(all_batches),
+        plateau=passing_batches.plateau(all_batches, monthly),
         load_error=load_error,
         release_line=passing_batches.RELEASE_LINE,
         min_batch=passing_batches.MIN_BATCH,
@@ -3103,10 +3116,12 @@ def passing_batch_profile(week, town):
     """Batch Profile (added 2026-11-06) -- one batch's metrics plus its
     Passings & Leads cards, with the same Check Out as /passings."""
     include_external = request.args.get("external") == "1"
-    batches, load_error = passing_batches.load_batches(include_external)
+    monthly = request.args.get("group") == "month"
+    batches, load_error = passing_batches.load_batches(include_external, monthly)
     if batches is None:
         return redirect(url_for("passing_batches_page"))
     batch = passing_batches.find_batch(batches, town, week)
+    group_param = "month" if monthly else None
     if batch is None:
         abort(404)
 
@@ -3159,11 +3174,18 @@ def passing_batch_profile(week, town):
         checkout_default_rep_id=(auth.current_user() or {}).get("sales_rep_id"),
         release_line=passing_batches.RELEASE_LINE,
         show=show,
-        show_param="leads" if show == "leads" else None,
         external_param="1" if include_external else None,
+        group_param=group_param,
+        period_label="Month" if monthly else "Week",
+        profile_args={
+            "week": week, "town": town, "group": group_param,
+            "show": "leads" if show == "leads" else None,
+            "external": "1" if include_external else None,
+        },
         sales_label="Organic + External" if include_external else "Organic",
         select_all_url=url_for(
-            "passing_batch_place_ids", week=week, town=town, show="leads" if show == "leads" else None
+            "passing_batch_place_ids", week=week, town=town, group=group_param,
+            show="leads" if show == "leads" else None,
         ),
         selected={"sort": sort_key, "dir": sort_dir},
     )
@@ -3175,7 +3197,7 @@ def passing_batch_place_ids(week, town):
     """Select All on the Batch Profile (added 2026-11-06): every place in
     the current view, across all pages. Places already checked out are left
     out, so one click can't move accounts off other reps."""
-    batches, _ = passing_batches.load_batches()
+    batches, _ = passing_batches.load_batches(monthly=request.args.get("group") == "month")
     batch = passing_batches.find_batch(batches or [], town, week)
     if batch is None:
         abort(404)

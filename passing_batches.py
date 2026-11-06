@@ -10,7 +10,9 @@ once its Sunday has passed. Status compares the running week, the current
 calendar week, with the release line. Organic is parcel_map's rule: every
 quoted order that isn't a door knocker's. Orders link to passings by property
 ID. A few passings share one, so a sale goes to the first passing released on
-that property, and is never counted twice. The Include External toggle adds
+that property, and is never counted twice. The Monthly toggle does the same
+by calendar month: a batch is a town's release month and Month 1 is that month.
+The status line stays 2%, of the month in that view. The Include External toggle adds
 door knockers' orders back, and every rate, status and the plateau follow.
 """
 
@@ -29,14 +31,14 @@ MIN_BATCH = 50      # below this, one sale swings the rate across the line
 REFRESH_SECONDS = 1800
 PAGE_SIZE = 50      # all-time batches run to 288 weeks, too big for one table
 
-# Plateau: the Parcel Map curve's weekly rule (static/js/parcel_map.js), on
-# this tool's rate. The plateau is the average of weeks 53-105, and needs 26
-# of them. Decay ends at the first week whose 13-week average sits within the
-# band of the plateau.
-PLATEAU_WEEKS = range(53, 106)
-PLATEAU_MIN_WEEKS = 26
-DECAY_RUN = 13
-DECAY_BAND = 0.05
+# Plateau: the Parcel Map curve's rule (static/js/parcel_map.js), on this
+# tool's rate. The plateau is the average of `periods`, and needs `min_periods`
+# of them. Decay ends at the first period whose `run`-period average sits
+# within `band` of the plateau.
+PLATEAU_RULES = {
+    False: {"periods": range(53, 106), "min_periods": 26, "run": 13, "band": 0.05},  # weeks
+    True: {"periods": range(13, 26), "min_periods": 6, "run": 3, "band": 0.2},       # months
+}
 
 _PASSINGS_QUERY = (
     f"{passings_data._BASE_CTE} SELECT PlaceID, BecameAvailable, Municipality, City, PropertyID "
@@ -60,25 +62,43 @@ def week_start(day):
     return day - timedelta(days=day.weekday())
 
 
+def period_start(day, monthly=False):
+    return day.replace(day=1) if monthly else week_start(day)
+
+
+def _period_index(start, day, monthly):
+    """Whole periods from the period beginning `start` to the one holding `day`."""
+    if monthly:
+        return (day.year - start.year) * 12 + day.month - start.month
+    return (day - start).days // 7
+
+
+def _nth_period_start(start, count, monthly):
+    if monthly:
+        months = start.month - 1 + count
+        return date(start.year + months // 12, months % 12 + 1, 1)
+    return start + timedelta(days=count * 7)
+
+
 def _town(municipality, city):
     name = next((n.strip() for n in (municipality, city) if isinstance(n, str) and n.strip()), "Unknown")
     return name.title()
 
 
-def _batch_row(town, monday, place_ids, weekly_sales, today):
+def _batch_row(town, start, place_ids, period_sales, today, monthly=False):
     passings = len(place_ids)
     weeks = []
-    for week in range((today - monday).days // 7 + 1):
-        sales = weekly_sales[week]
+    for week in range(_period_index(start, today, monthly) + 1):
+        sales = period_sales[week]
         weeks.append({
             "number": week + 1,
             "sales": sales,
             "rate": sales / passings * 100,
-            "final": monday + timedelta(days=week * 7 + 6) < today,
+            "final": _nth_period_start(start, week + 1, monthly) <= today,
         })
 
     # Week names repeat across years, so older batches carry theirs.
-    year = "" if monday.year == today.year else f", {monday.year}"
+    year = "" if start.year == today.year else f", {start.year}"
     running = weeks[-1]
     if passings < MIN_BATCH:
         status = "small"
@@ -86,9 +106,12 @@ def _batch_row(town, monday, place_ids, weekly_sales, today):
         status = "under" if running["rate"] < RELEASE_LINE else "above"
 
     return {
-        "name": f"{town} Batch Week {monday.strftime('%b')} {monday.day}{year}",
+        "name": (
+            f"{town} Batch {start.strftime('%b %Y')}" if monthly
+            else f"{town} Batch Week {start.strftime('%b')} {start.day}{year}"
+        ),
         "town": town,
-        "week_of": monday,
+        "week_of": start,
         "passings": passings,
         "place_ids": place_ids,
         "total_sales": sum(week["sales"] for week in weeks),
@@ -99,27 +122,27 @@ def _batch_row(town, monday, place_ids, weekly_sales, today):
     }
 
 
-def build_batches(passings, sales, today):
+def build_batches(passings, sales, today, monthly=False):
     """Batches newest first, from [(PlaceID, BecameAvailable, Municipality,
     City), ...] and {place_id: ["YYYY-MM-DD", ...]}, all time."""
     releases = {}
-    weekly_sales = {}
+    period_sales = {}
     for place_id, became_available, municipality, city in passings:
         released = _as_date(became_available)
         if released is None or released > today:
             continue
-        monday = week_start(released)
-        key = (_town(municipality, city), monday)
+        start = period_start(released, monthly)
+        key = (_town(municipality, city), start)
         releases.setdefault(key, []).append(place_id)
-        counts = weekly_sales.setdefault(key, Counter())
+        counts = period_sales.setdefault(key, Counter())
         for sale in sales.get(place_id, []):
             sold = date.fromisoformat(sale)
             if sold >= released:
-                counts[(sold - monday).days // 7] += 1
+                counts[_period_index(start, sold, monthly)] += 1
 
     batches = [
-        _batch_row(town, monday, releases[(town, monday)], weekly_sales[(town, monday)], today)
-        for town, monday in releases
+        _batch_row(town, start, releases[(town, start)], period_sales[(town, start)], today, monthly)
+        for town, start in releases
     ]
     batches.sort(key=lambda b: (b["week_of"], b["passings"]), reverse=True)
     return batches
@@ -167,10 +190,12 @@ def summarize(batches):
     }
 
 
-def plateau(batches):
-    """{"rate", "decay_ends_week"} from every finished week of every batch,
-    or None without enough history. A week's rate is its sales over the
-    passings of the batches that finished it, so big batches weigh more."""
+def plateau(batches, monthly=False):
+    """{"rate", "decay_ends", "first", "last"} from every finished period of
+    every batch, or None without enough history. A period's rate is its sales
+    over the passings of the batches that finished it, so big batches weigh
+    more."""
+    rule = PLATEAU_RULES[monthly]
     sales, passings = Counter(), Counter()
     for batch in batches:
         for week in batch["weeks"]:
@@ -178,21 +203,21 @@ def plateau(batches):
                 sales[week["number"]] += week["sales"]
                 passings[week["number"]] += batch["passings"]
 
-    weeks = [week for week in PLATEAU_WEEKS if passings[week]]
-    if len(weeks) < PLATEAU_MIN_WEEKS:
+    weeks = [week for week in rule["periods"] if passings[week]]
+    if len(weeks) < rule["min_periods"]:
         return None
     rate = sum(sales[week] for week in weeks) / sum(passings[week] for week in weeks) * 100
 
-    rates = [sales[week] / passings[week] * 100 if passings[week] else None for week in range(1, PLATEAU_WEEKS.stop)]
-    decay_ends_week = None
-    for start in range(len(rates) - DECAY_RUN + 1):
-        run = rates[start:start + DECAY_RUN]
+    rates = [sales[week] / passings[week] * 100 if passings[week] else None for week in range(1, rule["periods"].stop)]
+    decay_ends = None
+    for start in range(len(rates) - rule["run"] + 1):
+        run = rates[start:start + rule["run"]]
         if None in run:
             continue
-        if abs(sum(run) / DECAY_RUN - rate) <= DECAY_BAND and abs(run[0] - rate) <= DECAY_BAND * 3:
-            decay_ends_week = start + 1
+        if abs(sum(run) / rule["run"] - rate) <= rule["band"] and abs(run[0] - rate) <= rule["band"] * 3:
+            decay_ends = start + 1
             break
-    return {"rate": rate, "decay_ends_week": decay_ends_week}
+    return {"rate": rate, "decay_ends": decay_ends, "first": rule["periods"].start, "last": rule["periods"].stop - 1}
 
 
 def _fetch():
@@ -214,7 +239,7 @@ def _fetch():
         conn.close()
 
 
-def load_batches(include_external=False):
+def load_batches(include_external=False, monthly=False):
     """(batches, error). Reads PlanetWeb every REFRESH_SECONDS. If a refresh
     fails, the last good data is used with the error."""
     error = None
@@ -233,6 +258,7 @@ def load_batches(include_external=False):
         if _state["built_key"] != (_state["loaded_at"], today):
             _state["built"] = {}
             _state["built_key"] = (_state["loaded_at"], today)
-        if include_external not in _state["built"]:
-            _state["built"][include_external] = build_batches(data[0], data[2 if include_external else 1], today)
-        return _state["built"][include_external], error
+        key = (include_external, monthly)
+        if key not in _state["built"]:
+            _state["built"][key] = build_batches(data[0], data[2 if include_external else 1], today, monthly)
+        return _state["built"][key], error

@@ -144,7 +144,7 @@ def batch_of(rates, passings=1000):
 def test_plateau_is_the_average_of_weeks_53_to_105_and_decay_ends_when_it_settles():
     result = pb.plateau([batch_of([5.0] * 9 + [0.2] * 100)])
     assert round(result["rate"], 6) == 0.2
-    assert result["decay_ends_week"] == 10
+    assert result["decay_ends"] == 10
 
 
 def test_plateau_weights_big_batches_more():
@@ -175,5 +175,34 @@ def test_load_batches_counts_external_sales_only_when_asked(monkeypatch):
     monkeypatch.setattr(pb.passings_data, "_today", lambda: TODAY)
     monkeypatch.setattr(pb, "_state", {"data": None, "loaded_at": 0.0, "built": {}, "built_key": None})
     assert pb.load_batches()[0][0]["total_sales"] == 1
+    assert pb.load_batches(monthly=True)[0][0]["name"] == "Hopatcong Batch Oct 2026"
     assert pb.load_batches(include_external=True)[0][0]["total_sales"] == 2
     assert pb.load_batches()[0][0]["total_sales"] == 1
+
+
+def test_monthly_batches_are_a_town_in_a_calendar_month():
+    rows = passings(60, date(2026, 10, 1)) + passings(60, date(2026, 10, 31), start=100)
+    rows += passings(60, date(2026, 9, 30), start=200)
+    names = {b["name"]: b["passings"] for b in pb.build_batches(rows, {}, TODAY, monthly=True)}
+    assert names == {"Hopatcong Batch Oct 2026": 120, "Hopatcong Batch Sep 2026": 60}
+
+
+def test_monthly_sales_land_in_calendar_months_and_a_month_is_final_once_it_ends():
+    sales = {0: ["2026-10-31", "2026-11-01"], 1: ["2026-12-01"]}
+    rows = passings(100, date(2026, 10, 15))
+    batch = pb.build_batches(rows, sales, date(2026, 12, 2), monthly=True)[0]
+    assert [w["sales"] for w in batch["weeks"]] == [1, 1, 1]
+    assert [w["final"] for w in batch["weeks"]] == [True, True, False]
+    assert batch["running"]["number"] == 3
+
+
+def test_monthly_periods_cross_the_new_year():
+    batch = pb.build_batches(passings(60, date(2025, 11, 20)), {0: ["2026-01-05"]}, date(2026, 2, 1), monthly=True)[0]
+    assert [w["sales"] for w in batch["weeks"]] == [0, 0, 1, 0]
+    assert [w["final"] for w in batch["weeks"]] == [True, True, True, False]
+
+
+def test_monthly_plateau_uses_months_13_to_25():
+    result = pb.plateau([batch_of([5.0] * 4 + [1.0] * 21)], monthly=True)
+    assert round(result["rate"], 6) == 1.0
+    assert (result["decay_ends"], result["first"], result["last"]) == (5, 13, 25)
