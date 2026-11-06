@@ -14,6 +14,7 @@
 {# Passing Batches (Tools menu, added 2026-11-06). Data and rules: passing_batches.py. #}
 
 {% macro batch_table(rows) %}
+    {% set week_columns = rows | map(attribute="weeks") | map("length") | max %}
     <div class="td-batch-card">
         <div class="td-batch-scroll">
             <table class="td-batch-table">
@@ -22,7 +23,7 @@
                         <th scope="col" class="td-batch-name-col">Batch</th>
                         <th scope="col">Passings</th>
                         <th scope="col">Status</th>
-                        {% for week in range(1, summary.week_columns + 1) %}<th scope="col">Week {{ week }}</th>{% endfor %}
+                        {% for week in range(1, week_columns + 1) %}<th scope="col">Week {{ week }}</th>{% endfor %}
                     </tr>
                 </thead>
                 <tbody>
@@ -37,7 +38,7 @@
                         {% for week in batch.weeks %}
                         {% include "_passing_batch_week.html" %}
                         {% endfor %}
-                        {% for _ in range(summary.week_columns - batch.weeks|length) %}<td class="td-batch-week td-batch-week-empty" aria-label="Not started">—</td>{% endfor %}
+                        {% for _ in range(week_columns - batch.weeks|length) %}<td class="td-batch-week td-batch-week-empty" aria-label="Not started">—</td>{% endfor %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -51,7 +52,7 @@
         <div class="td-header-titles">
             <h1 class="td-title">Passing Batches</h1>
             <p class="td-muted-inline">
-                Passings released in the last {{ days_back }} days, grouped by town and release week &middot;
+                All passings, grouped by town and release week, newest first &middot;
                 each week shows Organic sales ÷ total batch &middot; calendar weeks, Monday to Sunday &middot; Week 1 is the release week
             </p>
         </div>
@@ -81,23 +82,46 @@
             <span class="td-kpi-value td-yellow">{{ "{:,}".format(summary.above) }}</span>
             <span class="td-kpi-note">running week, so far</span>
         </div>
+        {% if plateau %}
+        <div class="td-kpi" title="Organic sales ÷ total batch, averaged across all batches over weeks 53 to 105 after release. Bigger batches weigh more.">
+            <span class="td-kpi-label">Average Plateau</span>
+            <span class="td-kpi-value td-magenta">{{ "%.2f"|format(plateau.rate) }}%</span>
+            <span class="td-kpi-note">per week{% if plateau.decay_ends_week %}, reached by Week {{ plateau.decay_ends_week }}{% endif %}</span>
+        </div>
+        {% endif %}
     </section>
 
     <div class="td-batch-legend">
         <span><i class="td-batch-swatch td-batch-swatch-running"></i>Current week, sales so far</span>
     </div>
 
-    {{ batch_table(batches | rejectattr("status", "equalto", "small") | list) }}
+    <div class="td-chart-toggle td-batch-show">
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if view == 'batches' }}" href="{{ url_for('passing_batches_page') }}">Batches ({{ "{:,}".format(regular_count) }})</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if view == 'small' }}" href="{{ url_for('passing_batches_page', view='small') }}" title="Under {{ min_batch }} passings, no status call">Small Batches ({{ "{:,}".format(small_count) }})</a>
+    </div>
 
-    {% set small_batches = batches | selectattr("status", "equalto", "small") | list %}
-    {% if small_batches %}
-    <details class="td-batch-small">
-        <summary>{{ small_batches | length }} small batches, under {{ min_batch }} passings ({{ small_batches | sum(attribute="passings") }} passings total)</summary>
-        {{ batch_table(small_batches) }}
-    </details>
+    {% if rows %}{{ batch_table(rows) }}{% else %}<p class="td-muted-inline">No batches here.</p>{% endif %}
+
+    {% if total_pages > 1 %}
+    {% set page_view = 'small' if view == 'small' else none %}
+    <div class="td-marketing-pagination">
+        <span class="td-muted-inline">Page {{ page }} of {{ total_pages }}</span>
+        <div class="td-marketing-pagination-btns">
+            {% if page > 1 %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('passing_batches_page', view=page_view, page=page - 1) }}">&larr; Prev</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">&larr; Prev</span>
+            {% endif %}
+            {% if page < total_pages %}
+            <a class="td-btn td-btn-ghost" href="{{ url_for('passing_batches_page', view=page_view, page=page + 1) }}">Next &rarr;</a>
+            {% else %}
+            <span class="td-btn td-btn-ghost td-btn-disabled">Next &rarr;</span>
+            {% endif %}
+        </div>
+    </div>
     {% endif %}
     {% elif batches is not none %}
-    <p class="td-muted-inline">No passings were released in the last {{ days_back }} days.</p>
+    <p class="td-muted-inline">No passings have been released yet.</p>
     {% endif %}
 </div>
 </body>

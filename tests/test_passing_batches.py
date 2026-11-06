@@ -66,12 +66,6 @@ def test_small_batches_get_no_status():
     assert small["status"] == "small"
 
 
-def test_window_keeps_whole_batches_and_sales_before_release_do_not_count():
-    # 90 days before 2026-11-05 is Thursday 2026-08-07's week, starting 2026-08-03.
-    rows = passings(60, date(2026, 8, 3)) + passings(60, date(2026, 8, 2), start=100)
-    batches = pb.build_batches(rows, {0: ["2026-08-01"]}, TODAY)
-    assert [b["name"] for b in batches] == ["Hopatcong Batch Week Aug 3"]
-    assert sum(w["sales"] for w in batches[0]["weeks"]) == 0
 
 
 def test_town_falls_back_to_city():
@@ -83,7 +77,6 @@ def test_summary_counts():
     rows = passings(100, date(2026, 10, 19)) + passings(10, date(2026, 10, 19), "HOPE", 200)
     summary = pb.summarize(pb.build_batches(rows, {}, TODAY))
     assert (summary["batches"], summary["passings"], summary["under"], summary["above"]) == (2, 110, 1, 0)
-    assert summary["week_columns"] == 3
 
 
 def test_passings_use_the_passings_definition():
@@ -124,3 +117,48 @@ def test_a_shared_property_credits_only_its_first_released_passing():
 def test_a_passing_with_no_property_id_gets_no_sales():
     rows = [(1, date(2026, 10, 19), "A", None, None), (2, date(2026, 10, 19), "A", None, "  ")]
     assert pb.sales_by_passing(rows, {"": ["2026-10-20"]}) == {}
+
+
+def test_old_batches_stay_and_carry_their_year():
+    rows = passings(60, date(2021, 6, 8)) + passings(60, date(2026, 10, 19), start=100)
+    assert [b["name"] for b in pb.build_batches(rows, {}, TODAY)] == [
+        "Hopatcong Batch Week Oct 19",
+        "Hopatcong Batch Week Jun 7, 2021",
+    ]
+
+
+def test_sales_before_release_do_not_count():
+    batch = pb.build_batches(passings(60, date(2026, 8, 3)), {0: ["2026-08-01"]}, TODAY)[0]
+    assert batch["organic_sales"] == 0
+
+
+def batch_of(rates, passings=1000):
+    """A finished batch whose week N sells rates[N-1] percent of its passings."""
+    weeks = [
+        {"number": i + 1, "sales": rate * passings / 100, "rate": rate, "final": True}
+        for i, rate in enumerate(rates)
+    ]
+    return {"passings": passings, "weeks": weeks}
+
+
+def test_plateau_is_the_average_of_weeks_53_to_105_and_decay_ends_when_it_settles():
+    result = pb.plateau([batch_of([5.0] * 9 + [0.2] * 100)])
+    assert round(result["rate"], 6) == 0.2
+    assert result["decay_ends_week"] == 10
+
+
+def test_plateau_weights_big_batches_more():
+    result = pb.plateau([batch_of([0.1] * 105, 3000), batch_of([0.5] * 105, 1000)])
+    assert round(result["rate"], 6) == 0.2
+
+
+def test_plateau_ignores_the_running_week():
+    batch = batch_of([0.2] * 105)
+    batch["weeks"].append({"number": 106, "sales": 0, "rate": 0.0, "final": False})
+    batch["weeks"][-2].update(final=False, sales=900, rate=90.0)
+    assert round(pb.plateau([batch])["rate"], 6) == 0.2
+
+
+def test_no_plateau_without_enough_history():
+    assert pb.plateau([batch_of([0.2] * 77)]) is None
+    assert pb.plateau([]) is None

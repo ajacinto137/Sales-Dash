@@ -4195,8 +4195,6 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 .td-batch-table tbody tr:hover .td-batch-week-running { background: var(--td-cyan-bg); box-shadow: inset 0 0 0 1px var(--td-cyan); }
 .td-batch-week-running .td-batch-rate { color: var(--td-cyan); }
 .td-batch-week-empty { color: var(--td-text-muted); }
-.td-batch-small { margin-top: 16px; }
-.td-batch-small summary { margin-bottom: 10px; color: var(--td-text-secondary); font-size: 13px; cursor: pointer; }
 .td-batch-row-small .td-batch-name-col,
 .td-batch-row-small .td-batch-count,
 .td-batch-row-small .td-batch-rate { color: var(--td-text-muted); }

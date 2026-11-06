@@ -23,10 +23,19 @@ import parcel_map
 import passings_data
 from queries import internal_rep_codes
 
-DAYS_BACK = 90
 RELEASE_LINE = 2.0  # percent of the batch in a week
 MIN_BATCH = 50      # below this, one sale swings the rate across the line
 REFRESH_SECONDS = 1800
+PAGE_SIZE = 50      # all-time batches run to 288 weeks, too big for one table
+
+# Plateau: the Parcel Map curve's weekly rule (static/js/parcel_map.js), on
+# this tool's rate. The plateau is the average of weeks 53-105, and needs 26
+# of them. Decay ends at the first week whose 13-week average sits within the
+# band of the plateau.
+PLATEAU_WEEKS = range(53, 106)
+PLATEAU_MIN_WEEKS = 26
+DECAY_RUN = 13
+DECAY_BAND = 0.05
 
 _PASSINGS_QUERY = (
     f"{passings_data._BASE_CTE} SELECT PlaceID, BecameAvailable, Municipality, City, PropertyID "
@@ -39,7 +48,7 @@ WHERE QuoteID IS NOT NULL AND NULLIF(LTRIM(RTRIM(Property_ID)), '') IS NOT NULL
 """
 
 _lock = threading.Lock()
-_state = {"data": None, "loaded_at": 0.0}
+_state = {"data": None, "loaded_at": 0.0, "built": None, "built_key": None}
 
 
 def _as_date(value):
@@ -67,6 +76,8 @@ def _batch_row(town, monday, place_ids, weekly_sales, today):
             "final": monday + timedelta(days=week * 7 + 6) < today,
         })
 
+    # Week names repeat across years, so older batches carry theirs.
+    year = "" if monday.year == today.year else f", {monday.year}"
     running = weeks[-1]
     if passings < MIN_BATCH:
         status = "small"
@@ -74,7 +85,7 @@ def _batch_row(town, monday, place_ids, weekly_sales, today):
         status = "under" if running["rate"] < RELEASE_LINE else "above"
 
     return {
-        "name": f"{town} Batch Week {monday.strftime('%b')} {monday.day}",
+        "name": f"{town} Batch Week {monday.strftime('%b')} {monday.day}{year}",
         "town": town,
         "week_of": monday,
         "passings": passings,
@@ -89,14 +100,12 @@ def _batch_row(town, monday, place_ids, weekly_sales, today):
 
 def build_batches(passings, organic_sales, today):
     """Batches newest first, from [(PlaceID, BecameAvailable, Municipality,
-    City), ...] and {place_id: ["YYYY-MM-DD", ...]}. Whole batches only: the
-    window starts on the Monday of the week DAYS_BACK ago."""
-    cutoff = week_start(today - timedelta(days=DAYS_BACK))
+    City), ...] and {place_id: ["YYYY-MM-DD", ...]}, all time."""
     releases = {}
     weekly_sales = {}
     for place_id, became_available, municipality, city in passings:
         released = _as_date(became_available)
-        if released is None or not cutoff <= released <= today:
+        if released is None or released > today:
             continue
         monday = week_start(released)
         key = (_town(municipality, city), monday)
@@ -146,8 +155,35 @@ def summarize(batches):
         "passings": sum(batch["passings"] for batch in batches),
         "under": statuses["under"],
         "above": statuses["above"],
-        "week_columns": max((len(batch["weeks"]) for batch in batches), default=0),
     }
+
+
+def plateau(batches):
+    """{"rate", "decay_ends_week"} from every finished week of every batch,
+    or None without enough history. A week's rate is its sales over the
+    passings of the batches that finished it, so big batches weigh more."""
+    sales, passings = Counter(), Counter()
+    for batch in batches:
+        for week in batch["weeks"]:
+            if week["final"]:
+                sales[week["number"]] += week["sales"]
+                passings[week["number"]] += batch["passings"]
+
+    weeks = [week for week in PLATEAU_WEEKS if passings[week]]
+    if len(weeks) < PLATEAU_MIN_WEEKS:
+        return None
+    rate = sum(sales[week] for week in weeks) / sum(passings[week] for week in weeks) * 100
+
+    rates = [sales[week] / passings[week] * 100 if passings[week] else None for week in range(1, PLATEAU_WEEKS.stop)]
+    decay_ends_week = None
+    for start in range(len(rates) - DECAY_RUN + 1):
+        run = rates[start:start + DECAY_RUN]
+        if None in run:
+            continue
+        if abs(sum(run) / DECAY_RUN - rate) <= DECAY_BAND and abs(run[0] - rate) <= DECAY_BAND * 3:
+            decay_ends_week = start + 1
+            break
+    return {"rate": rate, "decay_ends_week": decay_ends_week}
 
 
 def _fetch():
@@ -178,6 +214,10 @@ def load_batches():
                 print(f"[passing_batches] Could not load batches: {exc}")
                 error = "Could not load the latest passings."
         data = _state["data"]
-    if data is None:
-        return None, error
-    return build_batches(data[0], data[1], passings_data._today()), error
+        if data is None:
+            return None, error
+        today = passings_data._today()
+        if _state["built_key"] != (_state["loaded_at"], today):
+            _state["built"] = build_batches(data[0], data[1], today)
+            _state["built_key"] = (_state["loaded_at"], today)
+        return _state["built"], error

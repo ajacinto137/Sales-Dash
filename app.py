@@ -3063,13 +3063,32 @@ def passing_batches_page():
     """Passing Batches (added 2026-11-06) -- weekly release batches per town
     and their Organic sales by week. Data and rules: passing_batches.py."""
     batches, load_error = passing_batches.load_batches()
+    all_batches = batches or []
+    small = [batch for batch in all_batches if batch["status"] == "small"]
+    regular = [batch for batch in all_batches if batch["status"] != "small"]
+    view = "small" if request.args.get("view") == "small" else "batches"
+    listed = small if view == "small" else regular
+
+    page_size = passing_batches.PAGE_SIZE
+    total_pages = max(1, -(-len(listed) // page_size))
+    try:
+        page = min(max(1, int(request.args.get("page", 1))), total_pages)
+    except (TypeError, ValueError):
+        page = 1
+
     return render_template(
         "passing_batches.html",
         active_page="tools",
         batches=batches,
-        summary=passing_batches.summarize(batches or []),
+        rows=listed[(page - 1) * page_size:page * page_size],
+        view=view,
+        regular_count=len(regular),
+        small_count=len(small),
+        page=page,
+        total_pages=total_pages,
+        summary=passing_batches.summarize(all_batches),
+        plateau=passing_batches.plateau(all_batches),
         load_error=load_error,
-        days_back=passing_batches.DAYS_BACK,
         release_line=passing_batches.RELEASE_LINE,
         min_batch=passing_batches.MIN_BATCH,
     )
