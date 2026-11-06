@@ -17,7 +17,7 @@
 {% set order_colors = {'Completed Order': 'td-green', 'Install Scheduled': 'td-cyan', 'Needs Attention': 'td-orange',
                        'Not Scheduled': 'td-yellow', 'Order Cancelled': 'td-magenta', 'No Order': 'td-purple'} %}
 <div class="td-page">
-    <a class="td-back-link" href="{{ url_for('passing_batches_page') }}">&larr; Back to Passing Batches</a>
+    <a class="td-back-link" href="{{ url_for('passing_batches_page', external=external_param) }}">&larr; Back to Passing Batches</a>
     <header class="td-header">
         <div class="td-header-titles">
             <h1 class="td-title">{{ batch.name }}</h1>
@@ -28,6 +28,11 @@
             </p>
         </div>
     </header>
+
+    <div class="td-chart-toggle td-batch-show" aria-label="Sales counted">
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if not external_param }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show=show_param) }}">Organic</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if external_param }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show=show_param, external='1') }}" title="Add door knockers' sales to the sales, rates and status">Include External</a>
+    </div>
 
     {% if load_error %}<p class="td-batch-warning" role="status">{{ load_error }} Showing the last data loaded.</p>{% endif %}
 
@@ -43,9 +48,9 @@
             <span class="td-kpi-note">{{ "%.1f"|format(kpis.lead_penetration_pct) }}% of passings</span>
         </div>
         <div class="td-kpi">
-            <span class="td-kpi-label">Organic Sales</span>
-            <span class="td-kpi-value td-green">{{ "{:,}".format(batch.organic_sales) }}</span>
-            <span class="td-kpi-note">{{ "%.1f"|format(batch.organic_rate) }}% of batch since release</span>
+            <span class="td-kpi-label">{{ sales_label }} Sales</span>
+            <span class="td-kpi-value td-green">{{ "{:,}".format(batch.total_sales) }}</span>
+            <span class="td-kpi-note">{{ "%.1f"|format(batch.total_rate) }}% of batch since release</span>
         </div>
         <div class="td-kpi">
             <span class="td-kpi-label">Week {{ batch.running.number }} Rate</span>
@@ -107,8 +112,8 @@
         <h2>Passings</h2>
     </div>
     <div class="td-chart-toggle td-batch-show">
-        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'all' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town) }}">All Passings</a>
-        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'leads' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show='leads') }}">Leads</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'all' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, external=external_param) }}">All Passings</a>
+        <a class="td-chart-toggle-btn{{ ' td-chart-toggle-active' if show == 'leads' }}" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, show='leads', external=external_param) }}">Leads</a>
     </div>
 
     {% if not hubspot_calls_available %}

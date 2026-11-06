@@ -3062,7 +3062,8 @@ def admin_lead_feeder_refresh():
 def passing_batches_page():
     """Passing Batches (added 2026-11-06) -- weekly release batches per town
     and their Organic sales by week. Data and rules: passing_batches.py."""
-    batches, load_error = passing_batches.load_batches()
+    include_external = request.args.get("external") == "1"
+    batches, load_error = passing_batches.load_batches(include_external)
     all_batches = batches or []
     small = [batch for batch in all_batches if batch["status"] == "small"]
     regular = [batch for batch in all_batches if batch["status"] != "small"]
@@ -3082,6 +3083,8 @@ def passing_batches_page():
         batches=batches,
         rows=listed[(page - 1) * page_size:page * page_size],
         view=view,
+        external_param="1" if include_external else None,
+        sales_label="Organic + External" if include_external else "Organic",
         regular_count=len(regular),
         small_count=len(small),
         page=page,
@@ -3099,7 +3102,8 @@ def passing_batches_page():
 def passing_batch_profile(week, town):
     """Batch Profile (added 2026-11-06) -- one batch's metrics plus its
     Passings & Leads cards, with the same Check Out as /passings."""
-    batches, load_error = passing_batches.load_batches()
+    include_external = request.args.get("external") == "1"
+    batches, load_error = passing_batches.load_batches(include_external)
     if batches is None:
         return redirect(url_for("passing_batches_page"))
     batch = passing_batches.find_batch(batches, town, week)
@@ -3155,6 +3159,9 @@ def passing_batch_profile(week, town):
         checkout_default_rep_id=(auth.current_user() or {}).get("sales_rep_id"),
         release_line=passing_batches.RELEASE_LINE,
         show=show,
+        show_param="leads" if show == "leads" else None,
+        external_param="1" if include_external else None,
+        sales_label="Organic + External" if include_external else "Organic",
         select_all_url=url_for(
             "passing_batch_place_ids", week=week, town=town, show="leads" if show == "leads" else None
         ),

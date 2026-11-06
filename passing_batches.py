@@ -10,7 +10,8 @@ once its Sunday has passed. Status compares the running week, the current
 calendar week, with the release line. Organic is parcel_map's rule: every
 quoted order that isn't a door knocker's. Orders link to passings by property
 ID. A few passings share one, so a sale goes to the first passing released on
-that property, and is never counted twice.
+that property, and is never counted twice. The Include External toggle adds
+door knockers' orders back, and every rate, status and the plateau follow.
 """
 
 import threading
@@ -48,7 +49,7 @@ WHERE QuoteID IS NOT NULL AND NULLIF(LTRIM(RTRIM(Property_ID)), '') IS NOT NULL
 """
 
 _lock = threading.Lock()
-_state = {"data": None, "loaded_at": 0.0, "built": None, "built_key": None}
+_state = {"data": None, "loaded_at": 0.0, "built": {}, "built_key": None}
 
 
 def _as_date(value):
@@ -90,15 +91,15 @@ def _batch_row(town, monday, place_ids, weekly_sales, today):
         "week_of": monday,
         "passings": passings,
         "place_ids": place_ids,
-        "organic_sales": sum(week["sales"] for week in weeks),
-        "organic_rate": sum(week["rate"] for week in weeks),
+        "total_sales": sum(week["sales"] for week in weeks),
+        "total_rate": sum(week["rate"] for week in weeks),
         "weeks": weeks,
         "status": status,
         "running": running,
     }
 
 
-def build_batches(passings, organic_sales, today):
+def build_batches(passings, sales, today):
     """Batches newest first, from [(PlaceID, BecameAvailable, Municipality,
     City), ...] and {place_id: ["YYYY-MM-DD", ...]}, all time."""
     releases = {}
@@ -111,7 +112,7 @@ def build_batches(passings, organic_sales, today):
         key = (_town(municipality, city), monday)
         releases.setdefault(key, []).append(place_id)
         counts = weekly_sales.setdefault(key, Counter())
-        for sale in organic_sales.get(place_id, []):
+        for sale in sales.get(place_id, []):
             sold = date.fromisoformat(sale)
             if sold >= released:
                 counts[(sold - monday).days // 7] += 1
@@ -122,6 +123,14 @@ def build_batches(passings, organic_sales, today):
     ]
     batches.sort(key=lambda b: (b["week_of"], b["passings"]), reverse=True)
     return batches
+
+
+def all_sale_dates(order_rows):
+    """organic_sale_dates() with door knockers' orders kept."""
+    sales = {}
+    for property_id, _referral_code, sale_date in order_rows:
+        sales.setdefault(property_id, []).append(str(sale_date)[:10])
+    return sales
 
 
 def sales_by_passing(passings, sales_by_property):
@@ -193,15 +202,19 @@ def _fetch():
         cursor.execute(parcel_map._REP_TOKENS_QUERY)
         rep_codes = internal_rep_codes(row[0] for row in cursor.fetchall())
         cursor.execute(_ORDERS_QUERY)
-        sales_by_property = parcel_map.organic_sale_dates(cursor.fetchall(), rep_codes)
+        orders = cursor.fetchall()
         cursor.execute(_PASSINGS_QUERY)
         passings = [tuple(row) for row in cursor.fetchall()]
-        return [row[:4] for row in passings], sales_by_passing(passings, sales_by_property)
+        return (
+            [row[:4] for row in passings],
+            sales_by_passing(passings, parcel_map.organic_sale_dates(orders, rep_codes)),
+            sales_by_passing(passings, all_sale_dates(orders)),
+        )
     finally:
         conn.close()
 
 
-def load_batches():
+def load_batches(include_external=False):
     """(batches, error). Reads PlanetWeb every REFRESH_SECONDS. If a refresh
     fails, the last good data is used with the error."""
     error = None
@@ -218,6 +231,8 @@ def load_batches():
             return None, error
         today = passings_data._today()
         if _state["built_key"] != (_state["loaded_at"], today):
-            _state["built"] = build_batches(data[0], data[1], today)
+            _state["built"] = {}
             _state["built_key"] = (_state["loaded_at"], today)
-        return _state["built"], error
+        if include_external not in _state["built"]:
+            _state["built"][include_external] = build_batches(data[0], data[2 if include_external else 1], today)
+        return _state["built"][include_external], error

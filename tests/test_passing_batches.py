@@ -87,8 +87,8 @@ def test_a_batch_keeps_its_place_ids_and_organic_totals():
     sales = {0: ["2026-10-20"], 1: ["2026-10-27"], 2: ["2026-10-28"]}
     batch = pb.build_batches(passings(100, date(2026, 10, 19)), sales, TODAY)[0]
     assert batch["place_ids"] == list(range(100))
-    assert batch["organic_sales"] == 3
-    assert batch["organic_rate"] == 3.0
+    assert batch["total_sales"] == 3
+    assert batch["total_rate"] == 3.0
 
 
 def test_find_batch_matches_town_and_release_monday():
@@ -129,7 +129,7 @@ def test_old_batches_stay_and_carry_their_year():
 
 def test_sales_before_release_do_not_count():
     batch = pb.build_batches(passings(60, date(2026, 8, 3)), {0: ["2026-08-01"]}, TODAY)[0]
-    assert batch["organic_sales"] == 0
+    assert batch["total_sales"] == 0
 
 
 def batch_of(rates, passings=1000):
@@ -162,3 +162,18 @@ def test_plateau_ignores_the_running_week():
 def test_no_plateau_without_enough_history():
     assert pb.plateau([batch_of([0.2] * 77)]) is None
     assert pb.plateau([]) is None
+
+
+def test_all_sale_dates_keeps_every_order():
+    rows = [("P1", "jsmith", date(2026, 10, 20)), ("P1", None, "2026-10-21")]
+    assert pb.all_sale_dates(rows) == {"P1": ["2026-10-20", "2026-10-21"]}
+
+
+def test_load_batches_counts_external_sales_only_when_asked(monkeypatch):
+    organic, every_sale = {0: ["2026-10-20"]}, {0: ["2026-10-20"], 1: ["2026-10-20"]}
+    monkeypatch.setattr(pb, "_fetch", lambda: (passings(100, date(2026, 10, 19)), organic, every_sale))
+    monkeypatch.setattr(pb.passings_data, "_today", lambda: TODAY)
+    monkeypatch.setattr(pb, "_state", {"data": None, "loaded_at": 0.0, "built": {}, "built_key": None})
+    assert pb.load_batches()[0][0]["total_sales"] == 1
+    assert pb.load_batches(include_external=True)[0][0]["total_sales"] == 2
+    assert pb.load_batches()[0][0]["total_sales"] == 1
