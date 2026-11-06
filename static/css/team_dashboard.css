@@ -4016,3 +4016,107 @@ a.td-bulk-name:hover { color: var(--td-accent-blue); text-decoration: underline;
 
 /* Rep Profile Needs Attention / Cancelled tab: gap above Cancelled (2026-10-30) */
 .td-section-heading-spaced { margin-top: 32px; }
+
+/* ---------------- Parcel Map (Tools, added 2026-11-05) ---------------- */
+.td-parcel-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 18px;
+    margin-bottom: 12px;
+    color: var(--td-text-secondary);
+    font-size: 13px;
+}
+.td-parcel-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.td-parcel-swatch {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #c026d3;
+}
+.td-parcel-swatch-passing { background: rgba(34, 197, 94, 0.7); }
+.td-parcel-legend .td-parcel-status { margin-left: auto; color: var(--td-cyan); }
+.td-parcel-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: var(--td-panel);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+}
+.td-parcel-range label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--td-text-secondary);
+    font-size: 13px;
+}
+.td-parcel-range input[type="date"] {
+    padding: 6px 8px;
+    color: var(--td-text-primary);
+    color-scheme: dark;
+    background: var(--td-panel-alt);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius-sm);
+    font: inherit;
+}
+.td-parcel-kpis { margin-bottom: 14px; }
+.td-parcel-curve { margin-top: 24px; }
+.td-parcel-curve .td-kpi-bar { margin-top: 14px; }
+.td-parcel-curve-chart { position: relative; height: 320px; }
+.td-parcel-curve-toggles { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.td-parcel-curve-toggle { width: fit-content; }
+.td-parcel-curve-note { margin: 10px 0 0; color: var(--td-yellow); font-size: 13px; }
+.td-parcel-rate { color: var(--td-green); }
+.td-parcel-slider { position: relative; flex: 1 1 240px; height: 24px; }
+.td-parcel-slider-track {
+    position: absolute;
+    top: 10px;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--td-border);
+    border-radius: 2px;
+}
+.td-parcel-slider-fill { position: absolute; top: 0; bottom: 0; background: var(--td-green); border-radius: 2px; }
+/* Two range inputs share one track: only their thumbs take the pointer. */
+.td-parcel-slider input[type="range"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 24px;
+    margin: 0;
+    background: none;
+    pointer-events: none;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.td-parcel-slider input[type="range"]::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--td-green);
+    border: 2px solid var(--td-bg);
+    border-radius: 50%;
+    cursor: pointer;
+    pointer-events: auto;
+    -webkit-appearance: none;
+}
+.td-parcel-slider input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--td-green);
+    border: 2px solid var(--td-bg);
+    border-radius: 50%;
+    cursor: pointer;
+    pointer-events: auto;
+}
+/* isolation keeps Leaflet's high z-indexes below the Tools dropdown. */
+.td-parcel-map {
+    isolation: isolate;
+    height: calc(100vh - 230px);
+    min-height: 420px;
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-radius);
+}

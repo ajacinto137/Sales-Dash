@@ -224,6 +224,10 @@ passings_base AS (
             p.PP_InsertDate
         ) AS BecameAvailable,
         p.Counter_AddressUnits AS AddressUnits,
+        -- Parcel Map only (parcel_map.py).
+        p.MunicipalityName AS Municipality,
+        COALESCE(p.Parcel_Latitude, p.Rooftop_Latitude) AS Latitude,
+        COALESCE(p.Parcel_Longitude, p.Rooftop_Longitude) AS Longitude,
         CASE WHEN bf.NJPR_PlaceID IS NOT NULL THEN 1 ELSE 0 END AS PrequalAsBusiness,
         p.ClassName AS ClassName,
         {_property_type_case_sql()} AS PropertyTypeLabel

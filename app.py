@@ -32,6 +32,7 @@ import marketing_data
 import marketing_metrics
 import needs_attention_service
 import order_search
+import parcel_map
 import passings_activity_store
 import passings_cache
 import passings_classification
@@ -45,6 +46,7 @@ from queries import (
     WEB_SALES_QUERY,
     SERVICE_CANCELLATIONS_QUERY,
     VISION_PACKAGES_QUERY,
+    PAS_PLACE_URL,
     pas_place_url,
 )
 from sales_metrics import (
@@ -3043,6 +3045,28 @@ def admin_lead_feeder_refresh():
     threading.Thread(target=lead_feeder_store.refresh, daemon=True).start()
     flash("Refreshing the lead pool from HubSpot. Reload in a minute.", "ok")
     return redirect(url_for("admin_lead_feeder"))
+
+
+@app.route("/tools/parcel-map")
+@auth.login_required
+def parcel_map_page():
+    """Parcel Map (added 2026-11-05) -- NJ tax parcel outlines with passings
+    highlighted. Data and rules: parcel_map.py."""
+    return render_template(
+        "parcel_map.html",
+        active_page="tools",
+        parcels_url=parcel_map.NJ_PARCELS_URL,
+        pas_url=PAS_PLACE_URL,
+    )
+
+
+@app.route("/tools/parcel-map/passings")
+@auth.login_required
+def parcel_map_passings():
+    points, error = parcel_map.load_points()
+    if points is None:
+        return jsonify({"error": error}), 503
+    return jsonify({"points": points})
 
 
 @app.route("/tools/install-escalation")

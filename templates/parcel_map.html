@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Parcel Map — Planet Networks</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/parcel_map.js') }}" defer></script>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Parcel Map (Tools menu, added 2026-11-05) -- NJ tax parcel outlines with
+   passings highlighted. Data: parcel_map.py; drawing: static/js/parcel_map.js. #}
+
+<div class="td-page">
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Parcel Map</h1>
+            <p class="td-muted-inline">
+                New Jersey tax parcels &middot; zoom in to see property boundaries &middot;
+                outlines are from public state data and are not legal boundaries
+            </p>
+        </div>
+    </header>
+
+    <section class="td-parcel-range" aria-label="Availability dates">
+        <label>From <input type="date" id="parcel-date-from" disabled></label>
+        <div class="td-parcel-slider">
+            <div class="td-parcel-slider-track"><div id="parcel-slider-fill" class="td-parcel-slider-fill"></div></div>
+            <input type="range" id="parcel-slider-from" aria-label="Earliest availability date" disabled>
+            <input type="range" id="parcel-slider-to" aria-label="Latest availability date" disabled>
+        </div>
+        <label>To <input type="date" id="parcel-date-to" disabled></label>
+    </section>
+
+    <section class="td-kpi-bar td-parcel-kpis" aria-label="Organic sales in the selected dates">
+        <div class="td-kpi">
+            <span class="td-kpi-label">Passings</span>
+            <span id="parcel-kpi-passings" class="td-kpi-value td-purple">—</span>
+            <span class="td-kpi-note">NJ, available in these dates</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Organic Sales</span>
+            <span id="parcel-kpi-sales" class="td-kpi-value td-yellow">—</span>
+            <span class="td-kpi-note">on those passings, sold in these dates</span>
+        </div>
+        <div class="td-kpi">
+            <span class="td-kpi-label">Organic Sales Rate</span>
+            <span id="parcel-kpi-rate" class="td-kpi-value td-parcel-rate">—</span>
+            <span class="td-kpi-note">Organic Sales ÷ Passings</span>
+        </div>
+    </section>
+
+    <div class="td-parcel-legend">
+        <span><i class="td-parcel-swatch td-parcel-swatch-passing"></i>Available</span>
+        <span><i class="td-parcel-swatch"></i>Not available</span>
+        <span id="parcel-map-status" class="td-parcel-status" role="status">Loading passings…</span>
+    </div>
+
+    <div id="parcel-map" class="td-parcel-map"
+         data-parcels-url="{{ parcels_url }}"
+         data-points-url="{{ url_for('parcel_map_passings') }}"
+         data-pas-url="{{ pas_url }}"></div>
+
+    <section class="td-section td-parcel-curve">
+        <h2 id="parcel-curve-title">Organic Orders by Month Since Available</h2>
+        <p class="td-muted-inline">
+            Share of NJ passings with no order yet that place an Organic order each <span id="parcel-curve-period">month</span>.
+            Uses passings available in the dates above, with sales through today.
+            <span id="parcel-curve-rule">A passing drops out once door knockers reach its town.</span>
+        </p>
+        <div class="td-parcel-curve-toggles">
+        <div class="td-chart-toggle td-parcel-curve-toggle" role="group" aria-label="Curve time scale">
+            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-curve-scale="month" aria-pressed="true">Months</button>
+            <button type="button" class="td-chart-toggle-btn" data-curve-scale="week" aria-pressed="false">Weeks</button>
+        </div>
+        <div class="td-chart-toggle td-parcel-curve-toggle" role="group" aria-label="Periods shown on the curve">
+            <button type="button" class="td-chart-toggle-btn td-chart-toggle-active" data-curve-knockers="before" aria-pressed="true">Before Knockers</button>
+            <button type="button" class="td-chart-toggle-btn" data-curve-knockers="after" aria-pressed="false">Include After Knockers</button>
+        </div>
+        </div>
+        <p id="parcel-curve-note" class="td-parcel-curve-note" role="status" hidden></p>
+        <div class="td-kpi-bar td-parcel-kpis">
+            <div class="td-kpi">
+                <span id="parcel-curve-first-label" class="td-kpi-label">Opening Month</span>
+                <span id="parcel-curve-first" class="td-kpi-value td-cyan">—</span>
+                <span id="parcel-curve-first-note" class="td-kpi-note">month 0 order rate</span>
+            </div>
+            <div class="td-kpi">
+                <span class="td-kpi-label">Decay Ends</span>
+                <span id="parcel-curve-start" class="td-kpi-value td-yellow">—</span>
+                <span id="parcel-curve-start-note" class="td-kpi-note">stays within 0.2 pts of plateau</span>
+            </div>
+            <div class="td-kpi">
+                <span class="td-kpi-label">Plateau</span>
+                <span id="parcel-curve-plateau" class="td-kpi-value td-purple">—</span>
+                <span id="parcel-curve-plateau-note" class="td-kpi-note">per month, months 12–24</span>
+            </div>
+        </div>
+        <div class="td-parcel-curve-chart">
+            <canvas id="parcel-curve-chart" role="img" aria-label="Organic order rate by time since a passing became available"></canvas>
+        </div>
+        <p id="parcel-curve-empty" class="td-muted-inline" hidden>Not enough history in these dates to draw the curve.</p>
+    </section>
+</div>
+</body>
+</html>
