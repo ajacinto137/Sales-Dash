@@ -2,10 +2,12 @@
 weekly release batches per town, with Organic sales for each calendar week,
 as a share of the whole batch.
 
-A batch is every passing a town released in one Monday-Sunday week. Week 1 is
-that release week and each later week is the next Monday-Sunday (by request,
-so a batch only ever has one running week). A late-week release therefore has
-a short Week 1, and more of its early sales land in Week 2. A week is final
+A batch is every passing a town released in one Monday-Sunday week. A passing
+is released the first day it could be sold, Pre-Order or Available Now,
+whichever came first (passings_data ReleaseDate). Week 1 is that release week
+and each later week is the next Monday-Sunday (by request, so a batch only
+ever has one running week). A late-week release therefore has a short Week 1,
+and more of its early sales land in Week 2. A week is final
 once its Sunday has passed. Status compares the running week, the current
 calendar week, with the release line. Organic is parcel_map's rule: every
 quoted order that isn't a door knocker's. Orders link to passings by property
@@ -14,6 +16,8 @@ that property, and is never counted twice. The Monthly toggle does the same
 by calendar month: a batch is a town's release month and Month 1 is that month.
 The status line stays 2%, of the month in that view. The Include External toggle adds
 door knockers' orders back, and every rate, status and the plateau follow.
+EXTRA_TOWNS are batched here though /passings leaves them out, so they have no
+Batch Profile: its cards read the /passings data.
 """
 
 import threading
@@ -30,6 +34,9 @@ RELEASE_LINE = 2.0  # percent of the batch in a week
 MIN_BATCH = 50      # below this, one sale swings the rate across the line
 REFRESH_SECONDS = 1800
 PAGE_SIZE = 50      # all-time batches run to 288 weeks, too big for one table
+# PA towns released in 2026 but not flagged IsPlanetImproved, so they aren't
+# /passings passings. Added by request 2026-11-06; some have no street address.
+EXTRA_TOWNS = ("Matamoras", "Westfall")
 
 # Plateau: the Parcel Map curve's rule (static/js/parcel_map.js), on this
 # tool's rate. The plateau is the average of `periods`, and needs `min_periods`
@@ -41,9 +48,16 @@ PLATEAU_RULES = {
 }
 
 _PASSINGS_QUERY = (
-    f"{passings_data._BASE_CTE} SELECT PlaceID, BecameAvailable, Municipality, City, PropertyID "
-    "FROM passings_base WHERE BecameAvailable IS NOT NULL"
+    f"{passings_data._BASE_CTE} SELECT PlaceID, ReleaseDate, Municipality, City, PropertyID "
+    "FROM passings_base WHERE ReleaseDate IS NOT NULL"
 )
+_EXTRA_PASSINGS_QUERY = f"""
+SELECT p.ID, {passings_data.RELEASE_DATE_SQL} AS ReleaseDate, p.MunicipalityName,
+       ISNULL(p.USPSPropertyCity, p.PropertyCity), p.PropertyID
+FROM [PlanetWeb].[dbo].[View_Places] p
+WHERE p.ID IS NOT NULL AND p.As_AvailabilityID IN (1, 3)
+  AND p.MunicipalityName IN ({", ".join(f"'{town}'" for town in EXTRA_TOWNS)})
+"""
 _ORDERS_QUERY = """
 SELECT LTRIM(RTRIM(Property_ID)), ReferralData, CAST(InsertDate AS date)
 FROM [PlanetWeb].[dbo].[FTTPFormData]
@@ -111,6 +125,7 @@ def _batch_row(town, start, place_ids, period_sales, today, monthly=False):
             else f"{town} Batch Week {start.strftime('%b')} {start.day}{year}"
         ),
         "town": town,
+        "has_profile": town not in EXTRA_TOWNS,
         "week_of": start,
         "passings": passings,
         "place_ids": place_ids,
@@ -123,12 +138,12 @@ def _batch_row(town, start, place_ids, period_sales, today, monthly=False):
 
 
 def build_batches(passings, sales, today, monthly=False):
-    """Batches newest first, from [(PlaceID, BecameAvailable, Municipality,
+    """Batches newest first, from [(PlaceID, ReleaseDate, Municipality,
     City), ...] and {place_id: ["YYYY-MM-DD", ...]}, all time."""
     releases = {}
     period_sales = {}
-    for place_id, became_available, municipality, city in passings:
-        released = _as_date(became_available)
+    for place_id, release_date, municipality, city in passings:
+        released = _as_date(release_date)
         if released is None or released > today:
             continue
         start = period_start(released, monthly)
@@ -157,15 +172,15 @@ def all_sale_dates(order_rows):
 
 
 def sales_by_passing(passings, sales_by_property):
-    """{place_id: sale dates} from [(PlaceID, BecameAvailable, Municipality,
+    """{place_id: sale dates} from [(PlaceID, ReleaseDate, Municipality,
     City, PropertyID), ...] and {property_id: sale dates}. Each property's
     sales go to its first-released passing (lowest PlaceID on a tie)."""
     first_passing = {}
-    for place_id, became_available, _municipality, _city, property_id in passings:
+    for place_id, release_date, _municipality, _city, property_id in passings:
         property_id = property_id.strip() if isinstance(property_id, str) else ""
         if not property_id:
             continue
-        rank = (_as_date(became_available), place_id)
+        rank = (_as_date(release_date), place_id)
         if property_id not in first_passing or rank < first_passing[property_id]:
             first_passing[property_id] = rank
     return {
@@ -173,6 +188,12 @@ def sales_by_passing(passings, sales_by_property):
         for property_id, rank in first_passing.items()
         if property_id in sales_by_property
     }
+
+
+def with_extra_towns(passings, extra):
+    """passings plus the dated EXTRA_TOWNS rows, each place only once."""
+    seen = {row[0] for row in passings}
+    return passings + [row for row in extra if row[1] is not None and row[0] not in seen]
 
 
 def find_batch(batches, town, week):
@@ -230,6 +251,8 @@ def _fetch():
         orders = cursor.fetchall()
         cursor.execute(_PASSINGS_QUERY)
         passings = [tuple(row) for row in cursor.fetchall()]
+        cursor.execute(_EXTRA_PASSINGS_QUERY)
+        passings = with_extra_towns(passings, [tuple(row) for row in cursor.fetchall()])
         return (
             [row[:4] for row in passings],
             sales_by_passing(passings, parcel_map.organic_sale_dates(orders, rep_codes)),

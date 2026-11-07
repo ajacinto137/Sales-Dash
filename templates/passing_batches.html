@@ -29,7 +29,7 @@
                 <tbody>
                     {% for batch in rows %}
                     <tr class="{{ 'td-batch-row-small' if batch.status == 'small' }}">
-                        <th scope="row" class="td-batch-name-col"><a class="td-batch-name-link" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, external=external_param, group=group_param) }}">{{ batch.name }}</a></th>
+                        <th scope="row" class="td-batch-name-col">{% if batch.has_profile %}<a class="td-batch-name-link" href="{{ url_for('passing_batch_profile', week=batch.week_of.isoformat(), town=batch.town, external=external_param, group=group_param) }}">{{ batch.name }}</a>{% else %}{{ batch.name }}{% endif %}</th>
                         <td class="td-batch-count">{{ "{:,}".format(batch.passings) }}</td>
                         <td class="td-batch-status td-batch-status-{{ batch.status }}">
                             {% if batch.status == 'small' %}Small batch

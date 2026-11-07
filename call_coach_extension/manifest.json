@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Sales-Dash Live Call Coach",
+  "version": "1.0.0",
+  "description": "Listens to a HubSpot browser call and shows the rep what to say next. Cards are shown only to the rep.",
+  "permissions": ["tabCapture", "offscreen", "sidePanel", "activeTab", "storage"],
+  "host_permissions": ["__SERVER_ORIGIN__/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Live Call Coach", "default_icon": "icons/icon128.png" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "icons": { "128": "icons/icon128.png" }
+}

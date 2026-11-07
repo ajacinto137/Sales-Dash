@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Live Call Coach</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header>
+    <div class="title">Live Call Coach</div>
+    <div id="status" class="status idle">Not started</div>
+  </header>
+
+  <section id="setup" class="notice" hidden></section>
+
+  <section class="controls">
+    <button id="start" class="primary">Start coaching</button>
+    <button id="stop" hidden>Stop</button>
+  </section>
+
+  <p id="consent" class="consent" hidden></p>
+
+  <section id="card" class="card empty">
+    <div class="card-label">Waiting for the customer...</div>
+  </section>
+
+  <details class="context">
+    <summary>Notes about this customer (optional)</summary>
+    <textarea id="context" rows="3" placeholder="e.g. Currently on Optimum, pays ~$90, works from home, renting"></textarea>
+  </details>
+
+  <section>
+    <div class="section-head">
+      <span>Earlier cards</span>
+    </div>
+    <ol id="history" class="history"></ol>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <span>Live transcript</span>
+      <button id="copy" class="link">Copy</button>
+    </div>
+    <div id="transcript" class="transcript"></div>
+    <div id="interim" class="interim"></div>
+  </section>
+
+  <script src="config.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

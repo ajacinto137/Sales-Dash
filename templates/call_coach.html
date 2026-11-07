@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Live Call Coach — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <style>
+        .cc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+        .cc-box { background: var(--td-card-bg, #131a2e); border: 1px solid var(--td-border, #243052); border-radius: 12px; padding: 16px; }
+        .cc-box h2 { margin: 0 0 10px; font-size: 16px; color: #22d3ee; }
+        .cc-steps { margin: 0; padding-left: 20px; line-height: 1.7; }
+        .cc-ok { color: #4ade80; font-weight: 600; }
+        .cc-missing { color: #facc15; font-weight: 600; }
+        .cc-form label { display: block; margin: 8px 0 4px; font-size: 13px; }
+        .cc-form input, .cc-try textarea { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 8px; border: 1px solid #243052; background: #0b1020; color: #e6e9f2; font: inherit; }
+        .cc-card { margin-top: 12px; border: 2px solid #f472b6; border-radius: 12px; padding: 12px; }
+        .cc-card .lbl { font-size: 12px; text-transform: uppercase; color: #f472b6; }
+        .cc-card .say { font-size: 18px; font-weight: 600; margin: 4px 0; }
+        .cc-card .why { font-size: 12px; opacity: .7; }
+        .cc-obj { border-bottom: 1px solid #243052; padding: 8px 0; font-size: 13px; }
+        .cc-obj b { color: #f472b6; }
+        .cc-msg { font-size: 13px; margin-top: 8px; }
+    </style>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Live Call Coach (Tools menu, added 2026-11-07) -- setup page for the
+   Chrome extension that listens to HubSpot browser calls and shows the
+   rep what to say next. Logic: call_coach.py; answers:
+   call_coach_playbook.json; extension: call_coach_extension/. #}
+
+<div class="td-page">
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Live Call Coach</h1>
+            <p class="td-muted-inline">
+                Listens to your HubSpot browser call and shows you &mdash; only you &mdash; what to say next when an objection comes up
+            </p>
+        </div>
+        <a class="td-btn" href="{{ url_for('call_coach_extension_zip') }}">Download Chrome extension</a>
+    </header>
+
+    {% if playbook_error %}
+    <p class="td-cp-notice">The playbook file couldn't be read ({{ playbook_error }}).</p>
+    {% endif %}
+
+    <div class="cc-grid">
+        <section class="cc-box">
+            <h2>Set up (once)</h2>
+            <ol class="cc-steps">
+                <li>In HubSpot, set calling to <strong>call from browser</strong> (not your phone).</li>
+                <li>Download the extension above and unzip it.</li>
+                <li>Open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong>, click <strong>Load unpacked</strong> and pick the <code>call-coach-extension</code> folder.</li>
+                <li>Pin it, and stay signed in to Sales-Dash in the same Chrome profile.</li>
+            </ol>
+            <h2 style="margin-top:16px">On every call</h2>
+            <ol class="cc-steps">
+                <li>On the HubSpot tab, click the Call Coach icon &rarr; the side panel opens.</li>
+                <li>Press <strong>Start coaching</strong> (the first time, allow the microphone).</li>
+                <li>Tell the customer: &ldquo;{{ playbook.get('consent_line') }}&rdquo;</li>
+                <li>Read the big card when it appears. Press <strong>Stop</strong> when the call ends.</li>
+            </ol>
+        </section>
+
+        <section class="cc-box">
+            <h2>Status</h2>
+            <p>Live transcription (Deepgram):
+                {% if deepgram_hint %}<span class="cc-ok">ready</span> <span class="td-muted-inline">({{ deepgram_hint }}, from {{ 'Admin' if deepgram_source == 'admin' else '.env' }})</span>
+                {% else %}<span class="cc-missing">no key</span>{% endif %}</p>
+            <p>Smart cards (Claude, <code>{{ model }}</code>):
+                {% if anthropic_hint %}<span class="cc-ok">ready</span> <span class="td-muted-inline">({{ anthropic_hint }}, from {{ 'Admin' if anthropic_source == 'admin' else '.env' }})</span>
+                {% else %}<span class="cc-missing">no key</span>{% endif %}</p>
+            <p>Playbook: {{ playbook.get('objections', [])|length }} objections.
+                {% if missing_offer %}<span class="cc-missing">Offer details still blank:</span> {{ missing_offer|join(', ') }} &mdash; cards show &ldquo;[fill in: &hellip;]&rdquo; there until <code>call_coach_playbook.json</code> is filled in.{% endif %}</p>
+
+            {% if is_admin %}
+            <form class="cc-form" id="cc-keys">
+                <label for="anthropic_key">Anthropic API key</label>
+                <input id="anthropic_key" name="anthropic_key" type="password" autocomplete="off" placeholder="{{ 'Saved — paste to replace' if anthropic_hint else 'sk-ant-…' }}">
+                <label for="deepgram_key">Deepgram API key</label>
+                <input id="deepgram_key" name="deepgram_key" type="password" autocomplete="off" placeholder="{{ 'Saved — paste to replace' if deepgram_hint else 'Deepgram key' }}">
+                <p><button class="td-btn" type="submit">Save keys</button></p>
+                <p class="cc-msg" id="cc-keys-msg"></p>
+            </form>
+            {% endif %}
+        </section>
+
+        <section class="cc-box cc-try">
+            <h2>Try it without a call</h2>
+            <p class="td-muted-inline">Type what a customer might say. The playbook card is instant; the AI card needs the Anthropic key.</p>
+            <textarea id="cc-try-text" rows="3">Honestly it sounds good but it's too expensive, and I'm locked into my Optimum contract until March.</textarea>
+            <p><button class="td-btn" id="cc-try-btn" type="button">Get cards</button></p>
+            <div id="cc-try-out"></div>
+        </section>
+    </div>
+
+    <section class="td-section">
+        <div class="td-section-heading"><h2>Playbook</h2></div>
+        <div class="cc-box">
+            {% for o in playbook.get('objections', []) %}
+            <div class="cc-obj"><b>{{ o.label }}</b> &middot; listens for &ldquo;{{ o.listen_for[:3]|join('”, “') }}&rdquo;&hellip;<br>{{ o.say }}</div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+
+<script>
+(function () {
+    function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+    function card(c, tag) {
+        var box = el('div', 'cc-card');
+        box.append(el('div', 'lbl', (tag ? tag + ' · ' : '') + c.label), el('div', 'say', c.say));
+        if (c.why) box.append(el('div', 'why', c.why));
+        return box;
+    }
+    var keys = document.getElementById('cc-keys');
+    if (keys) keys.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var msg = document.getElementById('cc-keys-msg');
+        fetch('{{ url_for("call_coach_save_keys") }}', { method: 'POST', body: new FormData(keys) })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                msg.textContent = d.ok ? 'Saved. Reloading…' : d.error;
+                if (d.ok) setTimeout(function () { location.reload(); }, 600);
+            });
+    });
+    document.getElementById('cc-try-btn').addEventListener('click', function () {
+        var text = document.getElementById('cc-try-text').value;
+        var out = document.getElementById('cc-try-out');
+        out.textContent = '';
+        var post = function (url, body) {
+            return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+        };
+        post('/api/call-coach/match', { text: text }).then(function (d) {
+            (d.cards || []).forEach(function (c) { out.append(card(c, 'Playbook')); });
+            if (!(d.cards || []).length) out.append(el('p', 'cc-msg', 'No playbook card for that line.'));
+        });
+        var wait = el('p', 'cc-msg', 'Asking Claude…');
+        out.append(wait);
+        post('/api/call-coach/suggest', { lines: [{ speaker: 'customer', text: text }] }).then(function (d) {
+            wait.remove();
+            if (!d.ok) out.append(el('p', 'cc-msg', 'AI card: ' + d.error));
+            else if (d.card) out.append(card(d.card, 'AI'));
+            else out.append(el('p', 'cc-msg', 'AI: no card needed for that line.'));
+        });
+    });
+})();
+</script>
+</body>
+</html>

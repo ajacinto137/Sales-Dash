@@ -162,6 +162,19 @@ def _property_type_case_sql():
     return "CASE " + " ".join(when_clauses) + " ELSE NULL END"
 
 
+RELEASE_DATE_SQL = """CASE
+            WHEN p.As_DateFirstAvailability3 < p.As_DateFirstAvailability1
+                THEN p.As_DateFirstAvailability3
+            ELSE COALESCE(
+                p.As_DateFirstAvailability1,
+                p.As_DateFirstAvailability3,
+                p.As_AvailabilityModifiedDate,
+                p.PP_UpdatedDate,
+                p.PP_InsertDate
+            )
+        END"""
+
+
 _BASE_CTE = f"""
 WITH latest_email AS (
     -- Was a per-row correlated subquery (SELECT TOP 1 ... WHERE
@@ -223,6 +236,10 @@ passings_base AS (
             p.PP_UpdatedDate,
             p.PP_InsertDate
         ) AS BecameAvailable,
+        -- First day the address could be sold: Pre-Order counts as available
+        -- (2026-11-06). Passing Batches and Parcel Map only; BecameAvailable
+        -- prefers the Available Now date, often weeks after Pre-Order opened.
+        {RELEASE_DATE_SQL} AS ReleaseDate,
         p.Counter_AddressUnits AS AddressUnits,
         -- Parcel Map only (parcel_map.py).
         p.MunicipalityName AS Municipality,

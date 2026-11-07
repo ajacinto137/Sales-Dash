@@ -35,7 +35,7 @@ REFRESH_SECONDS = 1800
 PROGRAM_START = "2026-02-27"
 
 _POINTS_QUERY = (
-    f"{passings_data._BASE_CTE} SELECT PlaceID, Latitude, Longitude, BecameAvailable, Municipality FROM passings_base "
+    f"{passings_data._BASE_CTE} SELECT PlaceID, Latitude, Longitude, ReleaseDate, Municipality FROM passings_base "
     "WHERE State = 'NJ' AND Latitude IS NOT NULL AND Longitude IS NOT NULL"
 )
 

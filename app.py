@@ -24,6 +24,7 @@ import hubspot_logic
 import hubspot_store
 import import_service
 import bonus
+import call_coach
 import install_escalation
 import knockers
 import lead_feeder_logic
@@ -3122,7 +3123,7 @@ def passing_batch_profile(week, town):
         return redirect(url_for("passing_batches_page"))
     batch = passing_batches.find_batch(batches, town, week)
     group_param = "month" if monthly else None
-    if batch is None:
+    if batch is None or not batch["has_profile"]:
         abort(404)
 
     show = "leads" if request.args.get("show") == "leads" else "all"
@@ -3326,6 +3327,134 @@ def install_escalation_mark(order_id):
     if not ok:
         return jsonify({"ok": False, "error": error}), 400
     return jsonify({"ok": True, "mark": _serialize_escalation_mark(mark, user)})
+
+
+# ================================================================
+# TOOLS -- Live Call Coach (added 2026-11-07)
+# ================================================================
+# Server half of the Chrome extension in call_coach_extension/: instant
+# playbook cards, Claude "say this next" cards, and short-lived Deepgram
+# tokens. Rules and prompts: call_coach.py; answers: call_coach_playbook.json.
+
+def _coach_api_user():
+    """The logged-in user, or None -- the extension's fetch() calls get a
+    401 JSON instead of the login redirect."""
+    return auth.current_user()
+
+
+@app.route("/tools/call-coach")
+@auth.login_required
+def call_coach_page():
+    user = auth.current_user()
+    anthropic_key = call_coach.anthropic_key()
+    deepgram_key = call_coach.deepgram_key()
+    try:
+        playbook = call_coach.load_playbook()
+        playbook_error = None
+    except (OSError, ValueError) as exc:
+        playbook, playbook_error = {"offer": {}, "objections": []}, str(exc)
+    offer = playbook.get("offer", {})
+    missing_offer = [k for k, v in offer.items() if k != "company" and not v]
+    return render_template(
+        "call_coach.html",
+        active_page="tools",
+        is_admin=permissions.is_admin(user),
+        anthropic_hint=call_coach.key_hint(anthropic_key),
+        anthropic_source=call_coach.key_source(call_coach.ANTHROPIC_SECRET, "ANTHROPIC_API_KEY"),
+        deepgram_hint=call_coach.key_hint(deepgram_key),
+        deepgram_source=call_coach.key_source(call_coach.DEEPGRAM_SECRET, "DEEPGRAM_API_KEY"),
+        model=call_coach.model(),
+        playbook=playbook,
+        playbook_error=playbook_error,
+        missing_offer=missing_offer,
+    )
+
+
+@app.route("/tools/call-coach/keys", methods=["POST"])
+@auth.admin_required
+def call_coach_save_keys():
+    """Admin-entered Anthropic / Deepgram keys, stored encrypted
+    (app_secrets.py). Never echoed back."""
+    names = {
+        "anthropic_key": call_coach.ANTHROPIC_SECRET,
+        "deepgram_key": call_coach.DEEPGRAM_SECRET,
+    }
+    saved = []
+    for field, secret_name in names.items():
+        value = (request.form.get(field) or "").strip()
+        if not value:
+            continue
+        if len(value) < 10 or len(value) > 512 or any(ch.isspace() for ch in value):
+            return jsonify({"ok": False, "error": "That doesn't look like an API key."}), 400
+        ok, error = app_secrets.set_secret(secret_name, value, auth.current_user()["id"])
+        if not ok:
+            return jsonify({"ok": False, "error": error}), 500
+        saved.append(field)
+    if not saved:
+        return jsonify({"ok": False, "error": "Nothing to save."}), 400
+    return jsonify({"ok": True, "saved": saved})
+
+
+@app.route("/tools/call-coach/extension.zip")
+@auth.login_required
+def call_coach_extension_zip():
+    """The Chrome extension, pointed at the site it was downloaded from."""
+    # Behind nginx the app sees http; X-Forwarded-Proto has the real scheme.
+    scheme = (request.headers.get("X-Forwarded-Proto") or request.scheme).split(",")[0].strip()
+    data = call_coach.extension_zip(f"{scheme}://{request.host}")
+    return Response(
+        data,
+        mimetype="application/zip",
+        headers={"Content-Disposition": "attachment; filename=call-coach-extension.zip"},
+    )
+
+
+@app.route("/api/call-coach/session")
+def call_coach_api_session():
+    """Lets the extension check it's signed in before a call starts."""
+    user = _coach_api_user()
+    if user is None:
+        return jsonify({"ok": False, "error": "Not signed in to Sales-Dash."}), 401
+    return jsonify({
+        "ok": True,
+        "name": user.get("sales_rep_name") or user.get("email"),
+        "anthropic_ready": bool(call_coach.anthropic_key()),
+        "deepgram_ready": bool(call_coach.deepgram_key()),
+        "consent_line": call_coach.load_playbook().get("consent_line", ""),
+    })
+
+
+@app.route("/api/call-coach/stt-token", methods=["POST"])
+def call_coach_api_stt_token():
+    if _coach_api_user() is None:
+        return jsonify({"ok": False, "error": "Not signed in to Sales-Dash."}), 401
+    token, expires_in, error = call_coach.deepgram_token()
+    if error:
+        return jsonify({"ok": False, "error": error}), 503
+    return jsonify({"ok": True, "token": token, "expires_in": expires_in})
+
+
+@app.route("/api/call-coach/match", methods=["POST"])
+def call_coach_api_match():
+    if _coach_api_user() is None:
+        return jsonify({"ok": False, "error": "Not signed in to Sales-Dash."}), 401
+    payload = request.get_json(silent=True) or {}
+    text = str(payload.get("text") or "")[:call_coach.MAX_LINE_CHARS]
+    return jsonify({"ok": True, "cards": call_coach.match(text)})
+
+
+@app.route("/api/call-coach/suggest", methods=["POST"])
+def call_coach_api_suggest():
+    if _coach_api_user() is None:
+        return jsonify({"ok": False, "error": "Not signed in to Sales-Dash."}), 401
+    payload = request.get_json(silent=True) or {}
+    lines = payload.get("lines")
+    if not isinstance(lines, list):
+        return jsonify({"ok": False, "error": "lines must be a list."}), 400
+    card, error = call_coach.suggest(lines, str(payload.get("context") or ""))
+    if error:
+        return jsonify({"ok": False, "error": error}), 503
+    return jsonify({"ok": True, "card": card})
 
 
 @app.route("/cancellations")

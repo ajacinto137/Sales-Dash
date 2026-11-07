@@ -32,7 +32,7 @@ import db
 import hubspot_logic
 import needs_attention_service
 from queries import FIBER_INSTALL_JOB_TYPES_SQL
-from sales_metrics import EASTERN_TZ
+from sales_metrics import EASTERN_TZ, UNKNOWN_CHANNEL_FALLBACK
 
 ORDER_QUERY = """
 SELECT
@@ -41,7 +41,7 @@ SELECT
     fd.NJPR_municipalityName, fd.NJPR_countyName, fd.Google_FormattedAddress,
     fd.Google_Location_lat, fd.Google_Location_lng, fd.Property_StateName,
     fd.IsBusiness, fd.AreYouCustomer, fd.Comments, fd.HowDidYouHearMemo, fd.ReferralData,
-    fd.SourceToken, fd.MarketingToken, fd.InsertDate, fd.ModifiedDate,
+    fd.SourceToken, fd.MarketingToken, fd.InsertDate, fd.ModifiedDate, fd.InsertByEmployeeID,
     fd.Wireless_Devices_Count, fd.ConsentForEmail, fd.ConsentForSMS, fd.ConsentForSMSMarketing,
     fd.Cc_PayBy, fd.Cc_Last4, fd.MailedInvoice, fd.KeepCurrentPhoneNumber,
     fd.RequestedFaxBridge, fd.IsCloudPhoneOrder, fd.VoiceLOAReceived, fd.VoiceLOAReceivedDate,
@@ -238,6 +238,14 @@ def _fields(pairs):
 
 # ------------------------------------------------------------- PlanetWeb
 
+def _sales_channel(o):
+    """An internal rep's order with no channel recorded is Door to Door, the
+    same as sales_metrics.map_sales_channel(). Website orders stay blank."""
+    if o.get("SalesChannelName"):
+        return o["SalesChannelName"]
+    return UNKNOWN_CHANNEL_FALLBACK if o.get("InsertByEmployeeID") else None
+
+
 def _order_sections(o):
     speed = None
     if o.get("SpeedDown") is not None and o.get("SpeedUp") is not None:
@@ -279,7 +287,7 @@ def _order_sections(o):
             ("Customer Comments", o.get("Comments")),
         ]),
         "source": _fields([
-            ("Sales Channel", o.get("SalesChannelName")),
+            ("Sales Channel", _sales_channel(o)),
             ("Source Token", o.get("SourceToken")),
             ("Referral Code", o.get("ReferralData")),
             ("Door Knocker", door_knocker),

@@ -132,6 +132,18 @@ def test_sales_before_release_do_not_count():
     assert batch["total_sales"] == 0
 
 
+def test_extra_towns_join_once_and_need_a_date():
+    base = [(1, date(2026, 9, 24), "Vernon", None, "A")]
+    extra = [(1, date(2026, 9, 24), "Vernon", None, "A"), (2, date(2026, 10, 9), "Matamoras", None, "B"), (3, None, "Westfall", None, "C")]
+    assert [row[0] for row in pb.with_extra_towns(base, extra)] == [1, 2]
+
+
+def test_extra_towns_have_no_batch_profile():
+    rows = [(1, date(2026, 10, 5), "Matamoras", None), (2, date(2026, 10, 5), "Vernon", None)]
+    profiles = {batch["town"]: batch["has_profile"] for batch in pb.build_batches(rows, {}, TODAY)}
+    assert profiles == {"Matamoras": False, "Vernon": True}
+
+
 def batch_of(rates, passings=1000):
     """A finished batch whose week N sells rates[N-1] percent of its passings."""
     weeks = [

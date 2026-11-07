@@ -114,7 +114,8 @@
        for a period only when all of it passed before today and before knockers reached
        its town. With the after-knockers view on, it counts until a knocker
        sells that house instead, so those months include knocker effects.
-       Passings ordered before they became available aren't counted. ---- */
+       Available means the first day it could be sold, Pre-Order included.
+       Passings ordered before that aren't counted. ---- */
     const MIN_PASSINGS = 100;   // fewer in a period is too noisy to plot
     // Both scales cover the same two years. band is in points; a week's rate
     // is about a quarter of a month's, so its band and decimals scale with it.
