@@ -828,28 +828,19 @@ MIGRATIONS = [
     ),
     (
         23,
-        "sales_videos (Tools > Sales Video Coach, 2026-11-07)",
+        "reserved (removed tool, 2026-11-07)",
         """
-        -- One row per YouTube video the team has learned from
-        -- (video_coach.py). transcript = [[start_seconds|null, text], ...];
-        -- notes = Claude's lessons/objections/drill JSON (NULL until
-        -- status = 'ready'). status: processing | ready | failed.
-        CREATE TABLE IF NOT EXISTS sales_videos (
-            id SERIAL PRIMARY KEY,
-            video_id TEXT NOT NULL UNIQUE,
-            title TEXT,
-            channel TEXT,
-            length_seconds INTEGER,
-            captions TEXT,
-            transcript JSONB,
-            status TEXT NOT NULL DEFAULT 'processing',
-            error TEXT,
-            notes JSONB,
-            added_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-            added_by_name TEXT,
-            added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            learned_at TIMESTAMPTZ
-        );
+        -- Intentionally empty: version 23 already ran in production, so
+        -- the number stays taken. Migration 24 cleans up after it.
+        SELECT 1;
+        """,
+    ),
+    (
+        24,
+        "drop leftovers of removed coach tools (2026-11-07)",
+        """
+        DROP TABLE IF EXISTS sales_videos;
+        DELETE FROM app_secrets WHERE name IN ('anthropic_api_key', 'deepgram_api_key');
         """,
     ),
 ]
