@@ -43,6 +43,7 @@ import passings_data
 import permissions
 import staffing_store
 import user_store
+import video_coach
 from queries import (
     EXTERNAL_ORDER_CANCELLATIONS_QUERY,
     MAIN_SALES_QUERY,
@@ -3455,6 +3456,102 @@ def call_coach_api_suggest():
     if error:
         return jsonify({"ok": False, "error": error}), 503
     return jsonify({"ok": True, "card": card})
+
+
+# ================================================================
+# TOOLS -- Sales Video Coach (added 2026-11-07)
+# ================================================================
+# Paste a YouTube link -> captions -> Claude lessons in one shared team
+# playbook; "Ask the coach" answers from it. Logic: video_coach.py;
+# storage: appdb sales_videos (migration 23). Anthropic key shared with
+# the Live Call Coach.
+
+def _video_json(row):
+    """What the page needs about one video (no transcript)."""
+    return {
+        "id": row["id"],
+        "video_id": row["video_id"],
+        "title": row.get("title") or row["video_id"],
+        "channel": row.get("channel"),
+        "length": video_coach.ts(row.get("length_seconds")),
+        "captions": row.get("captions"),
+        "status": row["status"],
+        "error": row.get("error"),
+        "added_by": row.get("added_by_name"),
+        "added_at": row["added_at"].astimezone(EASTERN_TZ).strftime("%b %-d, %Y") if row.get("added_at") else None,
+        "lessons": len((row.get("notes") or {}).get("lessons", [])),
+    }
+
+
+@app.route("/tools/video-coach")
+@auth.login_required
+def video_coach_page():
+    user = auth.current_user()
+    ok, load_error, rows = video_coach.list_videos()
+    open_id = request.args.get("video", type=int)
+    return render_template(
+        "video_coach.html",
+        active_page="tools",
+        videos=rows,
+        playbook=video_coach.playbook_view(rows),
+        open_video=next((r for r in rows if r["id"] == open_id), None),
+        load_error=None if ok else load_error,
+        has_key=bool(call_coach.anthropic_key()),
+        is_admin=permissions.is_admin(user),
+        user_id=user.get("id"),
+        channels=video_coach.CHANNEL_LABELS,
+        ts=video_coach.ts,
+        clip_url=video_coach.clip_url,
+        topic_labels=video_coach.TOPIC_LABELS,
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/api/video-coach/videos", methods=["POST"])
+@auth.login_required
+def video_coach_submit():
+    payload = request.get_json(silent=True) or {}
+    ok, error, row_id = video_coach.submit(payload.get("url"), payload.get("transcript"), auth.current_user())
+    if not ok:
+        return jsonify({"ok": False, "error": error, "id": row_id}), 400
+    return jsonify({"ok": True, "id": row_id})
+
+
+@app.route("/api/video-coach/videos/<int:row_id>")
+@auth.login_required
+def video_coach_status(row_id):
+    row = video_coach.get_video(row_id)
+    if row is None:
+        return jsonify({"ok": False, "error": "Not found."}), 404
+    return jsonify({"ok": True, "video": _video_json(row)})
+
+
+@app.route("/api/video-coach/videos/<int:row_id>/retry", methods=["POST"])
+@auth.login_required
+def video_coach_retry(row_id):
+    ok, error = video_coach.retry(row_id, auth.current_user())
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/video-coach/videos/<int:row_id>", methods=["DELETE"])
+@auth.login_required
+def video_coach_delete(row_id):
+    ok, error = video_coach.delete_video(row_id, auth.current_user())
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/video-coach/ask", methods=["POST"])
+@auth.login_required
+def video_coach_ask():
+    payload = request.get_json(silent=True) or {}
+    result, error = video_coach.ask(payload.get("question"), payload.get("channel"), auth.current_user())
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True, "result": result})
 
 
 @app.route("/cancellations")

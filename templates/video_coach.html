@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sales Video Coach — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    <style>
+        .vc-box { background: var(--td-card-bg, #131a2e); border: 1px solid var(--td-border, #243052); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        .vc-box h2 { margin: 0 0 10px; font-size: 16px; color: #22d3ee; }
+        .vc-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .vc-row input[type=text], .vc-box textarea, .vc-box select { flex: 1 1 260px; box-sizing: border-box; padding: 9px; border-radius: 8px; border: 1px solid #243052; background: #0b1020; color: #e6e9f2; font: inherit; }
+        .vc-box textarea { width: 100%; min-height: 110px; margin-top: 8px; }
+        .vc-msg { font-size: 13px; margin-top: 8px; }
+        .vc-err { color: #f87171; }
+        .vc-ok { color: #4ade80; }
+        .vc-warn { color: #facc15; }
+        .vc-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .vc-tab { background: transparent; border: 1px solid #243052; color: #cbd5e1; padding: 7px 14px; border-radius: 999px; cursor: pointer; font: inherit; }
+        .vc-tab.active { border-color: #22d3ee; color: #22d3ee; }
+        .vc-pane { display: none; }
+        .vc-pane.active { display: block; }
+        .vc-topic { margin: 18px 0 8px; font-size: 15px; color: #f472b6; text-transform: uppercase; letter-spacing: .04em; }
+        .vc-lesson { border-left: 3px solid #a78bfa; padding: 8px 12px; margin: 8px 0; background: rgba(167,139,250,.06); border-radius: 0 8px 8px 0; }
+        .vc-lesson h3 { margin: 0 0 4px; font-size: 15px; color: #e9d5ff; }
+        .vc-lesson p { margin: 4px 0; font-size: 14px; line-height: 1.5; }
+        .vc-say { margin: 6px 0 0; padding-left: 18px; }
+        .vc-say li { color: #67e8f9; font-weight: 600; margin: 3px 0; }
+        .vc-meta { font-size: 12px; opacity: .75; margin-top: 6px; }
+        .vc-meta a { color: #22d3ee; }
+        .vc-chip { display: inline-block; font-size: 11px; padding: 1px 8px; border: 1px solid #334155; border-radius: 999px; margin-right: 4px; }
+        .vc-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .vc-table th, .vc-table td { text-align: left; padding: 8px; border-bottom: 1px solid #243052; vertical-align: top; }
+        .vc-table th { font-size: 12px; text-transform: uppercase; opacity: .7; }
+        .vc-status-ready { color: #4ade80; font-weight: 600; }
+        .vc-status-processing { color: #facc15; font-weight: 600; }
+        .vc-status-failed { color: #f87171; font-weight: 600; }
+        .vc-count { color: #a78bfa; font-weight: 700; }
+        .vc-link { background: none; border: 0; color: #22d3ee; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+        .vc-answer { margin-top: 12px; border: 2px solid #f472b6; border-radius: 12px; padding: 12px; }
+        .vc-answer .lbl { font-size: 12px; text-transform: uppercase; color: #f472b6; }
+        .vc-notes h3 { color: #f472b6; font-size: 14px; text-transform: uppercase; margin: 16px 0 6px; }
+        .vc-notes li { margin: 4px 0; line-height: 1.5; }
+        details summary { cursor: pointer; font-size: 13px; color: #94a3b8; margin-top: 8px; }
+        @media (max-width: 600px) { .vc-table .vc-hide-sm { display: none; } }
+    </style>
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Sales Video Coach (Tools menu, added 2026-11-07) -- paste a YouTube
+   link, Claude turns the captions into lessons in one shared team
+   playbook, and "Ask the coach" answers from it. Logic: video_coach.py;
+   storage: appdb sales_videos. #}
+
+<div class="td-page">
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Sales Video Coach</h1>
+            <p class="td-muted-inline">Paste a sales training video. Claude watches the transcript, pulls out what works for how we sell, and adds it to the team playbook.</p>
+        </div>
+    </header>
+
+    {% if load_error %}<p class="td-cp-notice">Couldn't load the playbook ({{ load_error }}).</p>{% endif %}
+    {% if not has_key %}
+    <p class="td-cp-notice">No Anthropic API key is set yet, so videos can't be learned.
+        {% if is_admin %}Add it on <a href="{{ url_for('call_coach_page') }}">Tools &rsaquo; Live Call Coach</a> (the same key powers both).{% else %}Ask an Admin to add it on Tools &rsaquo; Live Call Coach.{% endif %}</p>
+    {% endif %}
+
+    <section class="vc-box">
+        <h2>Learn from a video</h2>
+        <form id="vc-add">
+            <div class="vc-row">
+                <input type="text" name="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off" required>
+                <button class="td-btn" type="submit">Learn this video</button>
+            </div>
+            <details>
+                <summary>No captions, or YouTube blocked it? Paste the transcript instead</summary>
+                <textarea name="transcript" placeholder="Paste the full transcript here (optional)"></textarea>
+            </details>
+            <div class="vc-msg" id="vc-add-msg"></div>
+        </form>
+    </section>
+
+    <div class="vc-tabs" role="tablist">
+        <button class="vc-tab active" data-pane="playbook" role="tab">Playbook</button>
+        <button class="vc-tab" data-pane="ask" role="tab">Ask the coach</button>
+        <button class="vc-tab" data-pane="videos" role="tab">Videos (<span class="vc-count">{{ videos|length }}</span>)</button>
+        {% if open_video %}<button class="vc-tab" data-pane="notes" role="tab">Video notes</button>{% endif %}
+    </div>
+
+    {# ---------------- Playbook ---------------- #}
+    <section class="vc-pane active vc-box" id="pane-playbook">
+        {% if not playbook %}
+        <p>The playbook is empty. Paste a sales training video above to start it.</p>
+        {% endif %}
+        {% for topic, label, lessons in playbook %}
+        <h2 class="vc-topic">{{ label }}</h2>
+        {% for l in lessons %}
+        <div class="vc-lesson">
+            <h3>{{ l.title }}</h3>
+            <p>{{ l.how }}</p>
+            {% if l.say %}<ul class="vc-say">{% for s in l.say %}<li>&ldquo;{{ s }}&rdquo;</li>{% endfor %}</ul>{% endif %}
+            <div class="vc-meta">
+                {% for c in l.channel_labels %}<span class="vc-chip">{{ c }}</span>{% endfor %}
+                {% if l.builds_on %}Builds on &ldquo;{{ l.builds_on }}&rdquo; &middot; {% endif %}
+                <a href="{{ l.clip }}" target="_blank" rel="noopener">{{ l.video_title }}{% if l.at %} @ {{ l.at }}{% endif %}</a>
+            </div>
+        </div>
+        {% endfor %}
+        {% endfor %}
+    </section>
+
+    {# ---------------- Ask ---------------- #}
+    <section class="vc-pane vc-box" id="pane-ask">
+        <h2>Ask the coach</h2>
+        <form id="vc-ask">
+            <div class="vc-row">
+                <input type="text" name="question" placeholder="What do I say when someone says they're happy with their provider?" autocomplete="off" required>
+                <select name="channel" style="flex:0 0 160px">
+                    <option value="">Any channel</option>
+                    {% for key, label in channels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                </select>
+                <button class="td-btn" type="submit">Ask</button>
+            </div>
+            <div class="vc-msg" id="vc-ask-msg"></div>
+        </form>
+        <div id="vc-ask-out"></div>
+    </section>
+
+    {# ---------------- Videos ---------------- #}
+    <section class="vc-pane vc-box" id="pane-videos">
+        {% if not videos %}<p>No videos yet.</p>{% else %}
+        <table class="vc-table">
+            <thead><tr><th>Video</th><th>Status</th><th class="vc-hide-sm">Added</th><th></th></tr></thead>
+            <tbody>
+            {% for v in videos %}
+            <tr data-id="{{ v.id }}" data-status="{{ v.status }}">
+                <td>
+                    {% if v.status == 'ready' %}<a href="{{ url_for('video_coach_page', video=v.id) }}">{{ v.title or v.video_id }}</a>{% else %}{{ v.title or v.video_id }}{% endif %}
+                    <div class="vc-meta">{{ v.channel or '' }}{% if v.length_seconds %} &middot; {{ ts(v.length_seconds) }}{% endif %} &middot; <a href="{{ clip_url(v.video_id, None) }}" target="_blank" rel="noopener">YouTube</a></div>
+                </td>
+                <td>
+                    {% if v.status == 'ready' %}<span class="vc-status-ready">{{ (v.notes or {}).get('lessons', [])|length }} lessons</span>
+                    {% elif v.status == 'processing' %}<span class="vc-status-processing">Learning…</span>
+                    {% else %}<span class="vc-status-failed">Failed</span><div class="vc-meta">{{ v.error }}</div>{% endif %}
+                </td>
+                <td class="vc-hide-sm">{{ v.added_by_name or '' }}<div class="vc-meta">{{ v.added_at.strftime('%b %d, %Y') if v.added_at else '' }}</div></td>
+                <td>
+                    {% if v.status == 'failed' %}<button class="vc-link" data-retry="{{ v.id }}">Try again</button>{% endif %}
+                    {% if is_admin or v.added_by_user_id == user_id %}<button class="vc-link" data-delete="{{ v.id }}">Remove</button>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </section>
+
+    {# ---------------- One video's notes ---------------- #}
+    {% if open_video %}
+    {% set n = open_video.notes or {} %}
+    <section class="vc-pane vc-box vc-notes" id="pane-notes">
+        <h2>{{ open_video.title }}</h2>
+        <div class="vc-meta">{{ open_video.channel or '' }}{% if open_video.length_seconds %} &middot; {{ ts(open_video.length_seconds) }}{% endif %} &middot; added by {{ open_video.added_by_name or 'unknown' }} &middot; <a href="{{ clip_url(open_video.video_id, None) }}" target="_blank" rel="noopener">Watch on YouTube</a></div>
+        {% if n.not_sales_content %}<p class="vc-warn">Claude didn't find usable sales content in this video.</p>{% endif %}
+        <p>{{ n.summary }}</p>
+        {% if n.top_takeaways %}<h3>Top takeaways</h3><ol>{% for t in n.top_takeaways %}<li>{{ t }}</li>{% endfor %}</ol>{% endif %}
+        {% if n.lessons %}<h3>Lessons</h3>
+        {% for l in n.lessons %}
+        <div class="vc-lesson">
+            <h3>{{ l.title }} <span class="vc-chip">{{ topic_labels.get(l.topic, l.topic) }}</span></h3>
+            <p>{{ l.how }}</p>
+            {% if l.say %}<ul class="vc-say">{% for s in l.say %}<li>&ldquo;{{ s }}&rdquo;</li>{% endfor %}</ul>{% endif %}
+            <div class="vc-meta">{% for c in l.channels %}<span class="vc-chip">{{ channels.get(c, c) }}</span>{% endfor %}
+                {% if l.start_seconds is not none %}<a href="{{ clip_url(open_video.video_id, l.start_seconds) }}" target="_blank" rel="noopener">Watch @ {{ ts(l.start_seconds) }}</a>{% endif %}</div>
+        </div>
+        {% endfor %}{% endif %}
+        {% if n.objections %}<h3>Objections covered</h3><ul>{% for o in n.objections %}<li><strong>{{ o.objection }}</strong>: {{ o.response }}{% if o.start_seconds is not none %} <a href="{{ clip_url(open_video.video_id, o.start_seconds) }}" target="_blank" rel="noopener">@ {{ ts(o.start_seconds) }}</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
+        {% if n.doesnt_fit %}<h3>Doesn't fit us</h3><ul>{% for d in n.doesnt_fit %}<li><strong>{{ d.point }}</strong>: {{ d.why }}</li>{% endfor %}</ul>{% endif %}
+        {% if n.drill %}<h3>5-minute drill</h3>
+        <p><strong>Rep's goal:</strong> {{ n.drill.goal }}</p>
+        <p><strong>"Customer":</strong> {{ n.drill.customer_script }}</p>
+        <p><strong>Debrief:</strong> {{ n.drill.debrief }}</p>{% endif %}
+    </section>
+    {% endif %}
+</div>
+
+<script>
+(function () {
+    function post(url, body, method) {
+        return fetch(url, { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+            .then(function (r) { return r.json(); });
+    }
+    function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+    function show(name) {
+        document.querySelectorAll('.vc-tab').forEach(function (t) { t.classList.toggle('active', t.dataset.pane === name); });
+        document.querySelectorAll('.vc-pane').forEach(function (p) { p.classList.toggle('active', p.id === 'pane-' + name); });
+    }
+    document.querySelectorAll('.vc-tab').forEach(function (t) { t.addEventListener('click', function () { show(t.dataset.pane); }); });
+    {% if open_video %}show('notes');{% endif %}
+
+    // Poll any video still learning; reload when one finishes.
+    function poll(id, msgEl) {
+        var tries = 0;
+        (function tick() {
+            fetch('/api/video-coach/videos/' + id).then(function (r) { return r.json(); }).then(function (d) {
+                var v = d.video || {};
+                if (v.status === 'ready') { window.location = '{{ url_for("video_coach_page") }}?video=' + id; return; }
+                if (v.status === 'failed') {
+                    if (msgEl) { msgEl.className = 'vc-msg vc-err'; msgEl.textContent = v.error || 'Learning failed.'; }
+                    else { window.location.reload(); }
+                    return;
+                }
+                if (msgEl) { msgEl.className = 'vc-msg vc-warn'; msgEl.textContent = 'Learning "' + (v.title || 'the video') + '"… this takes a minute or two.'; }
+                if (++tries < 200) setTimeout(tick, 4000);
+            }).catch(function () { if (++tries < 200) setTimeout(tick, 6000); });
+        })();
+    }
+    document.querySelectorAll('tr[data-status="processing"]').forEach(function (row) { poll(row.dataset.id, null); });
+
+    var add = document.getElementById('vc-add');
+    add.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var msg = document.getElementById('vc-add-msg');
+        var btn = add.querySelector('button');
+        btn.disabled = true;
+        msg.className = 'vc-msg'; msg.textContent = 'Reading the captions…';
+        post('{{ url_for("video_coach_submit") }}', { url: add.url.value, transcript: add.transcript.value }).then(function (d) {
+            btn.disabled = false;
+            if (!d.ok) {
+                msg.className = 'vc-msg vc-err'; msg.textContent = d.error || 'Something went wrong.';
+                if (d.id) { msg.innerHTML += ' <a href="{{ url_for("video_coach_page") }}?video=' + d.id + '">Open it</a>'; }
+                return;
+            }
+            add.reset();
+            poll(d.id, msg);
+        }).catch(function () { btn.disabled = false; msg.className = 'vc-msg vc-err'; msg.textContent = "Couldn't reach the server."; });
+    });
+
+    document.querySelectorAll('[data-retry]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            post('/api/video-coach/videos/' + b.dataset.retry + '/retry').then(function (d) {
+                if (!d.ok) { alert(d.error); return; }
+                window.location.reload();
+            });
+        });
+    });
+    document.querySelectorAll('[data-delete]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            if (!confirm('Remove this video and its lessons from the playbook?')) return;
+            post('/api/video-coach/videos/' + b.dataset.delete, null, 'DELETE').then(function (d) {
+                if (!d.ok) { alert(d.error); return; }
+                window.location = '{{ url_for("video_coach_page") }}';
+            });
+        });
+    });
+
+    var ask = document.getElementById('vc-ask');
+    ask.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var msg = document.getElementById('vc-ask-msg'), out = document.getElementById('vc-ask-out');
+        var btn = ask.querySelector('button');
+        btn.disabled = true; out.innerHTML = '';
+        msg.className = 'vc-msg'; msg.textContent = 'Thinking…';
+        post('{{ url_for("video_coach_ask") }}', { question: ask.question.value, channel: ask.channel.value }).then(function (d) {
+            btn.disabled = false;
+            if (!d.ok) { msg.className = 'vc-msg vc-err'; msg.textContent = d.error || 'Something went wrong.'; return; }
+            msg.textContent = '';
+            var r = d.result, html = '<div class="vc-answer"><div class="lbl">' + (r.from_playbook ? 'From the team playbook' : 'General advice (not from our videos yet)') + '</div>';
+            html += '<p>' + esc(r.answer) + '</p>';
+            if (r.say_this && r.say_this.length) {
+                html += '<div class="lbl">Say this</div><ul class="vc-say">' + r.say_this.map(function (s) { return '<li>&ldquo;' + esc(s) + '&rdquo;</li>'; }).join('') + '</ul>';
+            }
+            if (r.sources && r.sources.length) {
+                html += '<div class="vc-meta">Watch: ' + r.sources.map(function (s) {
+                    return '<a href="' + esc(s.clip) + '" target="_blank" rel="noopener">' + esc(s.title) + ' (' + esc(s.video_title) + (s.at ? ' @ ' + esc(s.at) : '') + ')</a>';
+                }).join(' &middot; ') + '</div>';
+            }
+            if (r.next_video_idea) { html += '<div class="vc-meta">Video idea to fill this gap: ' + esc(r.next_video_idea) + '</div>'; }
+            out.innerHTML = html + '</div>';
+        }).catch(function () { btn.disabled = false; msg.className = 'vc-msg vc-err'; msg.textContent = "Couldn't reach the server."; });
+    });
+})();
+</script>
+</body>
+</html>

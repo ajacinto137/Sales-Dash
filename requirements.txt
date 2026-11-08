@@ -9,3 +9,4 @@ pytest
 tzdata
 cryptography
 anthropic
+youtube-transcript-api
