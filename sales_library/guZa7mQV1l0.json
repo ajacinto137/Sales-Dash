@@ -1,0 +1,180 @@
+{
+  "id": "guZa7mQV1l0",
+  "source": "youtube",
+  "url": "https://www.youtube.com/watch?v=guZa7mQV1l0",
+  "title": "Never Split the Difference | Chris Voss | Talks at Google",
+  "creator": "Talks at Google",
+  "length_seconds": 3042,
+  "learned": "2026-11-07",
+  "added_by": "Avelino",
+  "summary": "Former FBI hostage negotiator Chris Voss argues that people decide emotionally and say yes only once they feel safe and understood. His tools are tactical empathy: let the other person say no, label what they're feeling, and summarize their view until they say \"that's right.\" He's against lying, hard-bargaining and splitting the difference, because the damage to your reputation outlasts the deal.",
+  "takeaways": [
+    "Open calls with \"Is now a bad time?\" instead of \"Got a few minutes?\"",
+    "Summarize the customer's situation until they say \"that's right\" before you pitch.",
+    "A \"no\" makes people feel safe. Let it stand, pause, then label what's behind it."
+  ],
+  "lessons": [
+    {
+      "topic": "openers",
+      "title": "Ask \"Is now a bad time?\", never \"Got a few minutes?\"",
+      "how": "\"Got a few minutes?\" makes people weigh time and trust and say no. \"Is now a bad time?\" gets either their focus or a specific time to call back.",
+      "say": ["Hi, it's [rep] with Planet Networks. Is now a bad time for a quick question about the fiber we just built on your street?"],
+      "channels": ["outbound"],
+      "start_seconds": 310,
+      "builds_on": "",
+      "example": {
+        "setting": "Outbound call from HubSpot to a homeowner in a newly released town. They have cable today and picked up while making dinner.",
+        "lines": [
+          {"speaker": "Rep", "text": "Hi Maria, it's Jake with Planet Networks. Is now a bad time for a quick question about the fiber we just finished on your street?"},
+          {"speaker": "Customer", "text": "Honestly, yeah, I'm making dinner."},
+          {"speaker": "Rep", "text": "No problem at all. Would tomorrow around 6 be better, or is the weekend easier?"},
+          {"speaker": "Customer", "text": "Tomorrow at 6 is fine."},
+          {"speaker": "Rep", "text": "Perfect, I'll call you then. Enjoy dinner."}
+        ]
+      }
+    },
+    {
+      "topic": "openers",
+      "title": "Accusation audit up front",
+      "how": "Say the negative thing they're already thinking before they can. It disarms a cold contact and makes you sound like a person instead of a pitch.",
+      "say": ["You're probably thinking I'm just another salesperson trying to switch you to the same thing with a different name. Fair."],
+      "channels": ["door_to_door", "outbound"],
+      "start_seconds": 2083,
+      "builds_on": "",
+      "example": {
+        "setting": "Door knock on a Saturday afternoon. The homeowner opens the door already shaking their head.",
+        "lines": [
+          {"speaker": "Rep", "text": "Hi! I know, another person knocking about internet. You're probably thinking it's the same cable deal with a new name."},
+          {"speaker": "Customer", "text": "Pretty much, yeah."},
+          {"speaker": "Rep", "text": "Fair. The only reason I'm here is we just ran fiber down this street, so it's actually new to your house. Can I ask what bugs you most about your internet now?"},
+          {"speaker": "Customer", "text": "It crawls at night when the kids are gaming."}
+        ]
+      }
+    },
+    {
+      "topic": "discovery",
+      "title": "Let them go first, then label the hidden reason",
+      "how": "People can't hear your pitch until they've said their piece. Ask, listen, then name what seems to be driving them with \"It seems like…\" or \"It sounds like…\". The small detail that comes out usually decides the sale.",
+      "say": ["What made you call today?", "It sounds like the evenings are when it really falls apart."],
+      "channels": ["inbound", "door_to_door"],
+      "start_seconds": 1806,
+      "builds_on": "",
+      "example": {
+        "setting": "Inbound call. A customer saw a Planet Networks yard sign and called the number.",
+        "lines": [
+          {"speaker": "Rep", "text": "Thanks for calling Planet Networks. What made you call today?"},
+          {"speaker": "Customer", "text": "I saw the signs. I work from home and my video calls keep freezing."},
+          {"speaker": "Rep", "text": "It sounds like your internet is costing you at work, not just at home."},
+          {"speaker": "Customer", "text": "Exactly. My boss has started joking about it."},
+          {"speaker": "Rep", "text": "Got it. Let's make sure what we set up fixes that first. How many people are online during your workday?"}
+        ]
+      }
+    },
+    {
+      "topic": "value",
+      "title": "Summarize until they say \"that's right\", then present",
+      "how": "Repeat their situation back in their own words. \"That's right\" means they feel understood and will listen. \"You're right\" is a polite brush-off that means you haven't landed yet.",
+      "say": ["So your internet mostly works, but it slows down at night when everyone's on, and the bill keeps going up. Is that right?"],
+      "channels": ["inbound", "outbound", "door_to_door"],
+      "start_seconds": 345,
+      "builds_on": "",
+      "example": {
+        "setting": "Same inbound call, a minute later, before any plan is mentioned.",
+        "lines": [
+          {"speaker": "Rep", "text": "So let me make sure I've got it: you work from home, calls freeze in the afternoon when the kids get home, and you're paying more each year for it. Is that right?"},
+          {"speaker": "Customer", "text": "That's right. That's exactly it."},
+          {"speaker": "Rep", "text": "Then here's what fixes that. It's fiber straight to your house, so your upload doesn't choke when everyone's online. The plan I'd suggest is [fill in: plan and price]."}
+        ]
+      }
+    },
+    {
+      "topic": "objections",
+      "title": "Don't argue with \"I'm happy with my provider\"",
+      "how": "A no makes people feel safe, and safe people think more openly. Let the no stand, pause about three seconds, then label or ask about the moments where cable usually struggles.",
+      "say": ["Totally fair. Quick question: how is it in the evening when everyone's online?"],
+      "channels": ["outbound", "door_to_door"],
+      "start_seconds": 139,
+      "builds_on": "",
+      "example": {
+        "setting": "Door knock. The homeowner says they're all set with their current provider.",
+        "lines": [
+          {"speaker": "Customer", "text": "We're good, we're happy with what we have."},
+          {"speaker": "Rep", "text": "That's great to hear. [pauses] Can I ask, how is it around 8 at night when everyone's streaming?"},
+          {"speaker": "Customer", "text": "I mean... it buffers sometimes, I guess."},
+          {"speaker": "Rep", "text": "Sounds like it's fine until you actually need it."}
+        ]
+      }
+    },
+    {
+      "topic": "closing",
+      "title": "Close with a no-oriented question",
+      "how": "Saying no feels safe, so phrase the close so that \"no\" moves it forward. It feels less like being pushed.",
+      "say": ["Would it be crazy to get you on the install calendar?"],
+      "channels": ["inbound", "outbound", "door_to_door"],
+      "start_seconds": 206,
+      "builds_on": "",
+      "example": {
+        "setting": "End of an outbound call. The customer has agreed that evening slowdowns are their main problem.",
+        "lines": [
+          {"speaker": "Rep", "text": "Would it be crazy to get you on the install calendar so it's fixed before the holidays?"},
+          {"speaker": "Customer", "text": "No, that's not crazy. What do you have?"},
+          {"speaker": "Rep", "text": "Let me pull up openings. [fill in: install scheduling details]"}
+        ]
+      }
+    },
+    {
+      "topic": "cancellations",
+      "title": "A pushed yes cancels: never lie or overpromise",
+      "how": "People find out, and neighbors talk. A sale only counts once it's installed, so close on real agreement, set honest expectations, and never invent urgency or results.",
+      "say": ["I don't want you signing up unless it actually fixes the problem you told me about."],
+      "channels": ["door_to_door", "outbound", "inbound"],
+      "start_seconds": 2289,
+      "builds_on": "",
+      "example": {
+        "setting": "Door to door. The customer asks if fiber will fix Wi-Fi in a far bedroom.",
+        "lines": [
+          {"speaker": "Customer", "text": "Will this fix the Wi-Fi in my son's room upstairs?"},
+          {"speaker": "Rep", "text": "Honestly, fiber makes the connection into the house much faster, but a far bedroom can still depend on the router placement. [fill in: what we offer for whole-home Wi-Fi]. I'd rather tell you that now than have you disappointed after install."},
+          {"speaker": "Customer", "text": "I appreciate that. OK, let's do it."}
+        ]
+      }
+    },
+    {
+      "topic": "follow_up",
+      "title": "\"Bad time\" means book a specific time, and know when to move on",
+      "how": "When it's a bad time, book an exact call-back instead of \"I'll try you later.\" After a clear, repeated no, move on. Time is the scarcest thing a rep has.",
+      "say": ["Would tomorrow at 6 or Saturday morning be better?"],
+      "channels": ["outbound"],
+      "start_seconds": 2873,
+      "builds_on": "",
+      "example": {
+        "setting": "Third outbound attempt on a lead who has said no twice.",
+        "lines": [
+          {"speaker": "Customer", "text": "Like I said last time, we're not interested."},
+          {"speaker": "Rep", "text": "Understood, and thanks for being straight with me. I'll take you off my list. If anything changes, we're the fiber on your street."},
+          {"speaker": "Customer", "text": "Thanks, appreciate it."}
+        ]
+      }
+    }
+  ],
+  "objections": [
+    {"objection": "I'm happy with my provider", "response": "Don't argue. Let the no stand, pause, then label or ask about the evenings and the bill.", "start_seconds": 139},
+    {"objection": "Now's not a good time", "response": "\"Is now a bad time?\" turns it into a booked call-back.", "start_seconds": 345},
+    {"objection": "OK, you're right (polite brush-off)", "response": "You haven't landed. Go back and summarize their view until you get \"that's right.\"", "start_seconds": 1946}
+  ],
+  "applies": {
+    "inbound": "Let the caller explain why they called before pitching, and summarize to \"that's right\" before quoting a plan.",
+    "outbound": "Open with \"Is now a bad time?\" and turn a bad time into a booked call-back in HubSpot. Move on after a clear, repeated no.",
+    "door_to_door": "An accusation audit in the first seconds takes the edge off a stranger knocking. Never pressure: neighbors talk."
+  },
+  "doesnt_fit": [
+    {"point": "High-value trades instead of compromising", "why": "Reps mostly can't change price or terms; only applies if there are promos reps may offer [fill in]."},
+    {"point": "Threats and leveraging bad publicity", "why": "Hostage and kidnapping context. Never use with customers."},
+    {"point": "Long multi-round bargaining", "why": "Our sales are single-conversation decisions. Take the empathy tools, skip the bargaining strategy."}
+  ],
+  "drill": {
+    "goal": "Get the \"customer\" to say \"that's right\" before mentioning any plan or price.",
+    "customer_script": "\"I'm fine with what I have, I don't really have time for this.\" Answer pushes with \"yeah, you're right.\" Say \"that's right\" only when the rep accurately sums up: you work from home, calls drop in the evening, the bill keeps going up.",
+    "debrief": "How many tries did the summary take? Did the rep open with \"Is now a bad time?\""
+  }
+}

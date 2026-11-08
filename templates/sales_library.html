@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sales Library — Planet Networks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/team_dashboard.css') }}">
+    <script src="{{ url_for('static', filename='js/team_dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}" defer></script>
+    {% include "_sales_library_style.html" %}
+</head>
+<body class="td-body">
+{% include "_topnav.html" %}
+
+{# Sales Library (Tools menu, added 2026-11-07) -- read-only lessons from
+   sales training videos. Files: sales_library/*.json, published by the
+   sales-video-learner / sales-instagram-learner Claude Code skills.
+   Logic: sales_library.py. #}
+
+<div class="td-page">
+    <header class="td-header">
+        <div class="td-header-titles">
+            <h1 class="td-title">Sales Library</h1>
+            <p class="td-muted-inline">What the team has learned from sales training videos, rewritten for how we sell. Every lesson links back to the moment in the video.</p>
+        </div>
+    </header>
+
+    {% for e in errors %}<p class="td-cp-notice">Skipped a library file: {{ e }}</p>{% endfor %}
+
+    <div class="sl-stats">
+        <div class="sl-stat"><div class="num sl-c1">{{ stats.lessons }}</div><div class="lbl">Lessons</div></div>
+        <div class="sl-stat"><div class="num sl-c2">{{ stats.videos }}</div><div class="lbl">Videos learned</div></div>
+        <div class="sl-stat"><div class="num sl-c3">{{ stats.youtube }}</div><div class="lbl">YouTube</div></div>
+        <div class="sl-stat"><div class="num sl-c4">{{ stats.instagram }}</div><div class="lbl">Instagram</div></div>
+    </div>
+
+    <form class="sl-filters" method="get">
+        <a class="sl-tab {{ 'active' if view == 'lessons' else '' }}" href="{{ url_for('sales_library_page', topic=topic, channel=channel, source=source) }}">Lessons by topic</a>
+        <a class="sl-tab {{ 'active' if view == 'videos' else '' }}" href="{{ url_for('sales_library_page', view='videos', source=source) }}">Videos</a>
+        {% if view == 'videos' %}<input type="hidden" name="view" value="videos">{% endif %}
+        {% if view == 'lessons' %}
+        <select name="topic" onchange="this.form.submit()" aria-label="Topic">
+            <option value="">All topics</option>
+            {% for key, label in topics %}<option value="{{ key }}" {{ 'selected' if topic == key }}>{{ label }}</option>{% endfor %}
+        </select>
+        <select name="channel" onchange="this.form.submit()" aria-label="Channel">
+            <option value="">All channels</option>
+            {% for key, label in channels.items() %}<option value="{{ key }}" {{ 'selected' if channel == key }}>{{ label }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <select name="source" onchange="this.form.submit()" aria-label="Source">
+            <option value="">YouTube + Instagram</option>
+            {% for key, label in sources.items() %}<option value="{{ key }}" {{ 'selected' if source == key }}>{{ label }}</option>{% endfor %}
+        </select>
+    </form>
+
+    {% if view == 'lessons' %}
+    <section class="sl-box">
+        {% if not groups %}
+        <p>{% if stats.lessons %}No lessons match these filters.{% else %}No lessons yet. They show up here each time a video is learned.{% endif %}</p>
+        {% endif %}
+        {% for key, label, lessons in groups %}
+        <h2 class="sl-topic">{{ label }}</h2>
+        {% for l in lessons %}
+        <div class="sl-lesson">
+            <h3>{{ l.title }}</h3>
+            <p>{{ l.how }}</p>
+            {% if l.say %}<ul class="sl-say">{% for s in l.say %}<li>&ldquo;{{ s }}&rdquo;</li>{% endfor %}</ul>{% endif %}
+            {% include "_sales_library_example.html" %}
+            <div class="sl-meta">
+                <span class="sl-chip {{ 'yt' if l.source_label == 'YouTube' else 'ig' }}">{{ l.source_label }}</span>
+                {% for c in l.channel_labels %}<span class="sl-chip">{{ c }}</span>{% endfor %}
+                {% if l.builds_on %}Builds on &ldquo;{{ l.builds_on }}&rdquo; &middot; {% endif %}
+                <a href="{{ l.clip }}" target="_blank" rel="noopener">Watch{% if l.at %} @ {{ l.at }}{% endif %}</a> &middot;
+                <a href="{{ url_for('sales_library_entry', entry_id=l.entry_id) }}">{{ l.entry_title }}</a>
+            </div>
+        </div>
+        {% endfor %}
+        {% endfor %}
+    </section>
+    {% else %}
+    <section class="sl-box">
+        {% if not entries %}<p>No videos yet.</p>{% else %}
+        <table class="sl-table">
+            <thead><tr><th>Video</th><th>Lessons</th><th class="sl-hide-sm">Learned</th></tr></thead>
+            <tbody>
+            {% for e in entries %}
+            <tr>
+                <td><a href="{{ url_for('sales_library_entry', entry_id=e.id) }}">{{ e.title }}</a>
+                    <div class="sl-meta"><span class="sl-chip {{ 'yt' if e.source == 'youtube' else 'ig' }}">{{ e.source_label }}</span>{{ e.creator }}{% if e.length_seconds %} &middot; {{ ts(e.length_seconds) }}{% endif %}</div></td>
+                <td><span class="sl-num">{{ e.lessons|length }}</span></td>
+                <td class="sl-hide-sm">{{ e.learned }}{% if e.added_by %}<div class="sl-meta">by {{ e.added_by }}</div>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </section>
+    {% endif %}
+</div>
+</body>
+</html>

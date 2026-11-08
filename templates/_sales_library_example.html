@@ -1,0 +1,8 @@
+{# One lesson's Planet Networks example (expects `l` = a lesson dict). #}
+{% if l.example %}
+<div class="sl-example">
+    <div class="lbl">Planet Networks example</div>
+    {% if l.example.setting %}<p class="setting">{{ l.example.setting }}</p>{% endif %}
+    {% for line in l.example.lines %}<p class="line"><span class="who-{{ line.speaker }}">{{ line.speaker }}:</span> {{ line.text }}</p>{% endfor %}
+</div>
+{% endif %}

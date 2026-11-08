@@ -1,0 +1,92 @@
+{
+  "id": "ig-C9awMzdSZRo",
+  "source": "instagram",
+  "url": "https://www.instagram.com/reel/C9awMzdSZRo/",
+  "title": "The \"tie-down\": one sentence for any objection",
+  "creator": "Brian Ron Mark (@therealbrianmark)",
+  "length_seconds": 55,
+  "learned": "2026-11-07",
+  "added_by": "Avelino",
+  "summary": "When a prospect raises an objection, first confirm it's the only thing in the way: \"So if it weren't for that, you'd want to move forward, is that right?\" A yes isolates the objection, so you solve just that one problem and close. A \"well, also…\" tells you there's a hidden objection to find first.",
+  "takeaways": [
+    "Isolate an objection before you answer it.",
+    "If the tie-down gets a \"well, also…\", find the real objection before solving anything.",
+    "For us, book the install instead of pushing for \"today\": a pressured yes cancels."
+  ],
+  "lessons": [
+    {
+      "topic": "objections",
+      "title": "Isolate any objection before you answer it (tie-down)",
+      "how": "Repeat the objection back and ask if it's the only barrier. Yes means you know exactly what to solve. \"Well, also…\" means there's a hidden objection, so find it before solving the first one. End on \"is that right?\" to get a real \"that's right\".",
+      "say": ["So if it weren't for [the objection], you'd want to get it set up. Is that right?"],
+      "channels": ["inbound", "outbound", "door_to_door"],
+      "start_seconds": 0,
+      "builds_on": "Summarize until they say \"that's right\", then present",
+      "example": {
+        "setting": "Door knock in a newly released town. The homeowner likes the idea but hesitates.",
+        "lines": [
+          {"speaker": "Customer", "text": "It sounds good, but I'm locked in with Optimum."},
+          {"speaker": "Rep", "text": "Totally get it. So if it weren't for the contract, you'd want fiber at the house. Is that right?"},
+          {"speaker": "Customer", "text": "Well... also I heard installs take forever and they tear up the yard."},
+          {"speaker": "Rep", "text": "Glad you said that. Let's talk about the install first: [fill in: install process and timeline]. Then we'll figure out the contract."}
+        ]
+      }
+    },
+    {
+      "topic": "objections",
+      "title": "Price: tie it down, then right-size the plan",
+      "how": "Confirm price is the only issue, then solve just that by offering the plan that fits. Don't discount or invent promos.",
+      "say": ["If this fit the budget, you'd want to get on the install calendar. Is that right?"],
+      "channels": ["inbound", "outbound"],
+      "start_seconds": 13,
+      "builds_on": "",
+      "example": {
+        "setting": "Outbound call. The customer likes fiber but says it's more than they pay now.",
+        "lines": [
+          {"speaker": "Customer", "text": "I want it, but that's more than I'm paying now."},
+          {"speaker": "Rep", "text": "Completely fair. So if it fit the budget, you'd want to get on the install calendar. Is that right?"},
+          {"speaker": "Customer", "text": "That's right."},
+          {"speaker": "Rep", "text": "Then let's look at [fill in: lowest plan and price]. It still gives you fiber, just at a speed that fits a smaller budget."}
+        ]
+      }
+    },
+    {
+      "topic": "objections",
+      "title": "\"I need to talk to my spouse\": tie it down, then get both",
+      "how": "Confirm the spouse is the only open question, then make it easy to include them: a call-back when both are home, or book the install now so they can share it.",
+      "say": ["If they're on board, is this something you'd want for the house?"],
+      "channels": ["door_to_door", "inbound"],
+      "start_seconds": 0,
+      "builds_on": "",
+      "example": {
+        "setting": "Door knock on a weeknight. One spouse answers.",
+        "lines": [
+          {"speaker": "Customer", "text": "I'd have to talk to my husband first."},
+          {"speaker": "Rep", "text": "Of course. If he's on board, is this something you'd want for the house?"},
+          {"speaker": "Customer", "text": "Yeah, I think so."},
+          {"speaker": "Rep", "text": "Great. When are you both usually home? I can call back then and answer his questions directly."}
+        ]
+      }
+    }
+  ],
+  "objections": [
+    {"objection": "I don't have the money / over budget", "response": "Tie it down, then offer the plan that fits [fill in: what reps can offer].", "start_seconds": 13},
+    {"objection": "I need to talk to my spouse / no time", "response": "Named in the reel as objections the tie-down works on; the fix (call back with both) is ours.", "start_seconds": 0}
+  ],
+  "applies": {
+    "inbound": "Callers who hesitate usually have one specific worry. Isolating it keeps the call from ending in \"let me think about it.\"",
+    "outbound": "Turns a vague brush-off into a specific problem, or reveals there isn't one.",
+    "door_to_door": "Fits \"I need to ask my spouse\" best: isolate, then book a time when both are home."
+  },
+  "doesnt_fit": [
+    {"point": "\"100% down to move forward today\"", "why": "A pressured \"today\" yes is the one that cancels before install. Book the install instead."},
+    {"point": "\"Handles every single objection\"", "why": "Overclaim: some objections are real and final (can't get service, moving, no budget). The tie-down tells you which ones those are."},
+    {"point": "The $900 to $300/month payment plan", "why": "His product, not ours. Only offer what our plans allow [fill in]."},
+    {"point": "\"Comment the word training\"", "why": "Engagement bait, nothing to learn."}
+  ],
+  "drill": {
+    "goal": "For each objection, isolate it with a tie-down ending in \"is that right?\", and only then solve it.",
+    "customer_script": "Cycle through \"it's too expensive,\" \"I need to talk to my husband,\" and \"I'm under contract with Optimum.\" On one, answer the tie-down with \"well, also…\" and add a second worry, like slow installs.",
+    "debrief": "Did the rep catch the hidden second objection before solving the first? Did they push \"today,\" or book the install?"
+  }
+}

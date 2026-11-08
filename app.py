@@ -40,6 +40,7 @@ import passings_cache
 import passings_classification
 import passings_data
 import permissions
+import sales_library
 import staffing_store
 import user_store
 from queries import (
@@ -3236,6 +3237,55 @@ def parcel_map_passings():
     if points is None:
         return jsonify({"error": error}), 503
     return jsonify({"points": points})
+
+
+@app.route("/tools/sales-library")
+@auth.login_required
+def sales_library_page():
+    """Sales Library (added 2026-11-07) -- read-only lessons from sales
+    training videos, published as JSON files in sales_library/ by the
+    user's Claude Code skills (each publish is a push to main). Rules and
+    file format: sales_library.py."""
+    entries, errors = sales_library.load()
+    topic = request.args.get("topic") if request.args.get("topic") in sales_library.TOPIC_LABELS else None
+    channel = request.args.get("channel") if request.args.get("channel") in sales_library.CHANNELS else None
+    source = request.args.get("source") if request.args.get("source") in sales_library.SOURCES else None
+    view = "videos" if request.args.get("view") == "videos" else "lessons"
+    return render_template(
+        "sales_library.html",
+        active_page="tools",
+        entries=[e for e in entries if not source or e["source"] == source],
+        groups=sales_library.lessons_by_topic(entries, topic, channel, source),
+        stats=sales_library.summary(entries),
+        errors=errors if permissions.is_admin(auth.current_user()) else [],
+        topics=sales_library.TOPICS,
+        channels=sales_library.CHANNELS,
+        sources=sales_library.SOURCES,
+        topic=topic,
+        channel=channel,
+        source=source,
+        view=view,
+        ts=sales_library.ts,
+        last_refreshed=data_store["last_refreshed"],
+    )
+
+
+@app.route("/tools/sales-library/<entry_id>")
+@auth.login_required
+def sales_library_entry(entry_id):
+    entry = sales_library.get(entry_id)
+    if entry is None:
+        abort(404)
+    return render_template(
+        "sales_library_entry.html",
+        active_page="tools",
+        entry=entry,
+        topic_labels=sales_library.TOPIC_LABELS,
+        channels=sales_library.CHANNELS,
+        ts=sales_library.ts,
+        clip=lambda seconds: sales_library.clip_url(entry, seconds),
+        last_refreshed=data_store["last_refreshed"],
+    )
 
 
 @app.route("/tools/install-escalation")
