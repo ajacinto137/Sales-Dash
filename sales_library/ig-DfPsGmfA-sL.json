@@ -1,0 +1,106 @@
+{
+  "id": "ig-DfPsGmfA-sL",
+  "source": "instagram",
+  "url": "https://www.instagram.com/p/DfPsGmfA-sL/",
+  "title": "The 1-10 close, plus \"someone else decides\" and \"too expensive\"",
+  "creator": "Jordan Stupar (@jordanstupar)",
+  "length_seconds": 71,
+  "learned": "2026-11-22",
+  "added_by": "Avelino",
+  "summary": "Three objections handled in a row. \"I need to think about it\" gets the 1-10 scale and \"What would make it a 10?\", which turns a stall into a specific objection. \"I have to talk to someone else\" gets \"Could you explain it to them?\" and \"What will they like most?\" before the close. \"Too expensive\" gets a short menu of reasons to pick from, which narrows it to budget or a cheaper competitor.",
+  "takeaways": [
+    "On \"think about it,\" ask 1-10, then \"What would make it a 10?\" The answer is the real objection.",
+    "When someone else decides, have the customer say what that person will like most.",
+    "On price, offer a short menu of reasons and let them pick: budget and cheaper elsewhere are both solvable."
+  ],
+  "lessons": [
+    {
+      "topic": "objections",
+      "title": "\"Think about it\": the 1-10 close",
+      "how": "Agree that thinking it over is fair, then ask where they are from 1 to 10 (10 = ready to book, 1 = wouldn't take it free). Follow with \"What would make it a 10?\" That answer is the real objection, so tie it down and solve it. A 1-3 is a polite no: leave it there (our note, not the reel's).",
+      "say": [
+        "Totally fair. So I know where you're at: 1 to 10, 10 being let's book it, 1 being you wouldn't take it free?",
+        "What would make it a 10?"
+      ],
+      "channels": ["inbound", "outbound", "door_to_door"],
+      "start_seconds": 0,
+      "builds_on": "Isolate any objection before you answer it (tie-down)",
+      "example": {
+        "setting": "Inbound call. A homeowner with Optimum cable asked about plans and now wants to think about it.",
+        "lines": [
+          {"speaker": "Customer", "text": "This sounds good, I just want to think about it."},
+          {"speaker": "Rep", "text": "Totally fair. So I know where you're at: 1 to 10, 10 being let's get it booked, 1 being you wouldn't take it free?"},
+          {"speaker": "Customer", "text": "Probably a 7."},
+          {"speaker": "Rep", "text": "Nice. What would make it a 10?"},
+          {"speaker": "Customer", "text": "Honestly, I don't want a tech tearing up the house."},
+          {"speaker": "Rep", "text": "That I can answer: [fill in: install process and timeline]. Want me to grab the earliest date? You can still change it."}
+        ]
+      }
+    },
+    {
+      "topic": "objections",
+      "title": "Someone else decides: make them the seller",
+      "how": "Agree that checking with them is a good idea. Ask if they feel they could explain it the way you did, then ask what the other person will like most. Saying it out loud sells them too. Then offer an install date they can show the other person. If that person truly has to decide, book a call-back with both instead of pushing.",
+      "say": [
+        "Do you feel like you could explain it to them the way I explained it to you?",
+        "What do you think they'll like most?"
+      ],
+      "channels": ["door_to_door", "inbound"],
+      "start_seconds": 21,
+      "builds_on": "\"I need to talk to my spouse\": tie it down, then get both",
+      "example": {
+        "setting": "Door knock in a newly released town. A renter likes it, but their roommate pays the internet bill.",
+        "lines": [
+          {"speaker": "Customer", "text": "I'd have to run it by my roommate, she pays the internet."},
+          {"speaker": "Rep", "text": "Good idea. Do you feel like you could explain it to her the way I explained it to you?"},
+          {"speaker": "Customer", "text": "Yeah, pretty much."},
+          {"speaker": "Rep", "text": "What do you think she'll like most?"},
+          {"speaker": "Customer", "text": "She works from home and the Wi-Fi drops every afternoon."},
+          {"speaker": "Rep", "text": "Then that's the pitch. Want to put an install date on the calendar now so you can show her when it's coming?"}
+        ]
+      }
+    },
+    {
+      "topic": "objections",
+      "title": "\"Too expensive\": offer the menu",
+      "how": "Agree, then name the few things it usually means: more than they want to spend, doesn't fit the monthly budget, or they've seen it cheaper. Ask which is closest. Budget means right-size the plan. Cheaper elsewhere means ask who and what speed, then compare side by side. Don't discount or invent promos.",
+      "say": [
+        "Usually that means one of three things: more than you want to spend, doesn't fit the monthly budget right now, or you've seen it cheaper. Which one's closest?"
+      ],
+      "channels": ["outbound", "inbound", "door_to_door"],
+      "start_seconds": 45,
+      "builds_on": "Price: tie it down, then right-size the plan",
+      "example": {
+        "setting": "Outbound call. A homeowner on Verizon DSL hears the price and pushes back.",
+        "lines": [
+          {"speaker": "Customer", "text": "That's too expensive."},
+          {"speaker": "Rep", "text": "Totally get it. Usually that means one of three things: more than you want to spend, doesn't fit the budget right now, or you've seen it cheaper. Which one's closest?"},
+          {"speaker": "Customer", "text": "I mean, I'm paying less now."},
+          {"speaker": "Rep", "text": "Got it, so it's the monthly number. What are you paying, and what speed do you get?"},
+          {"speaker": "Customer", "text": "Less than that, and it's slow at night."},
+          {"speaker": "Rep", "text": "Then let's look at [fill in: lowest plan and price] and put it side by side with what you have."}
+        ]
+      }
+    }
+  ],
+  "objections": [
+    {"objection": "I need to think about it", "response": "1-10 scale, then \"What would make it a 10?\"", "start_seconds": 0},
+    {"objection": "I need to talk to someone else", "response": "Check they can explain the value, ask what the other person will like most, then offer an install date (or a call-back with both).", "start_seconds": 21},
+    {"objection": "It's too expensive", "response": "Offer the short menu of reasons and let them pick; right-size the plan or compare the competitor offer.", "start_seconds": 45}
+  ],
+  "applies": {
+    "inbound": "Best fit. Callers who say \"let me think about it\" are usually a 6-8, and \"What would make it a 10?\" finds the one thing to answer.",
+    "outbound": "The price menu works well on the phone: it quickly shows whether it's budget (right-size the plan) or a competitor quote (compare).",
+    "door_to_door": "The 1-10 is quick and friendly at the door, and \"What will they like most?\" fits the roommate, spouse or landlord moment."
+  },
+  "doesnt_fit": [
+    {"point": "A \"just complaining\" option in the price menu (his wording is cruder)", "why": "It can land as an insult on a stranger. Use \"a gut reaction to a new bill\" or drop it."},
+    {"point": "Closing right after \"I have to talk to someone else\"", "why": "If the other person really decides, a pushed yes is the one that cancels before install. Book a call-back with both."},
+    {"point": "\"Three objections in 30 seconds\" and the card-deck plug", "why": "Hype and a product pitch, nothing to learn."}
+  ],
+  "drill": {
+    "goal": "Turn \"I need to think about it\" into a specific objection with the 1-10 question, then handle what comes next without arguing.",
+    "customer_script": "Start with \"I need to think about it.\" Answer the scale with a 6. When asked what would make it a 10, say \"I'd have to check with my wife.\" Then say \"and honestly it's too expensive,\" and when offered the menu, pick \"I've seen it cheaper.\"",
+    "debrief": "Did the rep ask \"What would make it a 10?\" instead of pitching again? Did they get the customer to say what the spouse would like most? On \"cheaper,\" did they ask what the other offer includes instead of discounting?"
+  }
+}
